@@ -32,9 +32,11 @@ class DFSV_params:
     mu : np.ndarray
         Long-run mean for log-volatilities with shape (K, 1) or (K,)
     sigma2 : np.ndarray
-        Idiosyncratic variance with shape (N, 1), (N,), or (N, N) for diagonal or full covariance
+        Idiosyncratic variance with shape (N, 1), (N,) for diagonal or (N, N) for full covariance
     Q_h : np.ndarray
         Noise covariance matrix for log-volatilities with shape (K, K)
+    validate : bool, optional
+        Whether to validate parameter dimensions. Defaults to True.
     """
 
     # Model size
@@ -52,6 +54,8 @@ class DFSV_params:
     sigma2: np.ndarray
     # Noise covariance matrix for log-volatilities (K x K)
     Q_h: np.ndarray
+    # Optional validation flag - default to True for safety
+    validate: bool = True
 
     def __post_init__(self):
         """
@@ -60,8 +64,15 @@ class DFSV_params:
         Raises
         ------
         ValueError
-            If any parameter has incorrect dimensions
+            If any parameter has incorrect dimensions and validate=True
         """
+        # Skip validation if validate is False
+        if not self.validate:
+            # Still convert sigma2 to diagonal matrix if it's 1D for consistency
+            if self.sigma2.ndim == 1:
+                self.sigma2 = np.diag(self.sigma2)
+            return
+            
         # Check dimensions of arrays
         if self.lambda_r.shape != (self.N, self.K):
             raise ValueError(f"lambda_r should be shape ({self.N}, {self.K}), got {self.lambda_r.shape}")
