@@ -7,7 +7,7 @@ of exponential terms.
 """
 
 import numpy as np
-from sim_functions import DFSV_params
+from functions.simulation import DFSV_params
 
 
 def log_likelihood_observation(y_t: np.ndarray, f_t: np.ndarray, 
