@@ -10,6 +10,9 @@ import numpy as np
 from dataclasses import dataclass
 from typing import Tuple, Optional, Dict, List, Union
 from functions.simulation import DFSV_params
+import jax
+import jax.numpy as jnp
+from jax import grad, hessian, jit
 
 class DFSVFilter:
     """
@@ -139,7 +142,7 @@ class DFSVFilter:
         Parameters
         ----------
         y : np.ndarray
-            Observed returns with shape (T, N)
+            Observed returns with shape (T, N) or (N, T)
             
         Returns
         -------
@@ -148,6 +151,10 @@ class DFSVFilter:
             filtered covariances with shape (T, state_dim, state_dim),
             and total log-likelihood
         """
+# Ensure y is in (T, N) format
+        if y.shape[0] < y.shape[1]:  # If (N, T) format
+            y = y.T
+            
         T = y.shape[0]
         
         # Storage for filtered states and covariances
@@ -155,7 +162,7 @@ class DFSVFilter:
         filtered_covs = np.zeros((T, self.state_dim, self.state_dim))
         
         # Initialize
-        state, cov = self.initialize_state(y.T)
+        state, cov = self.initialize_state(y.T)  # Note: initialize_state expects (N, T)
         log_likelihood = 0.0
         
         # Forward pass
@@ -163,11 +170,12 @@ class DFSVFilter:
             # Prediction step
             predicted_state, predicted_cov = self.predict(state, cov)
             
-            # Update step
-            state, cov, ll_contrib = self.update(predicted_state, predicted_cov, y[t:t+1, :].T)
+            # Update step - reshape observation to (N, 1)
+            observation = y[t:t+1, :].T.reshape(-1, 1)
+            state, cov, ll_contrib = self.update(predicted_state, predicted_cov, observation)
             
-            # Store results
-            filtered_states[t:t+1, :] = state.T
+            # Store results (convert state from (state_dim, 1) to row vector)
+            filtered_states[t, :] = state.flatten()
             filtered_covs[t, :, :] = cov
             log_likelihood += ll_contrib
         
@@ -326,435 +334,6 @@ class DFSVFilter:
         
         # Last K rows are the log-volatilities
         return self.smoothed_states[:, :self.K]
-
-
-class DFSVExtendedKalmanFilter(DFSVFilter):
-    """
-    Extended Kalman Filter implementation for DFSV models.
-    
-    This class specializes the base Kalman filter by implementing
-    linearization of the state transition and observation equations
-    necessary for handling the nonlinearities in the DFSV model. Note: this filter is not able to estimate the log-volatilities yet.
-    """
-    
-    def predict(self, state: np.ndarray, cov: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Perform the EKF prediction step.
-        
-        Parameters
-        ----------
-        state : np.ndarray
-            Current state estimate with shape (state_dim, 1)
-        cov : np.ndarray
-            Current state covariance with shape (state_dim, state_dim)
-            
-        Returns
-        -------
-        Tuple[np.ndarray, np.ndarray]
-            Predicted state and covariance
-        """
-        # Extract parameters
-        K = self.K
-        Phi_f = self.params.Phi_f
-        Phi_h = self.params.Phi_h
-        mu = self.params.mu.reshape(-1, 1) if self.params.mu.ndim == 1 else self.params.mu
-        Q_h = self.params.Q_h
-        
-        # Extract current state components
-        factors = state[:K]
-        log_vols = state[K:]
-        
-        # Predict factors:
-        # E[f_{t+1}|t] = Phi_f * f_t
-        predicted_factors = Phi_f @ factors
-        
-        # Predict log-volatilities:
-        # E[h_{t+1}|t] = mu + Phi_h * (h_t - mu)
-        predicted_log_vols = mu + Phi_h @ (log_vols - mu)
-        
-        # Combine predicted state
-        predicted_state = np.vstack([predicted_factors, predicted_log_vols])
-        
-        # Get linearized state transition matrix
-        F_t = self._get_transition_matrix(state)
-        
-        # Process noise covariance
-        Q_t = np.zeros((self.state_dim, self.state_dim))
-        # Factor process noise (state-dependent)
-        Q_f = np.diag(np.exp(log_vols.flatten()))
-        # Log-volatility process noise (assumed constant)
-        Q_t[:K, :K] = Q_f
-        Q_t[K:, K:] = Q_h
-        
-        # Predict covariance
-        predicted_cov = F_t @ cov @ F_t.T + Q_t
-        
-        return predicted_state, predicted_cov
-    
-    def update(self, 
-              predicted_state: np.ndarray, 
-              predicted_cov: np.ndarray, 
-              observation: np.ndarray) -> Tuple[np.ndarray, np.ndarray, float]:
-        """
-        Perform the EKF update step.
-        
-        Parameters
-        ----------
-        predicted_state : np.ndarray
-            Predicted state with shape (state_dim, 1)
-        predicted_cov : np.ndarray
-            Predicted state covariance with shape (state_dim, state_dim)
-        observation : np.ndarray
-            Current observation with shape (N, 1)
-            
-        Returns
-        -------
-        Tuple[np.ndarray, np.ndarray, float]
-            Updated state, updated covariance, and log-likelihood contribution
-        """
-        # Extract parameters
-        K = self.K
-        N = self.N
-        lambda_r = self.params.lambda_r
-        sigma2 = self.params.sigma2
-        
-        # Extract predicted state components
-        predicted_factors = predicted_state[:K]
-        
-        # Expected observation: E[r_t|t-1] = lambda_r * f_t|t-1
-        predicted_obs = lambda_r @ predicted_factors
-        
-        # Innovation (measurement residual)
-        innovation = observation - predicted_obs
-        
-        # Observation matrix (maps from state to measurement)
-        H_t = np.zeros((N, self.state_dim))
-        H_t[:, :K] = lambda_r
-        
-        # Innovation covariance
-        S_t = H_t @ predicted_cov @ H_t.T + sigma2
-        
-        # Ensure S_t is positive definite
-        S_t = (S_t + S_t.T) / 2
-        
-        # Kalman gain
-        K_t = predicted_cov @ H_t.T @ np.linalg.inv(S_t)
-        
-        # Updated state estimate
-        updated_state = predicted_state + K_t @ innovation
-        
-        # Updated covariance
-        updated_cov = (np.eye(self.state_dim) - K_t @ H_t) @ predicted_cov
-        
-        # Ensure updated_cov is symmetric positive definite
-        updated_cov = (updated_cov + updated_cov.T) / 2
-        
-        # Log-likelihood contribution
-        log_likelihood = -0.5 * (
-            N * np.log(2 * np.pi) + 
-            np.log(np.linalg.det(S_t)) + 
-            innovation.T @ np.linalg.inv(S_t) @ innovation
-        )[0, 0]
-        
-        return updated_state, updated_cov, log_likelihood
-    
-    def _get_transition_matrix(self, state: np.ndarray) -> np.ndarray:
-        """
-        Get the linearized state transition matrix at given state.
-        
-        Parameters
-        ----------
-        state : np.ndarray
-            Current state
-            
-        Returns
-        -------
-        np.ndarray
-            Transition matrix with shape (state_dim, state_dim)
-        """
-        K = self.K
-        Phi_f = self.params.Phi_f
-        Phi_h = self.params.Phi_h
-        
-        # Initialize transition matrix
-        F_t = np.zeros((self.state_dim, self.state_dim))
-        
-        # Top-left block: factor transition
-        F_t[:K, :K] = Phi_f
-        
-        # Bottom-right block: log-volatility transition
-        F_t[K:, K:] = Phi_h
-        
-        return F_t
-    
-    def _predict_with_matrix(self, 
-                            state: np.ndarray, 
-                            cov: np.ndarray, 
-                            transition_matrix: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Make a prediction using the provided transition matrix.
-        
-        Parameters
-        ----------
-        state : np.ndarray
-            Current state
-        cov : np.ndarray
-            Current covariance
-        transition_matrix : np.ndarray
-            State transition matrix
-            
-        Returns
-        -------
-        Tuple[np.ndarray, np.ndarray]
-            Predicted state and covariance
-        """
-        K = self.K
-        mu = self.params.mu.reshape(-1, 1) if self.params.mu.ndim == 1 else self.params.mu
-        
-        # Extract state components
-        factors = state[:K]
-        log_vols = state[K:]
-        
-        # Predict factors: E[f_{t+1}|t] = Phi_f * f_t
-        predicted_factors = transition_matrix[:K, :K] @ factors
-        
-        # Predict log-volatilities: E[h_{t+1}|t] = mu + Phi_h * (h_t - mu)
-        Phi_h = transition_matrix[K:, K:]
-        predicted_log_vols = mu + Phi_h @ (log_vols - mu)
-        
-        # Combine predicted state
-        predicted_state = np.vstack([predicted_factors, predicted_log_vols])
-        
-        # Process noise covariance (simplified for this method)
-        Q_t = np.zeros((self.state_dim, self.state_dim))
-        Q_t[K:, K:] = self.params.Q_h
-        
-        # Predict covariance
-        predicted_cov = transition_matrix @ cov @ transition_matrix.T + Q_t
-        
-        return predicted_state, predicted_cov
-
-
-class DFSVUnscentedKalmanFilter(DFSVFilter):
-    """
-    Unscented Kalman Filter implementation for DFSV models.
-    
-    This class specializes the base Kalman filter using the unscented
-    transform to handle nonlinearities without requiring explicit calculation
-    of Jacobians, which can be useful for highly nonlinear DFSV variants.
-    """
-    
-    def __init__(self, params: DFSV_params, alpha: float = 1e-3, beta: float = 2.0, kappa: float = 0.0):
-        """
-        Initialize the UKF with DFSV model parameters.
-        
-        Parameters
-        ----------
-        params : DFSV_params
-            Parameters of the DFSV model
-        alpha : float, optional
-            Spread of sigma points around mean
-        beta : float, optional
-            Prior knowledge of state distribution (2 is optimal for Gaussian)
-        kappa : float, optional
-            Secondary scaling parameter
-        """
-        super().__init__(params)
-        self.alpha = alpha
-        self.beta = beta
-        self.kappa = kappa
-        
-        # Calculate derived parameters
-        self._setup_ukf_params()
-    
-    def _setup_ukf_params(self):
-        """Set up UKF-specific parameters for sigma point calculations."""
-        n = self.state_dim
-        self.lambda_ukf = self.alpha**2 * (n + self.kappa) - n
-        
-        # Calculate weights
-        # Weight for mean of state
-        self.wm = np.zeros(2*n + 1)
-        # Weight for covariance
-        self.wc = np.zeros(2*n + 1)
-        
-        # Calculate weights
-        self.wm[0] = self.lambda_ukf / (n + self.lambda_ukf)
-        self.wc[0] = self.wm[0] + (1 - self.alpha**2 + self.beta)
-        for i in range(1, 2*n + 1):
-            self.wm[i] = 1 / (2 * (n + self.lambda_ukf))
-            self.wc[i] = 1 / (2 * (n + self.lambda_ukf))
-    
-    def _generate_sigma_points(self, state: np.ndarray, cov: np.ndarray) -> np.ndarray:
-        """
-        Generate sigma points around the current state.
-        
-        Parameters
-        ----------
-        state : np.ndarray
-            Current state with shape (state_dim, 1)
-        cov : np.ndarray
-            Current state covariance with shape (state_dim, state_dim)
-            
-        Returns
-        -------
-        np.ndarray
-            Sigma points with shape (state_dim, 2*state_dim + 1)
-        """
-        n = self.state_dim
-        sigma_points = np.zeros((n, 2*n + 1))
-        
-        # Ensure covariance is symmetric
-        cov = (cov + cov.T) / 2
-        
-        # Compute square root of (n + lambda)*P using Cholesky decomposition
-        try:
-            L = np.linalg.cholesky((n + self.lambda_ukf) * cov)
-        except np.linalg.LinAlgError:
-            # If Cholesky fails, add a small regularization term
-            L = np.linalg.cholesky((n + self.lambda_ukf) * (cov + 1e-8 * np.eye(n)))
-        
-        # First sigma point is the mean
-        sigma_points[:, 0:1] = state
-        
-        # Generate remaining sigma points
-        for i in range(n):
-            sigma_points[:, i+1:i+2] = state + L[:, i:i+1]
-            sigma_points[:, n+i+1:n+i+2] = state - L[:, i:i+1]
-        
-        return sigma_points
-    
-    def _predict_sigma_points(self, sigma_points: np.ndarray) -> np.ndarray:
-        """
-        Propagate sigma points through the nonlinear state transition function.
-        
-        Parameters
-        ----------
-        sigma_points : np.ndarray
-            Sigma points with shape (state_dim, 2*state_dim + 1)
-            
-        Returns
-        -------
-        np.ndarray
-            Propagated sigma points with shape (state_dim, 2*state_dim + 1)
-        """
-        K = self.K
-        Phi_f = self.params.Phi_f
-        Phi_h = self.params.Phi_h
-        mu = self.params.mu.reshape(-1, 1) if self.params.mu.ndim == 1 else self.params.mu
-        
-        # Number of sigma points
-        num_sigma_points = sigma_points.shape[1]
-        
-        # Container for transformed sigma points
-        transformed_sigma_points = np.zeros_like(sigma_points)
-        
-        for i in range(num_sigma_points):
-            # Extract state components from current sigma point
-            factors = sigma_points[:K, i:i+1]
-            log_vols = sigma_points[K:, i:i+1]
-            
-            # Predict factors: E[f_{t+1}|t] = Phi_f @ factors
-            
-            predicted_factors = Phi_f @ factors
-            
-            # Predict log-volatilities: E[h_{t+1}|t] = mu + Phi_h @ (log_vols - mu)
-            predicted_log_vols = mu + Phi_h @ (log_vols - mu)
-            
-            # Combine predicted state
-            transformed_sigma_points[:K, i:i+1] = predicted_factors
-            transformed_sigma_points[K:, i:i+1] = predicted_log_vols
-        
-        return transformed_sigma_points
-    
-    def _observe_sigma_points(self, sigma_points: np.ndarray) -> np.ndarray:
-        """
-        Transform sigma points using the observation equation.
-        
-        Parameters
-        ----------
-        sigma_points : np.ndarray
-            Sigma points with shape (state_dim, 2*state_dim + 1)
-            
-        Returns
-        -------
-        np.ndarray
-            Observed sigma points with shape (N, 2*state_dim + 1)
-        """
-        K = self.K
-        N = self.N
-        lambda_r = self.params.lambda_r
-        
-        # Number of sigma points
-        num_sigma_points = sigma_points.shape[1]
-        
-        # Container for observed sigma points
-        observed_sigma_points = np.zeros((N, num_sigma_points))
-        
-        for i in range(num_sigma_points):
-            # Extract factors from current sigma point
-            factors = sigma_points[:K, i:i+1]
-            
-            # Observation equation: y = lambda_r * f
-            observed_sigma_points[:, i:i+1] = lambda_r @ factors
-        
-        return observed_sigma_points
-    
-    def predict(self, state: np.ndarray, cov: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Perform the UKF prediction step.
-        
-        Parameters
-        ----------
-        state : np.ndarray
-            Current state estimate with shape (state_dim, 1)
-        cov : np.ndarray
-            Current state covariance with shape (state_dim, state_dim)
-            
-        Returns
-        -------
-        Tuple[np.ndarray, np.ndarray]
-            Predicted state and covariance
-        """
-        # Generate sigma points
-        sigma_points = self._generate_sigma_points(state, cov)
-        
-        # Propagate sigma points through state transition function
-        transformed_sigma_points = self._predict_sigma_points(sigma_points)
-        
-        # Compute predicted mean
-        predicted_state = np.sum([w * transformed_sigma_points[:, i:i+1] 
-                                for i, w in enumerate(self.wm)], axis=0)
-        
-        # Compute predicted covariance
-        predicted_cov = np.zeros((self.state_dim, self.state_dim))
-        
-        for i in range(len(self.wc)):
-            diff = transformed_sigma_points[:, i:i+1] - predicted_state
-            predicted_cov += self.wc[i] * diff @ diff.T
-        
-        # Add process noise covariance
-        Q_t = np.zeros((self.state_dim, self.state_dim))
-        K = self.K
-        
-        # Factor process noise (state-dependent)
-        log_vols = state[K:]
-        Q_f = np.diag(np.exp(log_vols.flatten()))
-        
-        # Log-volatility process noise
-        Q_t[:K, :K] = Q_f
-        Q_t[K:, K:] = self.params.Q_h
-        
-        predicted_cov = predicted_cov + Q_t
-        
-        return predicted_state, predicted_cov
-    
-    # def update(self, 
-    #           predicted_state: np.ndarray, 
-    #           predicted_cov: np.ndarray, 
-    #           observation: np.ndarray) -> Tuple[np.ndarray, np.ndarray, float]:
-    #     """
-    #     Perform the UKF update step
 
 class DFSVParticleFilter(DFSVFilter):
     """
@@ -1228,33 +807,113 @@ class DFSVParticleFilter(DFSVFilter):
 
 class DFSVBellmanFilter(DFSVFilter):
     """
-    Bellman Filter implementation for DFSV models.
+    Bellman Filter implementation for DFSV models using JAX for automatic differentiation.
     
     This class implements a Bellman filter for state estimation in DFSV models,
     using dynamic programming principles to recursively compute the optimal
-    state estimates and covariances.
+    state estimates and covariances. JAX is used for automatic differentiation,
+    eliminating the need to manually compute gradients and Hessians.
     """
     
     def __init__(self, params: DFSV_params):
         """
-        Initialize the Bellman Filter with
-        DFSV model parameters.
+        Initialize the JAX-based Bellman Filter with DFSV model parameters.
+        
         Parameters
         ----------
         params : DFSV_params
             Parameters of the DFSV model
         """
         super().__init__(params)
+        
+        # Convert model parameters to JAX arrays for use in JAX functions
+        self._setup_jax_params()
+        
+        # JIT-compile the objective function and its derivatives for efficiency
+        self._compile_jax_functions()
+    
+    def _setup_jax_params(self):
+        """
+        Convert numpy parameters to JAX arrays for use in JAX functions.
+        """
+        # Convert model parameters to JAX arrays
+        self.jax_lambda_r = jnp.array(self.params.lambda_r)
+        self.jax_sigma2 = jnp.array(self.params.sigma2)
+        self.jax_mu = jnp.array(self.params.mu.reshape(-1, 1) if self.params.mu.ndim == 1 else self.params.mu)
+        self.jax_Phi_f = jnp.array(self.params.Phi_f)
+        self.jax_Phi_h = jnp.array(self.params.Phi_h)
+        self.jax_Q_h = jnp.array(self.params.Q_h)
+    
+    def _compile_jax_functions(self):
+        """
+        JIT-compile JAX functions for efficiency.
+        """
+        # Define the objective function in JAX for automatic differentiation
+        def jax_bellman_objective(alpha, predicted_state, I_pred, observation, K, N, lambda_r, sigma2):
+            """JAX implementation of Bellman objective function"""
+            # Extract state components
+            factors = alpha[:K]
+            log_vols = alpha[K:]
+            
+            # Compute predicted observation
+            pred_obs = lambda_r @ factors
+            
+            # Innovation
+            innovation = observation - pred_obs
+            
+            # Compute conditional covariance of the returns given the state
+            sigma_f = jnp.diag(jnp.exp(log_vols))
+            cov_matrix = lambda_r @ sigma_f @ lambda_r.T + jnp.diag(sigma2)
+            
+            # Ensure cov_matrix is symmetric
+            cov_matrix = (cov_matrix + cov_matrix.T) / 2.0
+            
+            # Add small regularization to the diagonal for numerical stability
+            cov_matrix = cov_matrix + 1e-8 * jnp.eye(N)
+            
+            # Compute log-likelihood using Cholesky decomposition
+            # Use JAX's built-in solver which handles numerical issues
+            L = jnp.linalg.cholesky(cov_matrix)
+            alpha_vec = jnp.linalg.solve(L, innovation)
+            quad_form = jnp.sum(alpha_vec**2)
+            logdet = 2.0 * jnp.sum(jnp.log(jnp.diag(L)))
+            
+            # Compute log-likelihood
+            log_likelihood = -0.5 * (N * jnp.log(2.0 * jnp.pi) + logdet + quad_form)
+            
+            # Compute quadratic penalty
+            state_diff = alpha - predicted_state
+            penalty = 0.5 * jnp.dot(jnp.dot(state_diff.T, I_pred), state_diff)[0, 0]
+            
+            # Return negative log-posterior (we minimize this)
+            return -(log_likelihood - penalty)
+        
+        # JIT-compile the objective function
+        self.jax_objective = jit(jax_bellman_objective)
+        
+        # Create JIT-compiled gradient and Hessian functions using JAX's autodiff
+        self.jax_gradient = jit(grad(jax_bellman_objective, argnums=0))
+        self.jax_hessian = jit(hessian(jax_bellman_objective, argnums=0))
+    
     def initialize_state(self, y):
-        """"
-        Initialize state and covariance."
+        """
+        Initialize state and covariance.
+        
+        Parameters
+        ----------
+        y : np.ndarray
+            Observed data
+            
+        Returns
+        -------
+        tuple
+            Initial state and covariance
         """
         return super().initialize_state(y)
     
     def predict(self, state: np.ndarray, cov: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-
         """
-        Perform the Bellman prediction step.
+        Perform the Bellman prediction step using Schur complement for information matrix.
         
         Parameters
         ----------
@@ -1273,36 +932,96 @@ class DFSVBellmanFilter(DFSVFilter):
         Phi_f = self.params.Phi_f
         Phi_h = self.params.Phi_h
         mu = self.params.mu.reshape(-1, 1) if self.params.mu.ndim == 1 else self.params.mu
-
         
         # Extract current state components
         factors = state[:K]
         log_vols = state[K:]
         
-        # Predict factors:
-        # E[f_{t+1}|t] = Phi_f * f_t
+        # Convert to information form (precision matrix)
+        I_curr = np.linalg.inv(cov)
+        
+        # Predict factors: E[f_{t+1}|t] = Phi_f * f_t
         predicted_factors = Phi_f @ factors
         
-        # Predict log-volatilities:
-        # E[h_{t+1}|t] = mu + Phi_h * (h_t - mu)
+        # Predict log-volatilities: E[h_{t+1}|t] = mu + Phi_h @ (log_vols - mu)
         predicted_log_vols = mu + Phi_h @ (log_vols - mu)
         
         # Combine predicted state
         predicted_state = np.vstack([predicted_factors, predicted_log_vols])
         
-        # Get linearized state transition matrix
+        # Calculate state transition and noise matrices
         F_t = self._get_transition_matrix(state)
-        # Process noise covariance
-        Q_t = np.zeros((self.state_dim, self.state_dim))
-        # Factor process noise (state-dependent)
-        Q_f = np.diag(np.exp(log_vols.flatten()))
-        # Log-volatility process noise (assumed constant)
-        Q_h = self.params.Q_h
         
+        # Process noise covariance (using state-dependent factor noise)
+        Q_t = np.zeros((self.state_dim, self.state_dim))
+        Q_f = np.diag(np.exp(log_vols.flatten()))  # Factor process noise
+        Q_h = self.params.Q_h                      # Log-volatility process noise
         Q_t[:K, :K] = Q_f
         Q_t[K:, K:] = Q_h
-        # Predict covariance
-        predicted_cov = F_t @ cov @ F_t.T + Q_t
+        
+        # Calculate information matrix via Schur complement (similar to MATLAB implementation)
+        try:
+            # Step 1: Construct the augmented negative Hessian matrix
+            # [ I_pred,   -I_pred*F_t' ]
+            # [ -F_t*I_pred, F_t*I_pred*F_t' + Q_t^{-1} ]
+            
+            # Calculate Q_t inverse carefully to avoid numerical issues
+            Q_t_inv = np.zeros_like(Q_t)
+            Q_t_inv[:K, :K] = np.diag(1.0 / np.diag(Q_f))
+            Q_t_inv[K:, K:] = np.linalg.inv(Q_h)
+            
+            # Construct the block matrices for the negative Hessian
+            top_left = I_curr
+            top_right = -I_curr @ F_t.T
+            bottom_left = -F_t @ I_curr
+            bottom_right = F_t @ I_curr @ F_t.T + Q_t_inv
+            
+            # Combine into augmented negative Hessian
+            neg_hessian = np.block([
+                [top_left, top_right],
+                [bottom_left, bottom_right]
+            ])
+            
+            # Ensure the negative Hessian is symmetric
+            neg_hessian = (neg_hessian + neg_hessian.T) / 2
+            
+            # Step 2: Calculate Schur complement to get prediction information matrix
+            # I_pred = top_left - top_right * bottom_right^{-1} * bottom_left
+            # We need to invert bottom_right block
+            try:
+                # Try using Cholesky decomposition for positive definite matrices
+                L = np.linalg.cholesky(bottom_right)
+                bottom_right_inv = np.linalg.inv(L.T @ L)
+            except np.linalg.LinAlgError:
+                # Fallback to pseudo-inverse for ill-conditioned matrices
+                bottom_right_inv = np.linalg.pinv(bottom_right)
+            
+            # Calculate the Schur complement
+            I_pred = top_left - top_right @ bottom_right_inv @ bottom_left
+            
+            # Ensure symmetry
+            I_pred = (I_pred + I_pred.T) / 2
+            
+            # Check if the result is positive definite
+            try:
+                # Try Cholesky decomposition as PD test
+                np.linalg.cholesky(I_pred)
+            except np.linalg.LinAlgError:
+                # If not PD, use regularized standard prediction
+                predicted_cov = F_t @ cov @ F_t.T + Q_t
+                predicted_cov = (predicted_cov + predicted_cov.T) / 2
+                return predicted_state, predicted_cov
+            
+            # Calculate predicted covariance from information
+            predicted_cov = np.linalg.inv(I_pred)
+            
+        except Exception:
+            # Fallback to standard covariance prediction if Schur complement fails
+            predicted_cov = F_t @ cov @ F_t.T + Q_t
+        
+        # Ensure the covariance is symmetric positive definite
+        predicted_cov = (predicted_cov + predicted_cov.T) / 2
+        
         return predicted_state, predicted_cov
     
     def update(self, 
@@ -1310,7 +1029,7 @@ class DFSVBellmanFilter(DFSVFilter):
               predicted_cov: np.ndarray, 
               observation: np.ndarray) -> Tuple[np.ndarray, np.ndarray, float]:
         """
-        Perform the Bellman update step using numerical optimization.
+        Perform the Bellman update step using JAX-based optimization with automatic differentiation.
         
         Parameters
         ----------
@@ -1327,213 +1046,116 @@ class DFSVBellmanFilter(DFSVFilter):
             Updated state, updated covariance, and log-likelihood contribution
         """
         # Compute information matrix (inverse of predicted covariance)
-        I_pred = np.linalg.inv(predicted_cov)
+        try:
+            # Try to compute inverse using Cholesky for numerical stability
+            L = np.linalg.cholesky(predicted_cov)
+            I_pred = np.linalg.inv(L.T @ L)
+        except np.linalg.LinAlgError:
+            # If Cholesky fails, use regularized pseudoinverse
+            I_pred = np.linalg.pinv(predicted_cov + 1e-8 * np.eye(self.state_dim))
+        
+        # Ensure symmetry
+        I_pred = (I_pred + I_pred.T) / 2
         
         # Initial guess for optimization is the predicted state
         alpha_0 = predicted_state.copy()
         
+        # Convert numpy arrays to JAX arrays for optimization
+        jax_alpha_0 = jnp.array(alpha_0)
+        jax_predicted_state = jnp.array(predicted_state)
+        jax_I_pred = jnp.array(I_pred)
+        jax_observation = jnp.array(observation)
+        
         # Define objective function for scipy.optimize
         def obj_func(x):
-            return self.bellman_objective(x.reshape(-1, 1), predicted_state, I_pred, observation)
+            x_reshaped = x.reshape(-1, 1)
+            return np.array(self.jax_objective(x_reshaped, jax_predicted_state, jax_I_pred, jax_observation, 
+                                          self.K, self.N, self.jax_lambda_r, self.jax_sigma2)).item()
         
         def grad_func(x):
-            return self.bellman_gradient(x.reshape(-1, 1), predicted_state, I_pred, observation).flatten()
+            x_reshaped = x.reshape(-1, 1)
+            grad = self.jax_gradient(x_reshaped, jax_predicted_state, jax_I_pred, jax_observation, 
+                                self.K, self.N, self.jax_lambda_r, self.jax_sigma2)
+            return np.array(grad).flatten()
         
         def hess_func(x):
-            return self.bellman_hessian(x.reshape(-1, 1), predicted_state, I_pred, observation)
+            x_reshaped = x.reshape(-1, 1)
+            hess = self.jax_hessian(x_reshaped, jax_predicted_state, jax_I_pred, jax_observation, 
+                               self.K, self.N, self.jax_lambda_r, self.jax_sigma2)
+            return np.array(hess).reshape(self.state_dim, self.state_dim)
         
-        # Use scipy's Newton-CG method for optimization
-        from scipy.optimize import minimize
-        result = minimize(
-            obj_func,
-            alpha_0.flatten(),
-            method='Newton-CG',
-            jac=grad_func,
-            # hess=hess_func,
-            options={'maxiter': 100, 'xtol': 1e-6}
-        )
+        # Compute initial Hessian to check conditioning
+        initial_hessian = hess_func(alpha_0.flatten())
         
-        if not result.success:
-            # If Newton-CG fails, try BFGS as fallback
+        # Test if the hessian is positive definite and well-conditioned
+        is_pd = True
+        try:
+            np.linalg.cholesky(initial_hessian)
+        except np.linalg.LinAlgError:
+            is_pd = False
+        
+        # Check conditioning of the Hessian matrix
+        cond_number = np.linalg.cond(initial_hessian)
+        is_well_conditioned = cond_number < 1e6  # Similar to MATLAB rcond threshold
+        
+        # If well-conditioned and PD, proceed with Newton-CG optimization
+        if is_pd and is_well_conditioned:
+            # Use scipy's Newton-CG method for optimization
+            from scipy.optimize import minimize
             result = minimize(
                 obj_func,
                 alpha_0.flatten(),
-                method='BFGS',
+                method='Newton-CG',
                 jac=grad_func,
-                options={'maxiter': 100}
+                hess=hess_func,
+                options={'maxiter': 100, 'xtol': 1e-6}
             )
+            
+            # If Newton-CG fails, try BFGS as fallback
+            if not result.success:
+                result = minimize(
+                    obj_func,
+                    alpha_0.flatten(),
+                    method='BFGS',
+                    jac=grad_func,
+                    options={'maxiter': 100}
+                )
+                
+            # Get the optimal state estimate
+            updated_state = result.x.reshape(-1, 1)
+            
+            # Calculate hessian at the optimum for covariance estimation
+            final_hessian = hess_func(result.x)
+            
+            # Check if final hessian is positive definite
+            is_final_pd = True
+            try:
+                np.linalg.cholesky(final_hessian)
+            except np.linalg.LinAlgError:
+                is_final_pd = False
+            
+            # Check conditioning of final hessian
+            final_cond = np.linalg.cond(final_hessian)
+            is_final_well_conditioned = final_cond < 1e6
+            
+            if is_final_pd and is_final_well_conditioned:
+                # Updated covariance is the inverse of the Hessian at the optimum
+                updated_cov = np.linalg.inv(final_hessian)
+                updated_cov = (updated_cov + updated_cov.T) / 2  # Ensure symmetry
+            else:
+                # If final Hessian is not well-behaved, use regularization
+                final_hessian_reg = final_hessian + 1e-4 * np.eye(self.state_dim)
+                updated_cov = np.linalg.inv(final_hessian_reg)
+                updated_cov = (updated_cov + updated_cov.T) / 2  # Ensure symmetry
+        else:
+            # If initial Hessian is not well-behaved, use prediction as update (intervention)
+            updated_state = predicted_state.copy()
+            updated_cov = 10 * np.eye(self.state_dim)  # Similar to MATLAB implementation's intervention
         
-        # Get the optimal state estimate
-        updated_state = result.x.reshape(-1, 1)
-        
-        # Updated covariance is the inverse of the Hessian at the optimum
-        updated_cov = np.linalg.inv(hess_func(result.x))
-        
-        # Ensure covariance is symmetric
-        updated_cov = (updated_cov + updated_cov.T) / 2
-        
-        # Compute log-likelihood contribution
-        log_likelihood = -obj_func(result.x)  # Negative because obj_func returns negative log-posterior
+        # Compute log-likelihood contribution at the updated state
+        log_likelihood = -obj_func(updated_state.flatten())  # Negative because obj_func returns negative log-posterior
         
         return updated_state, updated_cov, log_likelihood
-    
-    def bellman_objective(self, alpha: np.ndarray, predicted_state: np.ndarray, 
-                         I_pred: np.ndarray, observation: np.ndarray) -> float:
-        """
-        Compute the Bellman objective function (negative log-posterior).
-        The log-posterior is computed as the sum of the log-likelihood of the observation, given the state alpha, and a quadratic penalty
-
-        Parameters
-        ----------
-        alpha : np.ndarray
-            Candidate state vector
-        predicted_state : np.ndarray
-            Predicted state from previous step
-        I_pred : np.ndarray
-            Information matrix (inverse of predicted covariance)
-        observation : np.ndarray
-            Current observation
-
-        Returns
-        -------
-        float
-            Value of the objective function
-        """
-        # Extract parameters
-        K = self.K
-        N = self.N
-        lambda_r = self.params.lambda_r
-        sigma2 = self.params.sigma2
-
-        # Extract state components
-        factors = alpha[:K]
-        log_vols = alpha[K:]
-
-        # Compute log-likelihood
-        # predicted observation
-        pred_obs = lambda_r @ factors
-        
-        # Innovation
-        innovation = observation - pred_obs
-        
-        #Compute conditional covariance of the returns given the state
-        sigma_f= np.diag(np.exp(log_vols.flatten()))
-        cov_matrix = lambda_r @ sigma_f @ lambda_r.T + np.diag(sigma2)
-        # Compute log-likelihood
-        log_likelihood=-0.5 * (innovation.T @ np.linalg.pinv(cov_matrix) @ innovation)[0, 0]
-        # Add normalization terms
-        log_likelihood -= 0.5 * (N * np.log(2 * np.pi) + np.log(np.linalg.det(cov_matrix)))
-        # Compute quadratic penalty
-        state_diff = alpha - predicted_state
-        penalty = 0.5 * (state_diff.T @ I_pred @ state_diff)[0, 0]
-
-        # Return negative log-posterior
-        return -(log_likelihood - penalty)
-    
-    def bellman_gradient(self, alpha: np.ndarray, predicted_state: np.ndarray, 
-                        I_pred: np.ndarray, observation: np.ndarray) -> np.ndarray:
-        """
-        Compute the gradient of the Bellman objective function.
-
-        Parameters
-        ----------
-        alpha : np.ndarray
-            Candidate state vector
-        predicted_state : np.ndarray
-            Predicted state from previous step
-        I_pred : np.ndarray
-            Information matrix (inverse of predicted covariance)
-        observation : np.ndarray
-            Current observation
-
-        Returns
-        -------
-        np.ndarray
-            Gradient vector of the objective function
-        """
-               # Extract parameters
-        K = self.K
-        N = self.N
-        lambda_r = self.params.lambda_r
-        sigma2 = self.params.sigma2
-
-        # Extract state components
-        factors = alpha[:K]
-        log_vols = alpha[K:]
-
-        # Compute log-likelihood
-        # predicted observation
-        pred_obs = lambda_r @ factors
-        
-        # Innovation
-        innovation = observation - pred_obs
-        
-        #Compute conditional covariance of the returns given the state
-        sigma_f= np.diag(np.exp(log_vols.flatten()))
-        cov_matrix = lambda_r @ sigma_f @ lambda_r.T + np.diag(sigma2)
-        #Inverse of the covariance matrix
-        cov_matrix_inv = np.linalg.pinv(cov_matrix)
-        #gradient wrt factors
-        grad_factors= -lambda_r.T @ cov_matrix_inv @ innovation
-        #gradient wrt log-volatilities
-        grad_log_vols = 0.5 *np.exp(log_vols.flatten())* np.diagonal(lambda_r.T @ cov_matrix_inv @ lambda_r+lambda_r.T @ cov_matrix_inv @ innovation @ innovation.T @ cov_matrix_inv @ lambda_r)
-        # Combine gradients
-        grad_ll = np.vstack([grad_factors, grad_log_vols.reshape(-1, 1)])
-        # Compute quadratic penalty gradient
-        state_diff = alpha - predicted_state
-        grad_penalty = I_pred @ state_diff
-        # Combine gradients
-        # Ensure gradient is a column vector
-        return -(grad_ll - grad_penalty)
-
-    def bellman_hessian(self, alpha: np.ndarray, predicted_state: np.ndarray, 
-                       I_pred: np.ndarray, observation: np.ndarray) -> np.ndarray:
-        """
-        Compute the Hessian of the Bellman objective function.
-
-        Parameters
-        ----------
-        alpha : np.ndarray
-            Candidate state vector
-        predicted_state : np.ndarray
-            Predicted state from previous step
-        I_pred : np.ndarray
-            Information matrix (inverse of predicted covariance)
-        observation : np.ndarray
-            Current observation
-
-        Returns
-        -------
-        np.ndarray
-            Hessian matrix of the objective function
-        """
-        # Extract parameters
-        K = self.K
-        lambda_r = self.params.lambda_r
-        sigma2 = self.params.sigma2
-
-        # If sigma2 is diagonal, use simplified computation
-        if np.all(np.diag(np.diag(sigma2)) == sigma2):
-            sigma_inv = np.diag(1/np.diag(sigma2))
-        else:
-            sigma_inv = np.linalg.inv(sigma2)
-
-        # Hessian for factors (through observation equation)
-        H_f = lambda_r.T @ sigma_inv @ lambda_r
-
-        # Hessian for log-volatilities (no direct observation dependence)
-        H_h = np.zeros((K, K))
-
-        # Combine into full Hessian
-        H_ll = np.block([
-            [H_f, np.zeros((K, K))],
-            [np.zeros((K, K)), H_h]
-        ])
-
-        # Add penalty Hessian (constant)
-        H = -(H_ll - I_pred)
-
-        return H
     
     def _get_transition_matrix(self, state: np.ndarray) -> np.ndarray:
         """
