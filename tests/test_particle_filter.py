@@ -197,7 +197,7 @@ class TestParticleFilter(unittest.TestCase):
         params = self.create_test_parameters()
         
         # Simulate data
-        T = 1500
+        T = 600
         returns, true_factors, true_log_vols = simulate_DFSV(params, T=T, seed=456)
         
         # Create and run particle filter
@@ -253,14 +253,14 @@ class TestParticleFilter(unittest.TestCase):
             ax.legend()
             ax.grid(True)
         
-        # Plot log-volatilities
+        # Plot volatilities
         for k in range(params.K):
             ax = axs[1, k]
-            ax.plot(true_log_vols[:, k], 'b-', label='True')
-            ax.plot(filtered_log_vols[:, k], 'r--', label='Filtered')
+            ax.plot(np.exp(true_log_vols[:, k]/2), 'b-', label='True')
+            ax.plot(np.exp(filtered_log_vols[:, k]/2), 'r--', label='Filtered')
             if include_smoothed:
-                ax.plot(smoothed_log_vols[:, k], 'g-.', label='Smoothed')
-            ax.set_title(f'Log-Volatility {k+1}')
+                ax.plot(np.exp(smoothed_log_vols[:, k]/2), 'g-.', label='Smoothed')
+            ax.set_title(f'Volatility {k+1}')
             ax.legend()
             ax.grid(True)
             

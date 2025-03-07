@@ -97,8 +97,9 @@ class TestBellmanFilter(unittest.TestCase):
         params = self.create_test_parameters()
         
         # Simulate data
+        f0 = np.array([0.5,0.1])  # Initial state for factors
         T = 200  # Time series length
-        returns, true_factors, true_log_vols = simulate_DFSV(params, T=T, seed=42)
+        returns, true_factors, true_log_vols = simulate_DFSV(params,f0=f0,T=T, seed=42)
         
         # Create and run Bellman filter
         bf = DFSVBellmanFilter(params)
@@ -223,10 +224,10 @@ class TestBellmanFilter(unittest.TestCase):
         # Plot factors
         for k in range(params.K):
             ax = axs[0, k]
-            ax.plot(true_factors[k, :], 'b-', label='True')
-            ax.plot(filtered_factors[k, :], 'r--', label='Filtered')
+            ax.plot(true_factors[:, k], 'b-', label='True')
+            ax.plot(filtered_factors[:, k], 'r--', label='Filtered')
             if include_smoothed:
-                ax.plot(smoothed_factors[k, :], 'g-.', label='Smoothed')
+                ax.plot(smoothed_factors[:, k], 'g-.', label='Smoothed')
             ax.set_title(f'Factor {k+1}')
             ax.legend()
             ax.grid(True)
@@ -234,10 +235,10 @@ class TestBellmanFilter(unittest.TestCase):
         # Plot log-volatilities
         for k in range(params.K):
             ax = axs[1, k]
-            ax.plot(true_log_vols[k, :], 'b-', label='True')
-            ax.plot(filtered_log_vols[k, :], 'r--', label='Filtered')
+            ax.plot(true_log_vols[:, k], 'b-', label='True')
+            ax.plot(filtered_log_vols[:, k], 'r--', label='Filtered')
             if include_smoothed:
-                ax.plot(smoothed_log_vols[k, :], 'g-.', label='Smoothed')
+                ax.plot(smoothed_log_vols[:, k], 'g-.', label='Smoothed')
             ax.set_title(f'Log-Volatility {k+1}')
             ax.legend()
             ax.grid(True)

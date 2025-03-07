@@ -172,12 +172,12 @@ class DFSVFilter:
             log_likelihood += ll_contrib
         
         # Store results in object
-        self.filtered_states = filtered_states.T
+        self.filtered_states = filtered_states
         self.filtered_covs = filtered_covs
         self.log_likelihood = log_likelihood
         self.is_filtered = True
         
-        return filtered_states.T, filtered_covs, log_likelihood
+        return filtered_states, filtered_covs, log_likelihood
     
     def smooth(self) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -1349,7 +1349,7 @@ class DFSVBellmanFilter(DFSVFilter):
             alpha_0.flatten(),
             method='Newton-CG',
             jac=grad_func,
-            hess=hess_func,
+            # hess=hess_func,
             options={'maxiter': 100, 'xtol': 1e-6}
         )
         
@@ -1420,7 +1420,7 @@ class DFSVBellmanFilter(DFSVFilter):
         sigma_f= np.diag(np.exp(log_vols.flatten()))
         cov_matrix = lambda_r @ sigma_f @ lambda_r.T + np.diag(sigma2)
         # Compute log-likelihood
-        log_likelihood=-0.5 * (innovation.T @ np.linalg.inv(cov_matrix) @ innovation)[0, 0]
+        log_likelihood=-0.5 * (innovation.T @ np.linalg.pinv(cov_matrix) @ innovation)[0, 0]
         # Add normalization terms
         log_likelihood -= 0.5 * (N * np.log(2 * np.pi) + np.log(np.linalg.det(cov_matrix)))
         # Compute quadratic penalty
@@ -1451,38 +1451,39 @@ class DFSVBellmanFilter(DFSVFilter):
         np.ndarray
             Gradient vector of the objective function
         """
-        # Extract parameters
+               # Extract parameters
         K = self.K
+        N = self.N
         lambda_r = self.params.lambda_r
         sigma2 = self.params.sigma2
 
         # Extract state components
         factors = alpha[:K]
+        log_vols = alpha[K:]
 
-        # Compute gradient of log-likelihood
-        # Predicted observation and innovation
+        # Compute log-likelihood
+        # predicted observation
         pred_obs = lambda_r @ factors
+        
+        # Innovation
         innovation = observation - pred_obs
-
-        # If sigma2 is diagonal, use simplified computation
-        if np.all(np.diag(np.diag(sigma2)) == sigma2):
-            sigma_inv = np.diag(1/np.diag(sigma2))
-        else:
-            sigma_inv = np.linalg.inv(sigma2)
-
-        # Gradient for factors (through observation equation)
-        grad_f = -lambda_r.T @ sigma_inv @ innovation
-
-        # Gradient for log-volatilities (no direct observation dependence)
-        grad_h = np.zeros((K, 1))
-
+        
+        #Compute conditional covariance of the returns given the state
+        sigma_f= np.diag(np.exp(log_vols.flatten()))
+        cov_matrix = lambda_r @ sigma_f @ lambda_r.T + np.diag(sigma2)
+        #Inverse of the covariance matrix
+        cov_matrix_inv = np.linalg.pinv(cov_matrix)
+        #gradient wrt factors
+        grad_factors= -lambda_r.T @ cov_matrix_inv @ innovation
+        #gradient wrt log-volatilities
+        grad_log_vols = 0.5 *np.exp(log_vols.flatten())* np.diagonal(lambda_r.T @ cov_matrix_inv @ lambda_r+lambda_r.T @ cov_matrix_inv @ innovation @ innovation.T @ cov_matrix_inv @ lambda_r)
         # Combine gradients
-        grad_ll = np.vstack([grad_f, grad_h])
-
-        # Gradient of quadratic penalty
-        grad_penalty = I_pred @ (alpha - predicted_state)
-
-        # Return negative gradient of log-posterior
+        grad_ll = np.vstack([grad_factors, grad_log_vols.reshape(-1, 1)])
+        # Compute quadratic penalty gradient
+        state_diff = alpha - predicted_state
+        grad_penalty = I_pred @ state_diff
+        # Combine gradients
+        # Ensure gradient is a column vector
         return -(grad_ll - grad_penalty)
 
     def bellman_hessian(self, alpha: np.ndarray, predicted_state: np.ndarray, 
