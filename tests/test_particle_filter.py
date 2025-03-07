@@ -197,11 +197,11 @@ class TestParticleFilter(unittest.TestCase):
         params = self.create_test_parameters()
         
         # Simulate data
-        T = 300
+        T = 1500
         returns, true_factors, true_log_vols = simulate_DFSV(params, T=T, seed=456)
         
         # Create and run particle filter
-        pf = DFSVParticleFilter(params, num_particles=10000)
+        pf = DFSVParticleFilter(params, num_particles=1000)
         filtered_states, filtered_covs, log_likelihood = pf.filter(returns)
         
         # Extract filtered factors and volatilities first
@@ -217,9 +217,30 @@ class TestParticleFilter(unittest.TestCase):
         except Exception as e:
             print(f"Smoothing failed with error: {e}")
             include_smoothed = False
+            
+        # Calculate return variances
+        # True covvariances
+        true_variances = np.zeros((T, params.N,params.N))
+        filtered_variances = np.zeros((T, params.N,params.N))
+        if include_smoothed:
+            smoothed_variances = np.zeros((T, params.N,params.N))
+            
+        for t in range(T):
+            # Calculate true variances
+            true_vol_matrix = np.diag(np.exp(true_log_vols[t]))
+            true_variances[t,:,:] = np.diag(params.lambda_r @ true_vol_matrix @ params.lambda_r.T) + params.sigma2
+            
+            # Calculate filtered variances
+            filtered_vol_matrix = np.diag(np.exp(filtered_log_vols[t]))
+            filtered_variances[t,:,:] = np.diag(params.lambda_r @ filtered_vol_matrix @ params.lambda_r.T) + params.sigma2
+            
+            if include_smoothed:
+                # Calculate smoothed variances
+                smoothed_vol_matrix = np.diag(np.exp(smoothed_log_vols[t]))
+                smoothed_variances[t,:,:] = np.diag(params.lambda_r @ smoothed_vol_matrix @ params.lambda_r.T) + params.sigma2
         
-        # Create figure with subplots for factors and log-volatilities
-        fig, axs = plt.subplots(2, 2, figsize=(14, 10))
+        # Create figure with subplots for factors, log-volatilities, errors and return variances
+        fig, axs = plt.subplots(4, 2, figsize=(15, 16))
         
         # Plot factors
         for k in range(params.K):
@@ -240,6 +261,27 @@ class TestParticleFilter(unittest.TestCase):
             if include_smoothed:
                 ax.plot(smoothed_log_vols[:, k], 'g-.', label='Smoothed')
             ax.set_title(f'Log-Volatility {k+1}')
+            ax.legend()
+            ax.grid(True)
+            
+# Plot log-volatility errors
+        for k in range(params.K):
+            ax = axs[2, k]
+            filtered_error = filtered_log_vols[:, k] - true_log_vols[:, k]
+            ax.plot(filtered_error, 'r-', label='Filtered Error')
+            ax.axhline(y=0, color='k', linestyle='--')
+            ax.set_title(f'Log-Volatility {k+1} Error')
+            ax.legend()
+            ax.grid(True)
+            
+        # Plot return variances (show for first 2 return series)
+        for n in range(min(2, params.N)):
+            ax = axs[3, n]
+            ax.plot(true_variances[:, n,n], 'b-', label='True')
+            ax.plot(filtered_variances[:, n,n], 'r--', label='Filtered')
+            if include_smoothed:
+                ax.plot(smoothed_variances[:, n,n], 'g-,', label='Smoothed')
+            ax.set_title(f'Return {n+1} Variance')
             ax.legend()
             ax.grid(True)
         

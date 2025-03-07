@@ -199,14 +199,14 @@ class DFSVFilter:
         
         # Initialize with last filtered values
         last_t = T - 1
-        smoothed_states[:, last_t:last_t+1] = self.filtered_states[:, last_t:last_t+1]
-        smoothed_covs[:, :, last_t] = self.filtered_covs[:, :, last_t]
+        smoothed_states[last_t:last_t+1,:] = self.filtered_states[last_t:last_t+1,:]
+        smoothed_covs[last_t,:,:] = self.filtered_covs[last_t,:, :]
         
         # Backward pass
         for t in range(T-2, -1, -1):
             # Get filtered values at time t
-            state_t = self.filtered_states[:, t:t+1]
-            cov_t = self.filtered_covs[:, :, t]
+            state_t = self.filtered_states[t:t+1,:]
+            cov_t = self.filtered_covs[t,:,:]
             
             # Get the transition matrix at time t (model specific)
             F_t = self._get_transition_matrix(state_t)
@@ -218,8 +218,8 @@ class DFSVFilter:
             K_t = cov_t @ F_t.T @ np.linalg.inv(pred_cov)
             
             # Update based on smoothed value at t+1
-            smoothed_states[:, t:t+1] = state_t + K_t @ (smoothed_states[:, t+1:t+2] - pred_state)
-            smoothed_covs[:, :, t] = cov_t + K_t @ (smoothed_covs[:, :, t+1] - pred_cov) @ K_t.T
+            smoothed_states[t:t+1,:] = state_t +  (smoothed_states[t+1:t+2,:] - pred_state)@K_t
+            smoothed_covs[t,:,:] = cov_t + K_t @ (smoothed_covs[t+1,:,:] - pred_cov) @ K_t.T
         
         self.smoothed_states = smoothed_states
         self.smoothed_covs = smoothed_covs
@@ -1171,21 +1171,21 @@ class DFSVParticleFilter(DFSVFilter):
             Predicted state and covariance
         """
         K = self.K
-        mu = self.params.mu.reshape(-1, 1) if self.params.mu.ndim == 1 else self.params.mu
-        
+        # mu = self.params.mu.reshape(-1, 1) if self.params.mu.ndim == 1 else self.params.mu
+        mu=self.params.mu
         # Extract state components
-        factors = state[:K]
-        log_vols = state[K:]
+        factors = state.flatten()[:K]
+        log_vols = state.flatten()[K:]
         
         # Predict factors: E[f_{t+1}|t] = Phi_f * f_t
         predicted_factors = transition_matrix[:K, :K] @ factors
         
         # Predict log-volatilities: E[h_{t+1}|t] = mu + Phi_h * (h_t - mu)
         Phi_h = transition_matrix[K:, K:]
-        predicted_log_vols = mu + Phi_h @ (log_vols - mu)
+        predicted_log_vols = mu + Phi_h.dot(log_vols - mu.T)
         
         # Combine predicted state
-        predicted_state = np.vstack([predicted_factors, predicted_log_vols])
+        predicted_state = np.hstack([predicted_factors, predicted_log_vols]).T
         
         # Process noise covariance
         Q_t = np.zeros((self.state_dim, self.state_dim))
