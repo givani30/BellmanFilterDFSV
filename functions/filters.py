@@ -14,6 +14,7 @@ from functions.simulation import DFSV_params
 import jax
 import jax.numpy as jnp
 from jax import grad, hessian, jit
+import jaxopt
 
 
 class DFSVFilter:
@@ -157,6 +158,16 @@ class DFSVFilter:
             filtered covariances with shape (T, state_dim, state_dim),
             and total log-likelihood
         """
+        # Import tqdm for progress bar
+        try:
+            from tqdm import tqdm
+        except ImportError:
+            # If tqdm is not installed, create a simple pass-through iterator
+            def tqdm(iterable, **kwargs):
+                return iterable
+
+            print("Warning: tqdm not installed. No progress bar will be shown.")
+
         # Ensure y is in (T, N) format
         if y.shape[0] < y.shape[1]:  # If (N, T) format
             y = y.T
@@ -172,7 +183,7 @@ class DFSVFilter:
         log_likelihood = 0.0
 
         # Forward pass
-        for t in range(T):
+        for t in tqdm(range(T), desc="Kalman Filter Progress"):
             # Prediction step
             predicted_state, predicted_cov = self.predict(state, cov)
 
@@ -684,6 +695,20 @@ class DFSVParticleFilter(DFSVFilter):
             filtered covariances (covariance of particles) with shape (T, state_dim, state_dim),
             and total log-likelihood
         """
+        # Import tqdm for progress bar
+        try:
+            from tqdm import tqdm
+        except ImportError:
+            # If tqdm is not installed, create a simple pass-through iterator
+            def tqdm(iterable, **kwargs):
+                return iterable
+
+            print("Warning: tqdm not installed. No progress bar will be shown.")
+
+        # Ensure y is in (T, N) format
+        if y.shape[0] < y.shape[1]:  # If (N, T) format
+            y = y.T
+
         T = y.shape[0]
 
         # Storage for filtered states and covariances
@@ -695,7 +720,7 @@ class DFSVParticleFilter(DFSVFilter):
         particles, weights = self.initialize_particles(y.T)
 
         # Forward pass through observations
-        for t in range(T):
+        for t in tqdm(range(T), desc="Particle Filter Progress"):
             # Prediction step: propagate particles through state transition
             particles = self.predict_particles(particles)
 
@@ -875,6 +900,8 @@ class DFSVBellmanFilter(DFSVFilter):
         """
         Convert numpy parameters to JAX arrays for use in JAX functions.
         """
+        # Enable 64-bit precision for JAX
+        jax.config.update("jax_enable_x64", True)
         # Convert model parameters to JAX arrays
         self.jax_lambda_r = jnp.array(self.params.lambda_r)
 
@@ -960,12 +987,12 @@ class DFSVBellmanFilter(DFSVFilter):
             return -(log_likelihood - penalty)
 
         # JIT-compile the objective function, removing K and N as they are captured from self
-        # self.jax_objective = jit(jax_bellman_objective)
+        self.jax_objective = jit(jax_bellman_objective)
 
         # Create JIT-compiled gradient and Hessian functions using JAX's autodiff
-        self.jax_objective = jax_bellman_objective
-        self.jax_gradient = grad(jax_bellman_objective, argnums=0)
-        self.jax_hessian = hessian(jax_bellman_objective, argnums=0)
+        # self.jax_objective = jax_bellman_objective
+        self.jax_gradient = jit(grad(jax_bellman_objective, argnums=0))
+        self.jax_hessian = jit(hessian(jax_bellman_objective, argnums=0))
 
     def initialize_state(self, y):
         """
@@ -1079,7 +1106,6 @@ class DFSVBellmanFilter(DFSVFilter):
 
             # Check if the result is positive definite
             try:
-                # Try Cholesky decomposition as PD test
                 np.linalg.cholesky(I_pred)
             except np.linalg.LinAlgError:
                 # If not PD, use regularized standard prediction
@@ -1116,7 +1142,7 @@ class DFSVBellmanFilter(DFSVFilter):
             Predicted state covariance with shape (state_dim, state_dim)
         observation : np.ndarray
             Current observation with shape (N, 1)
-
+        TODO: maybe modify to pass solver directly.
         Returns
         -------
         Tuple[np.ndarray, np.ndarray, float]
@@ -1157,6 +1183,19 @@ class DFSVBellmanFilter(DFSVFilter):
             )
             return obj_val
 
+        @jax.jit
+        def obj_and_grad(x):
+            x_reshaped = jnp.array(x.reshape(-1, 1))
+            obj_val, grad = jax.value_and_grad(self.jax_objective)(
+                x_reshaped,
+                jax_predicted_state,
+                jax_I_pred,
+                jax_observation,
+                self.jax_lambda_r,
+                self.jax_sigma2,
+            )
+            return obj_val, grad.flatten()
+
         def grad_func(x):
             x_reshaped = jnp.array(x.reshape(-1, 1))
             grad = self.jax_gradient(
@@ -1181,17 +1220,21 @@ class DFSVBellmanFilter(DFSVFilter):
             )
             return np.array(hess).reshape(self.state_dim, self.state_dim)
 
-        result = jax.scipy.optimize.minimize(
-            fun=obj_func, x0=alpha_0.flatten(), method="BFGS", options={"maxiter": 100}
-        )
+        # result = jax.scipy.optimize.minimize(
+        #     fun=obj_func, x0=alpha_0.flatten(), method="BFGS", options={"maxiter": 100}
+        # )
+        solver = jaxopt.LBFGS(fun=obj_and_grad, value_and_grad=True)
+        # solver = jaxopt.GradientDescent(fun=obj_func, verbose=True)
+        result = solver.run(init_params=alpha_0.flatten())
+        # print(result.state)
         # Check if optimization was successful
-        if not result.success:
-            raise RuntimeError(f"Optimization failed: {result.status}")
+        # if not result.success:
+        #     raise RuntimeError(f"Optimization failed: {result.status}")
         # Get the optimal state estimate
-        updated_state = result.x.reshape(-1, 1)
+        updated_state = result.params.reshape(-1, 1)
 
         # Calculate hessian at the optimum for covariance estimation
-        final_hessian = hess_func(result.x)
+        final_hessian = hess_func(result.params)
 
         # Check if final hessian is positive definite
         is_final_pd = True
@@ -1248,3 +1291,67 @@ class DFSVBellmanFilter(DFSVFilter):
         F_t[K:, K:] = Phi_h
 
         return F_t
+
+    def filter(self, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray, float]:
+        """
+        Run the Bellman filter on the provided data.
+
+        Parameters
+        ----------
+        y : np.ndarray
+            Observed returns with shape (T, N) or (N, T)
+
+        Returns
+        -------
+        Tuple[np.ndarray, np.ndarray, float]
+            Filtered states with shape (T, state_dim),
+            filtered covariances with shape (T, state_dim, state_dim),
+            and total log-likelihood
+        """
+        # Import tqdm for progress bar
+        try:
+            from tqdm import tqdm
+        except ImportError:
+            # If tqdm is not installed, create a simple pass-through iterator
+            def tqdm(iterable, **kwargs):
+                return iterable
+
+            print("Warning: tqdm not installed. No progress bar will be shown.")
+
+        # Ensure y is in (T, N) format
+        if y.shape[0] < y.shape[1]:  # If (N, T) format
+            y = y.T
+
+        T = y.shape[0]
+
+        # Storage for filtered states and covariances
+        filtered_states = np.zeros((T, self.state_dim))
+        filtered_covs = np.zeros((T, self.state_dim, self.state_dim))
+
+        # Initialize
+        state, cov = self.initialize_state(y.T)  # Note: initialize_state expects (N, T)
+        log_likelihood = 0.0
+
+        # Forward pass
+        for t in tqdm(range(T), desc="Bellman Filter Progress"):
+            # Prediction step
+            predicted_state, predicted_cov = self.predict(state, cov)
+
+            # Update step - reshape observation to (N, 1)
+            observation = y[t : t + 1, :].T.reshape(-1, 1)
+            state, cov, ll_contrib = self.update(
+                predicted_state, predicted_cov, observation
+            )
+
+            # Store results (convert state from (state_dim, 1) to row vector)
+            filtered_states[t, :] = state.flatten()
+            filtered_covs[t, :, :] = cov
+            log_likelihood += ll_contrib
+
+        # Store results in object
+        self.filtered_states = filtered_states
+        self.filtered_covs = filtered_covs
+        self.log_likelihood = log_likelihood
+        self.is_filtered = True
+
+        return filtered_states, filtered_covs, log_likelihood
