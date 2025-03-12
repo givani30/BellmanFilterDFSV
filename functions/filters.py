@@ -1008,13 +1008,91 @@ class DFSVBellmanFilter(DFSVFilter):
         # self.jax_gradient = jit(grad(jax_bellman_objective, argnums=0))
         self.jax_hessian = jit(hessian(jax_bellman_objective, argnums=0))
 
+        def explicit_grad_bellman(
+            alpha, predicted_state, I_pred, observation, lambda_r, sigma2
+        ):
+            """
+            Compute the explicit gradient of the Bellman-filtered objective with respect to the full state alpha.
+
+            Parameters:
+            alpha:      (2K,) array, with the first K elements being f and the next K elements being h.
+            predicted_state: (2K,) array, the prior predicted state.
+            I_pred:     (2K,2K) array, the information matrix (precision) for the prior.
+            observation: (N,) array, the observation vector r.
+            lambda_r:   (N,K) array, the observation matrix Lambda.
+            sigma2:     (N,) array, diagonal measurement noise variances.
+
+            Returns:
+            total_grad: (2K,) array, the explicit gradient of the objective.
+            """
+            K = lambda_r.shape[1]  # number of factors
+            N = observation.shape[0]  # observation dimension
+
+            # Extract state components: f (first K) and h (next K)
+            f = alpha[:K]
+            h = alpha[K : 2 * K]
+
+            # Predicted observation and innovation
+            pred_obs = lambda_r @ f
+            innovation = observation - pred_obs
+
+            # Compute exp(h) elementwise
+            exp_h = jnp.exp(h)
+
+            # Build the covariance matrix A:
+            # A = sum_{k=1}^K exp(h[k]) * (lambda_r[:, k] outer lambda_r[:, k]) + diag(sigma2)
+            A = jnp.zeros((N, N))
+            for k in range(K):
+                lam_k = lambda_r[:, k]
+                A += exp_h[k] * jnp.outer(lam_k, lam_k)
+            A += jnp.diag(sigma2)
+
+            # For numerical stability, add a tiny constant to the diagonal.
+            A += 1e-8 * jnp.eye(N)
+
+            # Compute the inverse of A.
+            A_inv = jnp.linalg.inv(A)
+
+            # ----- Likelihood gradient -----
+            # Gradient with respect to f:
+            grad_f = -lambda_r.T @ A_inv @ innovation
+
+            # Gradient with respect to h:
+            # term1 = lambda_r.T @ A_inv @ lambda_r
+            term1 = lambda_r.T @ A_inv @ lambda_r
+            # term2 = lambda_r.T @ A_inv @ (innovation * innovation^T) @ A_inv @ lambda_r
+            innov_outer = jnp.outer(innovation, innovation)
+            term2 = lambda_r.T @ A_inv @ innov_outer @ A_inv @ lambda_r
+            # We only need the diagonal elements of (term1 + term2)
+            diag_term = jnp.diag(term1 + term2)
+            grad_h = -0.5 * exp_h * diag_term  # elementwise multiplication
+
+            # Concatenate the likelihood gradients for f and h:
+            likelihood_grad = jnp.concatenate([grad_f, grad_h])
+
+            # ----- Prior (penalty) gradient -----
+            penalty_grad = I_pred @ (alpha - predicted_state)
+
+            # Total gradient is the sum of the likelihood and prior gradients.
+            total_grad = likelihood_grad + penalty_grad
+
+            return total_grad
+
         # Pre-compile static device functions for reuse in update step
+        # jax autograd implementation, uncomment to use:
+        # @jax.jit
+        # def obj_and_grad_fn(x, ps, ip, obs, lr, sig2):
+        #     x_reshaped = x.reshape(-1, 1)
+        #     obj, grad = jax.value_and_grad(jax_bellman_objective)(
+        #         x_reshaped, ps, ip, obs, lr, sig2
+        #     )
+        #     return obj, grad.flatten()
+
         # @jax.jit
         def obj_and_grad_fn(x, ps, ip, obs, lr, sig2):
             x_reshaped = x.reshape(-1, 1)
-            obj, grad = jax.value_and_grad(jax_bellman_objective)(
-                x_reshaped, ps, ip, obs, lr, sig2
-            )
+            obj = jax_bellman_objective(x_reshaped, ps, ip, obs, lr, sig2)
+            grad = explicit_grad_bellman(x_reshaped, ps, ip, obs, lr, sig2)
             return obj, grad.flatten()
 
         self.obj_and_grad_fn = obj_and_grad_fn
