@@ -29,10 +29,10 @@ def create_test_parameters():
     lambda_r = np.array([[0.8, 0.2], [0.6, 0.4], [0.3, 0.7]])
 
     # Factor persistence
-    Phi_f = np.array([[0.2, 0.0], [0.0, 0.2]])
+    Phi_f = np.array([[0.2, 0.005], [0.005, 0.2]])
 
     # Log-volatility persistence
-    Phi_h = np.array([[0.95, 0.0], [0.0, 0.95]])
+    Phi_h = np.array([[0.95, 0.00], [0.00, 0.95]])
 
     # Log-volatility long-run mean
     mu = np.array([-1.0, -0.5])

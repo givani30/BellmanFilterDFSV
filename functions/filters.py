@@ -10,6 +10,8 @@ import jax.scipy.optimize
 import numpy as np
 from dataclasses import dataclass
 from typing import Tuple, Optional, Dict, List, Union
+
+import scipy
 from functions.simulation import DFSV_params
 import jax
 import jax.numpy as jnp
@@ -943,9 +945,13 @@ class DFSVBellmanFilter(DFSVFilter):
             K = self.K
             N = self.N
 
+            # flatten vector inputs
+            alpha = alpha.flatten()
+            observation = observation.flatten()
+            predicted_state = predicted_state.flatten()
             # Extract state components - use static slice indices
-            factors = alpha[0:K, :]  # First K elements
-            log_vols = alpha[K : 2 * K, :]  # Remaining elements (K through 2*K-1)
+            factors = alpha[0:K]  # First K elements
+            log_vols = alpha[K : 2 * K]  # Remaining elements (K through 2*K-1)
 
             # Fast matrix operations for the observation equation
             pred_obs = lambda_r @ factors
@@ -988,25 +994,20 @@ class DFSVBellmanFilter(DFSVFilter):
                 # Use triangular solves instead of generic solve for better performance
                 alpha_vec = jax.scipy.linalg.solve_triangular(L, innovation, lower=True)
                 quad_form = jnp.sum(alpha_vec**2)
-                logdet = 2.0 * jnp.sum(jnp.log(jnp.diag(L)))
+                logdet = jnp.sum(jnp.log(jnp.diag(L)))
 
                 # Compute log-likelihood (constant term precomputed for efficiency)
                 log_likelihood = -0.5 * (N * jnp.log(2.0 * jnp.pi) + logdet + quad_form)
 
                 # Compute prior penalty (quadratic form with information matrix)
                 state_diff = alpha - predicted_state
-                penalty = 0.5 * jnp.dot(state_diff.T, I_pred @ state_diff)[0, 0]
+                penalty = 0.5 * jnp.dot(state_diff.T, I_pred @ state_diff)
 
                 # Return negative log-posterior (we minimize this)
                 return -(log_likelihood - penalty)
             except:
                 # In case of Cholesky failure (rare), return a large value
                 return jnp.array(1e10)
-
-        # JIT-compile the objective function and its derivatives
-        # self.jax_objective = jit(jax_bellman_objective)
-        # self.jax_gradient = jit(grad(jax_bellman_objective, argnums=0))
-        self.jax_hessian = jit(hessian(jax_bellman_objective, argnums=0))
 
         def explicit_grad_bellman(
             alpha, predicted_state, I_pred, observation, lambda_r, sigma2
@@ -1027,7 +1028,10 @@ class DFSVBellmanFilter(DFSVFilter):
             """
             K = lambda_r.shape[1]  # number of factors
             N = observation.shape[0]  # observation dimension
-
+            # flatten array inputs
+            alpha = alpha.flatten()
+            observation = observation.flatten()
+            predicted_state = predicted_state.flatten()
             # Extract state components: f (first K) and h (next K)
             f = alpha[:K]
             h = alpha[K : 2 * K]
@@ -1065,17 +1069,17 @@ class DFSVBellmanFilter(DFSVFilter):
             term2 = lambda_r.T @ A_inv @ innov_outer @ A_inv @ lambda_r
             # We only need the diagonal elements of (term1 + term2)
             diag_term = jnp.diag(term1 + term2)
-            grad_h = -0.5 * exp_h * diag_term  # elementwise multiplication
+            grad_h = -0.5 * exp_h.flatten() * diag_term  # elementwise multiplication
 
             # Concatenate the likelihood gradients for f and h:
-            likelihood_grad = jnp.concatenate([grad_f, grad_h])
+            likelihood_grad = jnp.concatenate([grad_f.flatten(), grad_h.flatten()])
 
             # ----- Prior (penalty) gradient -----
-            penalty_grad = I_pred @ (alpha - predicted_state)
+            penalty_grad = I_pred @ (alpha - predicted_state.flatten())
 
             # Total gradient is the sum of the likelihood and prior gradients.
             total_grad = likelihood_grad + penalty_grad
-
+            # Return the negative gradient for minimization
             return total_grad
 
         # Pre-compile static device functions for reuse in update step
@@ -1096,6 +1100,13 @@ class DFSVBellmanFilter(DFSVFilter):
             return obj, grad.flatten()
 
         self.obj_and_grad_fn = obj_and_grad_fn
+        self.jax_bellman_objective = jit(jax_bellman_objective)
+        self.jax_gradient = jit(grad(jax_bellman_objective, argnums=0))
+        # self.jax_gradient = explicit_grad_bellman
+
+        # JIT-compile the objective function and its derivatives
+        # self.jax_objective = jit(jax_bellman_objective)
+        self.jax_hessian = jit(hessian(jax_bellman_objective, argnums=0))
 
     def initialize_state(self, y):
         """
@@ -1274,25 +1285,72 @@ class DFSVBellmanFilter(DFSVFilter):
         jax_alpha_0 = jnp.array(predicted_state.flatten())
 
         # Create optimizer with better performance settings
-        solver = jaxopt.LBFGS(
-            fun=lambda x: self.obj_and_grad_fn(
+        # solver = jaxopt.LBFGS(
+        #     fun=lambda x: self.obj_and_grad_fn(
+        #         x,
+        #         jax_predicted_state,
+        #         jax_I_pred,
+        #         jax_observation,
+        #         self.jax_lambda_r,
+        #         self.jax_sigma2,
+        #     ),
+        #     value_and_grad=True,
+        #     maxiter=40,  # Reduced iterations
+        #     maxls=8,  # Fewer line search steps
+        #     tol=1e-4,  # Relaxed tolerance
+        # )
+
+        # Use SciPy BFGS optimizer
+        def objective_wrapper(x):
+            obj_val = self.jax_bellman_objective(
                 x,
                 jax_predicted_state,
                 jax_I_pred,
                 jax_observation,
                 self.jax_lambda_r,
                 self.jax_sigma2,
-            ),
-            value_and_grad=True,  # We're providing our own value_and_grad
-            maxiter=40,  # Reduced iterations
-            maxls=8,  # Fewer line search steps
-            tol=1e-4,  # Relaxed tolerance
+            )
+            # Convert from JAX arrays to numpy arrays
+            return obj_val
+
+        def gradient_wrapper(x):
+            grad_val = self.jax_gradient(
+                x,
+                jax_predicted_state,
+                jax_I_pred,
+                jax_observation,
+                self.jax_lambda_r,
+                self.jax_sigma2,
+            )
+            return grad_val
+
+        def hessian_wrapper(x):
+            hess_val = self.jax_hessian(
+                x,
+                jax_predicted_state,
+                jax_I_pred,
+                jax_observation,
+                self.jax_lambda_r,
+                self.jax_sigma2,
+            )
+            return hess_val
+
+        result = scipy.optimize.minimize(
+            fun=objective_wrapper,
+            x0=np.array(jax_alpha_0),
+            # jac=gradient_wrapper,
+            jac="cg",  # Use finite difference for gradient
+            # hess=hessian_wrapper,
+            method="BFGS",
+            options={
+                "maxiter": 1e3,  # Maximum number of iterations
+                "gtol": 1e-4,  # Gradient tolerance
+                "disp": False,  # No display of convergence messages
+            },
         )
-        # Run the optimizer with jitted execution
-        result = solver.run(jax_alpha_0)
 
         # Get the optimal state estimate
-        optimal_params = result.params
+        optimal_params = result.x
         updated_state = np.array(optimal_params).reshape(-1, 1)
 
         # Compute the Hessian at the optimum for covariance estimation
