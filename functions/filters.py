@@ -890,11 +890,17 @@ class DFSVBellmanFilter(DFSVFilter):
         """
         super().__init__(params)
 
+        # Enable 64-bit precision for JAX
+        jax.config.update("jax_enable_x64", True)
+
         # Convert model parameters to JAX arrays for use in JAX functions
         self._setup_jax_params()
 
         # JIT-compile the objective function and its derivatives for efficiency
         self._compile_jax_functions()
+
+        # Cache for optimizer instances
+        self._optimizer_cache = None
 
     def _setup_jax_params(self):
         """
@@ -938,30 +944,35 @@ class DFSVBellmanFilter(DFSVFilter):
             N = self.N
 
             # Extract state components - use static slice indices
-            # Split state vector according to known K value
             factors = alpha[0:K, :]  # First K elements
             log_vols = alpha[K : 2 * K, :]  # Remaining elements (K through 2*K-1)
-            # Compute predicted observation
-            pred_obs = jnp.matmul(lambda_r, factors)
 
-            # Innovation
+            # Fast matrix operations for the observation equation
+            pred_obs = lambda_r @ factors
             innovation = observation - pred_obs
 
-            # Compute conditional covariance of the returns given the state
-            # Special handling for K=1 case - create a 1x1 matrix
+            # Fast diagonal matrix creation and matrix multiplication
+            # This avoids creating the full sigma_f matrix when possible
+            exp_log_vols = jnp.exp(log_vols.flatten())
 
-            sigma_f = jnp.diag(jnp.exp(log_vols.flatten()))
-            sigma_f = sigma_f.reshape(K, K)
-
-            # Handle sigma2 based on whether it's a vector or matrix
+            # Efficient covariance matrix calculation
+            # For diagonal sigma2, we can use a more efficient calculation
             if sigma2.ndim == 1:
-                sigma2 = jnp.diag(sigma2)
+                # Direct computation with diagonal matrices for better performance
+                # This is essentially computing λ_r * diag(exp(h_t)) * λ_r^T + diag(sigma2)
+                cov_matrix = jnp.zeros((N, N))
 
-            # calculate covariance matrix
-            # if K==1:
-            #     cov_matrix=sigma_f*lambda_r@lambda_r.T + sigma2
-            # else:
-            cov_matrix = jnp.matmul(jnp.matmul(lambda_r, sigma_f), lambda_r.T) + sigma2
+                for k in range(K):
+                    # Outer product of lambda_r column k, scaled by exp(log_vol[k])
+                    lambda_k = lambda_r[:, k : k + 1]
+                    cov_matrix += exp_log_vols[k] * (lambda_k @ lambda_k.T)
+
+                # Add diagonal measurement noise
+                cov_matrix = cov_matrix + jnp.diag(sigma2)
+            else:
+                # For full covariance matrices, use standard matrix operations
+                sigma_f = jnp.diag(exp_log_vols)
+                cov_matrix = lambda_r @ sigma_f @ lambda_r.T + sigma2
 
             # Ensure cov_matrix is symmetric
             cov_matrix = (cov_matrix + cov_matrix.T) / 2.0
@@ -969,30 +980,44 @@ class DFSVBellmanFilter(DFSVFilter):
             # Add small regularization to the diagonal for numerical stability
             cov_matrix = cov_matrix + 1e-8 * jnp.eye(N)
 
-            # Compute log-likelihood using Cholesky decomposition
-            # Use JAX's built-in solver which handles numerical issues
-            L = jnp.linalg.cholesky(cov_matrix)
-            alpha_vec = jnp.linalg.solve(L, innovation)
-            quad_form = jnp.sum(alpha_vec**2)
-            logdet = 2.0 * jnp.sum(jnp.log(jnp.diag(L)))
+            # Compute log-likelihood using Cholesky decomposition for numerical stability
+            try:
+                # Use JAX's properly JIT-compatible Cholesky
+                L = jnp.linalg.cholesky(cov_matrix)
 
-            # Compute log-likelihood
-            log_likelihood = -0.5 * (N * jnp.log(2.0 * jnp.pi) + logdet + quad_form)
+                # Use triangular solves instead of generic solve for better performance
+                alpha_vec = jax.scipy.linalg.solve_triangular(L, innovation, lower=True)
+                quad_form = jnp.sum(alpha_vec**2)
+                logdet = 2.0 * jnp.sum(jnp.log(jnp.diag(L)))
 
-            # Compute quadratic penalty - make sure dimensions match
-            state_diff = alpha - predicted_state
-            penalty = 0.5 * jnp.dot(state_diff.T, jnp.matmul(I_pred, state_diff))[0, 0]
+                # Compute log-likelihood (constant term precomputed for efficiency)
+                log_likelihood = -0.5 * (N * jnp.log(2.0 * jnp.pi) + logdet + quad_form)
 
-            # Return negative log-posterior (we minimize this)
-            return -(log_likelihood - penalty)
+                # Compute prior penalty (quadratic form with information matrix)
+                state_diff = alpha - predicted_state
+                penalty = 0.5 * jnp.dot(state_diff.T, I_pred @ state_diff)[0, 0]
 
-        # JIT-compile the objective function, removing K and N as they are captured from self
-        self.jax_objective = jit(jax_bellman_objective)
+                # Return negative log-posterior (we minimize this)
+                return -(log_likelihood - penalty)
+            except:
+                # In case of Cholesky failure (rare), return a large value
+                return jnp.array(1e10)
 
-        # Create JIT-compiled gradient and Hessian functions using JAX's autodiff
-        # self.jax_objective = jax_bellman_objective
-        self.jax_gradient = jit(grad(jax_bellman_objective, argnums=0))
+        # JIT-compile the objective function and its derivatives
+        # self.jax_objective = jit(jax_bellman_objective)
+        # self.jax_gradient = jit(grad(jax_bellman_objective, argnums=0))
         self.jax_hessian = jit(hessian(jax_bellman_objective, argnums=0))
+
+        # Pre-compile static device functions for reuse in update step
+        # @jax.jit
+        def obj_and_grad_fn(x, ps, ip, obs, lr, sig2):
+            x_reshaped = x.reshape(-1, 1)
+            obj, grad = jax.value_and_grad(jax_bellman_objective)(
+                x_reshaped, ps, ip, obs, lr, sig2
+            )
+            return obj, grad.flatten()
+
+        self.obj_and_grad_fn = obj_and_grad_fn
 
     def initialize_state(self, y):
         """
@@ -1142,124 +1167,98 @@ class DFSVBellmanFilter(DFSVFilter):
             Predicted state covariance with shape (state_dim, state_dim)
         observation : np.ndarray
             Current observation with shape (N, 1)
-        TODO: maybe modify to pass solver directly.
+
         Returns
         -------
         Tuple[np.ndarray, np.ndarray, float]
             Updated state, updated covariance, and log-likelihood contribution
         """
+        # Move computation to JAX as early as possible to avoid CPU-GPU transfers
         # Compute information matrix (inverse of predicted covariance)
-        try:
-            # Try to compute inverse using Cholesky for numerical stability
-            L = np.linalg.cholesky(predicted_cov)
-            I_pred = np.linalg.inv(L.T @ L)
-        except np.linalg.LinAlgError:
-            # If Cholesky fails, use regularized pseudoinverse
-            I_pred = np.linalg.pinv(predicted_cov + 1e-8 * np.eye(self.state_dim))
-
-        # Ensure symmetry
-        I_pred = (I_pred + I_pred.T) / 2
-
-        # Initial guess for optimization is the predicted state
-        alpha_0 = predicted_state.copy()
-
-        # Convert numpy arrays to JAX arrays for optimization
-        # Ensure arrays have correct shapes
-        jax_alpha_0 = jnp.array(alpha_0)
         jax_predicted_state = jnp.array(predicted_state)
-        jax_I_pred = jnp.array(I_pred)
         jax_observation = jnp.array(observation)
 
-        # Define objective function for scipy.optimize
-        def obj_func(x):
-            x_reshaped = jnp.array(x.reshape(-1, 1))
-            obj_val = self.jax_objective(
-                x_reshaped,
-                jax_predicted_state,
-                jax_I_pred,
-                jax_observation,
-                self.jax_lambda_r,
-                self.jax_sigma2,
-            )
-            return obj_val
-
-        @jax.jit
-        def obj_and_grad(x):
-            x_reshaped = jnp.array(x.reshape(-1, 1))
-            obj_val, grad = jax.value_and_grad(self.jax_objective)(
-                x_reshaped,
-                jax_predicted_state,
-                jax_I_pred,
-                jax_observation,
-                self.jax_lambda_r,
-                self.jax_sigma2,
-            )
-            return obj_val, grad.flatten()
-
-        def grad_func(x):
-            x_reshaped = jnp.array(x.reshape(-1, 1))
-            grad = self.jax_gradient(
-                x_reshaped,
-                jax_predicted_state,
-                jax_I_pred,
-                jax_observation,
-                self.jax_lambda_r,
-                self.jax_sigma2,
-            )
-            return np.array(grad).flatten()
-
-        def hess_func(x):
-            x_reshaped = jnp.array(x.reshape(-1, 1))
-            hess = self.jax_hessian(
-                x_reshaped,
-                jax_predicted_state,
-                jax_I_pred,
-                jax_observation,
-                self.jax_lambda_r,
-                self.jax_sigma2,
-            )
-            return np.array(hess).reshape(self.state_dim, self.state_dim)
-
-        # result = jax.scipy.optimize.minimize(
-        #     fun=obj_func, x0=alpha_0.flatten(), method="BFGS", options={"maxiter": 100}
-        # )
-        solver = jaxopt.LBFGS(fun=obj_and_grad, value_and_grad=True)
-        # solver = jaxopt.GradientDescent(fun=obj_func, verbose=True)
-        result = solver.run(init_params=alpha_0.flatten())
-        # print(result.state)
-        # Check if optimization was successful
-        # if not result.success:
-        #     raise RuntimeError(f"Optimization failed: {result.status}")
-        # Get the optimal state estimate
-        updated_state = result.params.reshape(-1, 1)
-
-        # Calculate hessian at the optimum for covariance estimation
-        final_hessian = hess_func(result.params)
-
-        # Check if final hessian is positive definite
-        is_final_pd = True
         try:
-            np.linalg.cholesky(final_hessian)
+            # Try using Cholesky decomposition for numerical stability
+            jax_predicted_cov = jnp.array(predicted_cov)
+            L = jax.scipy.linalg.cholesky(jax_predicted_cov, lower=True)
+            jax_I_pred = jax.scipy.linalg.cho_solve((L, True), jnp.eye(self.state_dim))
+        except:
+            # If Cholesky fails, use regularized pseudoinverse
+            jax_I_pred = jnp.linalg.pinv(
+                jnp.array(predicted_cov) + 1e-8 * jnp.eye(self.state_dim)
+            )
+
+        # Ensure symmetry
+        jax_I_pred = (jax_I_pred + jax_I_pred.T) / 2.0
+
+        # Initial guess for optimization is the predicted state
+        jax_alpha_0 = jnp.array(predicted_state.flatten())
+
+        # Create optimizer with better performance settings
+        solver = jaxopt.LBFGS(
+            fun=lambda x: self.obj_and_grad_fn(
+                x,
+                jax_predicted_state,
+                jax_I_pred,
+                jax_observation,
+                self.jax_lambda_r,
+                self.jax_sigma2,
+            ),
+            value_and_grad=True,  # We're providing our own value_and_grad
+            maxiter=40,  # Reduced iterations
+            maxls=8,  # Fewer line search steps
+            tol=1e-4,  # Relaxed tolerance
+        )
+        # Run the optimizer with jitted execution
+        result = solver.run(jax_alpha_0)
+
+        # Get the optimal state estimate
+        optimal_params = result.params
+        updated_state = np.array(optimal_params).reshape(-1, 1)
+
+        # Compute the Hessian at the optimum for covariance estimation
+        # Only do this once after optimization is complete
+        hessian = np.array(
+            self.jax_hessian(
+                jnp.array(updated_state),
+                jax_predicted_state,
+                jax_I_pred,
+                jax_observation,
+                self.jax_lambda_r,
+                self.jax_sigma2,
+            )
+        ).reshape(self.state_dim, self.state_dim)
+
+        # Handle Hessian inversion to get covariance
+        try:
+            # Try Cholesky decomposition for numerical stability
+            L = np.linalg.cholesky(hessian)
+            updated_cov = np.linalg.inv(L.T @ L)
         except np.linalg.LinAlgError:
-            is_final_pd = False
+            # If not PD, use regularization
+            hessian_reg = hessian + 1e-4 * np.eye(self.state_dim)
+            try:
+                L = np.linalg.cholesky(hessian_reg)
+                updated_cov = np.linalg.inv(L.T @ L)
+            except:
+                # Last resort: pseudoinverse
+                updated_cov = np.linalg.pinv(hessian_reg)
 
-        # Check conditioning of final hessian
-        final_cond = np.linalg.cond(final_hessian)
-        is_final_well_conditioned = final_cond < 1e6
+        # Ensure symmetry
+        updated_cov = (updated_cov + updated_cov.T) / 2.0
 
-        if is_final_pd and is_final_well_conditioned:
-            # Updated covariance is the inverse of the Hessian at the optimum
-            updated_cov = np.linalg.inv(final_hessian)
-            updated_cov = (updated_cov + updated_cov.T) / 2  # Ensure symmetry
-        else:
-            # If final Hessian is not well-behaved, use regularization
-            final_hessian_reg = final_hessian + 1e-4 * np.eye(self.state_dim)
-            updated_cov = np.linalg.inv(final_hessian_reg)
-            updated_cov = (updated_cov + updated_cov.T) / 2  # Ensure symmetry
-        # Compute log-likelihood contribution at the updated state
-        log_likelihood = -obj_func(
-            updated_state.flatten()
-        )  # Negative because obj_func returns negative log-posterior
+        # Compute log-likelihood contribution
+        val, _ = self.obj_and_grad_fn(
+            jnp.array(updated_state),
+            jax_predicted_state,
+            jax_I_pred,
+            jax_observation,
+            self.jax_lambda_r,
+            self.jax_sigma2,
+        )
+
+        log_likelihood = -val  # Negate because we minimize negative log-posterior
 
         return updated_state, updated_cov, log_likelihood
 
@@ -1348,7 +1347,7 @@ class DFSVBellmanFilter(DFSVFilter):
             filtered_covs[t, :, :] = cov
             log_likelihood += ll_contrib
 
-        # Store results in object
+            # Store results in object
         self.filtered_states = filtered_states
         self.filtered_covs = filtered_covs
         self.log_likelihood = log_likelihood

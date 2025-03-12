@@ -1,0 +1,12 @@
+numpy>=1.24.0
+scipy>=1.11.0
+matplotlib>=3.7.0
+jax>=0.4.13
+jaxlib>=0.4.13
+jaxopt>=0.8.0
+tqdm>=4.65.0
+pandas>=2.0.0
+dataclasses-json>=0.5.7
+pytest>=7.3.1
+jupyter>=1.0.0
+ipykernel>=6.23.0
