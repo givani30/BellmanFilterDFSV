@@ -141,11 +141,11 @@ class DFSVBellmanFilter_BlockDiag(DFSVFilter):
             # Return negative log-posterior
             return neg_log_lik + prior
 
-        self.solver_h = jaxopt.LBFGS(
+        self.solver_h = jaxopt.BFGS(
             fun=neg_log_post_h,
             value_and_grad=False,
-            maxiter=100,
-            verbose=False,
+            # maxiter=100,
+            verbose=True,
         )
 
         @partial(jit, static_argnames=["max_iters"])
@@ -226,7 +226,7 @@ class DFSVBellmanFilter_BlockDiag(DFSVFilter):
                 rhs_vec = (
                     Lambda_inv_y
                     + jnp.dot(I_f, factors_pred)
-                    + jnp.dot(I_fh, (log_vols_pred - log_volatility))
+                    + jnp.dot(I_fh, (-log_vols_pred + log_volatility))
                 )
 
                 # Solve linear system
@@ -254,13 +254,6 @@ class DFSVBellmanFilter_BlockDiag(DFSVFilter):
                 """
 
                 # The objective function
-
-                solver = jaxopt.LBFGS(
-                    fun=neg_log_post_h,
-                    value_and_grad=False,
-                    maxiter=100,
-                    verbose=False,
-                )
                 result = self.solver_h.run(
                     init_params=h_init,
                     factors=f,
