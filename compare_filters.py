@@ -10,6 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from functions.simulation import DFSV_params, simulate_DFSV
 from functions.filters import DFSVBellmanFilter, DFSVParticleFilter
+from functions.filter_bellman import *
 
 
 def create_test_parameters():
@@ -84,7 +85,7 @@ def create_visual_comparison(save_path=None):
 
     # Create and run Bellman filter
     print("Running Bellman filter...")
-    bf = DFSVBellmanFilter(params)
+    bf = DFSVBellmanFilter_JAXOPT2(params)
     bf_filtered_states, bf_filtered_covs, bf_log_likelihood = bf.filter(returns)
 
     # Extract Bellman filter results
