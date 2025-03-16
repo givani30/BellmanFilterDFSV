@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from functions.simulation import DFSV_params, simulate_DFSV
 from functions.filters import DFSVBellmanFilter, DFSVParticleFilter
 from functions.filter_bellman import *
+from functions.filter_blockopt import *
 
 
 def create_test_parameters():
@@ -85,7 +86,7 @@ def create_visual_comparison(save_path=None):
 
     # Create and run Bellman filter
     print("Running Bellman filter...")
-    bf = DFSVBellmanFilter_JAXOPT2(params)
+    bf = DFSVBellmanFilter_BlockDiag(params)
     bf_filtered_states, bf_filtered_covs, bf_log_likelihood = bf.filter(returns)
 
     # Extract Bellman filter results
@@ -178,10 +179,14 @@ def create_visual_comparison(save_path=None):
     # Third row: Factor errors
     ax5 = fig.add_subplot(gs[2, 0])
     ax5.plot(
-        bf_filtered_factors[:, 0] - true_factors[:, 0], "r-", label="Bellman Error"
+        np.abs(bf_filtered_factors[:, 0] - true_factors[:, 0]),
+        "r-",
+        label="Bellman Error",
     )
     ax5.plot(
-        pf_filtered_factors[:, 0] - true_factors[:, 0], "b-", label="Particle Error"
+        np.abs(pf_filtered_factors[:, 0] - true_factors[:, 0]),
+        "b-",
+        label="Particle Error",
     )
     ax5.axhline(y=0, color="k", linestyle="--")
     ax5.set_title("Factor 1 Errors")

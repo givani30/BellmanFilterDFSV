@@ -91,61 +91,56 @@ class DFSVBellmanFilter_BlockDiag(DFSVFilter):
             return A
 
         @jit
-        def neg_log_post_h(
-            log_volatility, factors, predicted_state, I_pred, observation
-        ):
+        def neg_log_post_h(log_vols, factors, predicted_state, I_pred, observation):
             """
             Negative log-likelihood + prior penalty wrt h (with f fixed).
             J(h) = 0.5[ log det A(h) + (y - Lambda f)^T A(h)^-1 (y - Lambda f ) ]
                 + 0.5[ (f - f_pred), (h - h_pred) ]^T I_pred [ (f - f_pred), (h - h_pred) ].
             """
             # Unpack dimensions and flatten inputs
-            # Likelihood calculation
             lambda_r = self.jax_lambda_r
             sigma2 = self.jax_sigma2
-            K = self.K
-            N_ = lambda_r.shape[0]
+            K = lambda_r.shape[1]
+            predicted_state = predicted_state.flatten()
+            observation = observation.flatten()
+            alpha = jnp.concatenate([factors, log_vols]).flatten()
+            # Innovation and covariance
+            pred_obs = lambda_r @ factors
+            innovation = observation - pred_obs
+            exp_log_vols = jnp.exp(log_vols)
+            A = build_covariance(lambda_r, exp_log_vols, sigma2)
 
-            # Partition information matrix
-            I_f = I_pred[:K, :K]
-            I_h = I_pred[K:, K:]
-            I_fh = I_pred[:K, K:]
-            # Split state
-            factors_pred = predicted_state[:K]
-            log_vols_pred = predicted_state[K:]
+            # Compute negative log-likelihood with Cholesky decomposition
+            try:
+                L = jnp.linalg.cholesky(A)
 
-            A = build_covariance(lambda_r, jnp.exp(log_volatility), sigma2)
-            L = jax.scipy.linalg.cho_factor(
-                A, lower=True
-            )  # Cholasky for logdet and quadratic form
-            logdet_A = 2.0 * jnp.sum(
-                jnp.log(jnp.diag(L[0]))
-            )  # equivalent to logdet A(h)
-            innov = observation - lambda_r @ factors  # innovation
-            alpha_vec = jax.scipy.linalg.cho_solve(L, innov)  # A^-1 @ innov
-            quad_form = jnp.sum(alpha_vec**2)  # quadratic form
-            # Negative log-likelihood
-            neg_log_lik = 0.5 * (N_ * jnp.log(2.0 * jnp.pi) + logdet_A + quad_form)
-            # Prior penalty
+                # Compute quadratic form via triangular solve
+                alpha_vec = jax.scipy.linalg.solve_triangular(L, innovation, lower=True)
+                quad_form = jnp.sum(alpha_vec**2)
 
-            #    0.5 * [ (f - f_pred), (h - h_pred) ]^T  I_pred  [ (f - f_pred), (h - h_pred) ]
-            # We'll pick out just the part that depends on h, but let's do the full expression for clarity:
+                # Log determinant
+                logdet_A = 2.0 * jnp.sum(jnp.log(jnp.diag(L)))
 
-            df = factors - factors_pred
-            dh = log_volatility - log_vols_pred
-            prior = 0.5 * (
-                jnp.dot(df, jnp.dot(I_f, df))
-                + 2.0 * jnp.dot(df, jnp.dot(I_fh, dh))  # cross term
-                + jnp.dot(dh, jnp.dot(I_h, dh))
-            )
-            # Return negative log-posterior
-            return neg_log_lik + prior
+                # Negative log-likelihood
+                N_ = observation.shape[0]
+                neg_log_lik = 0.5 * (N_ * jnp.log(2.0 * jnp.pi) + logdet_A + quad_form)
 
-        self.solver_h = jaxopt.BFGS(
+                # Prior penalty
+                state_diff = alpha - predicted_state
+                penalty = 0.5 * (state_diff @ (I_pred @ state_diff))
+
+                # Return negative log-posterior
+                return neg_log_lik + penalty
+
+            except:
+                # In case of Cholesky failure, return a large value
+                return jnp.array(1e10)
+
+        self.solver_h = jaxopt.LBFGS(
             fun=neg_log_post_h,
             value_and_grad=False,
             # maxiter=100,
-            verbose=True,
+            verbose=False,
         )
 
         @partial(jit, static_argnames=["max_iters"])
@@ -261,7 +256,6 @@ class DFSVBellmanFilter_BlockDiag(DFSVFilter):
                     I_pred=I_pred,
                     observation=observation,
                 )
-
                 # Return the optimized h
                 return result.params
 
@@ -270,7 +264,9 @@ class DFSVBellmanFilter_BlockDiag(DFSVFilter):
 
             for _ in range(max_iters):
                 f = update_factors(h)
+                # print("f", f)
                 h = update_h_bfgs(h, f)
+                # print("h", h)
             # Return updated state
             return jnp.concatenate([f, h])
 
@@ -502,7 +498,6 @@ class DFSVBellmanFilter_BlockDiag(DFSVFilter):
             Updated state, updated covariance, and log-likelihood contribution
         """
         # Convert inputs to JAX arrays
-        jax_predicted_state = jnp.array(predicted_state)
         jax_observation = jnp.array(observation)
 
         # Compute information matrix (inverse of predicted covariance)
@@ -535,7 +530,9 @@ class DFSVBellmanFilter_BlockDiag(DFSVFilter):
                 jax_observation,
             )
         ).reshape(self.state_dim, self.state_dim)
-        updated_cov = np.linalg.inv(hessian + jax_I_pred)
+        updated_cov = np.linalg.inv(
+            hessian + jax_I_pred + np.eye(self.state_dim) * 1e-8
+        )
 
         # Ensure symmetry
         updated_cov = (updated_cov + updated_cov.T) / 2.0
@@ -620,7 +617,8 @@ class DFSVBellmanFilter_BlockDiag(DFSVFilter):
         for t in tqdm(range(T), desc="Bellman Filter Progress"):
             # Prediction step
             predicted_state, predicted_cov = self.predict(state, cov)
-
+            # eigs = np.linalg.eigvals(predicted_cov)
+            # print("eigs", eigs)
             # Update step - reshape observation to (N, 1)
             observation = y[t : t + 1, :].T.reshape(-1, 1)
             state, cov, ll_contrib = self.update(
