@@ -70,6 +70,7 @@ class DFSVBellmanFilter_BlockDiag(DFSVFilter):
         """
 
         # Build covariance matrix function
+        @jit
         def build_covariance(lambda_r, exp_h, sigma2):
             """
             Build observation covariance A = Lambda diag(exp_h) Lambda^T + diag(sigma2).
@@ -77,18 +78,90 @@ class DFSVBellmanFilter_BlockDiag(DFSVFilter):
             Parameters:
             lambda_r: (N,K) - factor loadings
             exp_h: (K,) - exponentiated log-volatilities
-            sigma2: (N,) - idiosyncratic variances
+            sigma2: (N,N) - idiosyncratic variances
 
             Returns:
             A: (N,N) - observation covariance matrix
             """
-            Sigma_f = jnp.diag(exp_h)  # (K,K)
+
+            K = lambda_r.shape[1]
+            N = lambda_r.shape[0]
+
+            if sigma2.ndim == 1:
+                sigma2 = jnp.diag(sigma2)
+
+            Sigma_f = jnp.diag(exp_h.flatten())  # (K,K)
+            lambda_r = lambda_r.reshape(N, K)  # (N,K)
             A = lambda_r @ Sigma_f @ lambda_r.T  # (N,N)
             A += jnp.diag(sigma2) + 1e-8 * jnp.eye(
                 lambda_r.shape[0]
             )  # Add regularization
             A = 0.5 * (A + A.T)  # Ensure symmetry
             return A
+
+        @jax.jit
+        def fisher_information(alpha):
+            """
+            Compute the Fisher information of the *likelihood*
+            for r ~ N(Lambda f, Lambda diag(e^h) Lambda^T + Sigma_e),
+            w.r.t. alpha = [f, h].
+
+            Returns: I_F, shape (2K, 2K)
+            """
+            # Unpack
+            lambda_r = self.jax_lambda_r
+            sigma2 = self.jax_sigma2
+            K = lambda_r.shape[1]
+            f = alpha[:K]
+            h = alpha[K:]
+            exp_h = jnp.exp(h)
+
+            # Build covariance
+            A = build_covariance(lambda_r, exp_h, sigma2)
+            L = jax.scipy.linalg.cho_factor(A, lower=True)
+
+            # Helper function to compute A^-1 @ x using Cholesky
+            def A_inv(x):
+                return jax.scipy.linalg.cho_solve(L, x)
+
+            # Mean part
+            # mu(alpha) = lambda_r @ f, so derivative wrt f is lambda_r, wrt h is 0
+            mean_part = lambda_r.T @ A_inv(lambda_r)  # shape (K,K)
+
+            # Covariance part
+            # partial Sigma/ partial h_k = lambda_r diag(e^h_k) lambda_r.T
+            # We'll build a (K,K) block that we fill by the trace expression
+            def partial_Sigma(k):
+                # derivative wrt h_k
+                basis = (
+                    jnp.zeros_like(exp_h).at[k].set(exp_h[k])
+                )  # [0,..., e^h[k],...,0]
+                S_k = build_covariance(lambda_r, basis, jnp.zeros_like(sigma2))
+                return S_k
+
+            # We gather partial derivatives in a list
+            dSigmas = jax.vmap(partial_Sigma)(jnp.arange(K))  # shape (K, N, N)
+
+            # Then we compute the (i,j)th entry of the (h,h) block
+            # I_{ij}^{(cov)} = 1/2 * tr(A_inv dSigmas[i] A_inv dSigmas[j])
+            def cov_block(i, j):
+                return 0.5 * jnp.trace(A_inv(dSigmas[i]) @ A_inv(dSigmas[j]))
+
+            cov_part_block = jax.vmap(
+                lambda i: jax.vmap(lambda j: cov_block(i, j))(jnp.arange(K))
+            )(
+                jnp.arange(K)
+            )  # shape (K,K)
+
+            # Now assemble the full 2K x 2K matrix
+            I_fh = jnp.zeros((K, K))  # no cross deriv wrt f,h from the covariance part
+            top_left = mean_part  # (f,f)
+            bottom_right = cov_part_block
+            # block assemble
+            # [ top_left,   0
+            #   0,       bottom_right ]
+            I_fisher = jnp.block([[top_left, I_fh], [I_fh, bottom_right]])
+            return I_fisher
 
         @jit
         def neg_log_post_h(log_vols, factors, predicted_state, I_pred, observation):
@@ -140,12 +213,13 @@ class DFSVBellmanFilter_BlockDiag(DFSVFilter):
             fun=neg_log_post_h,
             value_and_grad=False,
             # maxiter=100,
+            tol=1e-4,
             verbose=False,
         )
 
         @partial(jit, static_argnames=["max_iters"])
         def block_coordinate_update(
-            alpha, pred_state, I_pred, observation, max_iters=10
+            alpha, pred_state, I_pred, observation, max_iters=5
         ):
             """
             Perform block-coordinate updates on [f, h], accounting for cross terms
@@ -256,8 +330,17 @@ class DFSVBellmanFilter_BlockDiag(DFSVFilter):
                     I_pred=I_pred,
                     observation=observation,
                 )
-                # Return the optimized h
-                return result.params
+                # Check if optimization was succesful
+
+                def true_fun(h):
+                    return h
+
+                def false_fun(h):
+                    return h_init
+
+                return jax.lax.cond(
+                    result.state.error < 1e-4, true_fun, false_fun, result.params
+                )
 
             # Update loop
             f, h = factors_guess, log_vols_guess
@@ -395,7 +478,7 @@ class DFSVBellmanFilter_BlockDiag(DFSVFilter):
         self.jax_gradient = jit(lambda x, p, i, o: obj_and_grad_fn(x, p, i, o)[1])
         self.jax_hessian = jit(hessian(log_posterior, argnums=0))
         self.log_posterior = log_posterior
-
+        self.fisher_information = fisher_information
         self.block_coordinate_update = block_coordinate_update
 
     def initialize_state(self, y):
@@ -445,9 +528,6 @@ class DFSVBellmanFilter_BlockDiag(DFSVFilter):
         # Extract current state components
         factors = state[:K]
         log_vols = state[K:]
-
-        # Convert to information form (precision matrix)
-        I_curr = jnp.linalg.inv(cov)
 
         # Predict factors: E[f_{t+1}|t] = Phi_f @ f_t
         predicted_factors = Phi_f @ factors
@@ -524,15 +604,8 @@ class DFSVBellmanFilter_BlockDiag(DFSVFilter):
         ).reshape(-1, 1)
 
         # Compute the Hessian at the optimum for covariance estimation
-        hessian = np.array(
-            self.jax_hessian(
-                jnp.array(updated_state),
-                jax_observation,
-            )
-        ).reshape(self.state_dim, self.state_dim)
-        updated_cov = np.linalg.inv(
-            hessian + jax_I_pred + np.eye(self.state_dim) * 1e-8
-        )
+        fisher_info = self.fisher_information(updated_state)
+        updated_cov = np.linalg.inv(fisher_info + jax_I_pred)
 
         # Ensure symmetry
         updated_cov = (updated_cov + updated_cov.T) / 2.0
