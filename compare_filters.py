@@ -6,12 +6,13 @@ on simulated data from a DFSV model with N=3 observed series and K=2 factors.
 """
 
 import os
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
+
+from functions.bellman_filter import DFSVBellmanFilter
+from functions.filters import DFSVParticleFilter
 from functions.simulation import DFSV_params, simulate_DFSV
-from functions.filters import DFSVBellmanFilter, DFSVParticleFilter
-from functions.filter_bellman import *
-from functions.filter_blockopt import *
 
 
 def create_test_parameters():
@@ -86,7 +87,7 @@ def create_visual_comparison(save_path=None):
 
     # Create and run Bellman filter
     print("Running Bellman filter...")
-    bf = DFSVBellmanFilter_BlockDiag(params)
+    bf = DFSVBellmanFilter(params)
     bf_filtered_states, bf_filtered_covs, bf_log_likelihood = bf.filter(returns)
 
     # Extract Bellman filter results
