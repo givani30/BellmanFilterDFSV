@@ -88,7 +88,9 @@ def objective_function(param_values, param_structure, observations, bf):
 
     # Calculate log-likelihood using the static JIT function
     # This avoids issues with trying to JIT-compile the filter instance
-    _, _, log_lik = bf.filter_scan(new_params, observations)
+    log_lik = DFSVBellmanFilter.jit_log_likelihood_of_params(
+        bf, new_params, observations
+    )
 
     # Return negative log-likelihood for minimization
     return -log_lik

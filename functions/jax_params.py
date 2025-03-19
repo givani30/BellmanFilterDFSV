@@ -11,6 +11,7 @@ import jax.numpy as jnp
 import numpy as np
 from dataclasses import dataclass, field
 from functions.simulation import DFSV_params
+import jax_dataclasses as jdc
 
 
 class DFSVParamsPytree:
@@ -73,24 +74,15 @@ class DFSVParamsPytree:
         self.K = K
 
         # Convert all arrays to JAX arrays
-        self.lambda_r = jnp.asarray(lambda_r)
-        self.Phi_f = jnp.asarray(Phi_f)
-        self.Phi_h = jnp.asarray(Phi_h)
+        self.lambda_r = lambda_r
+        self.Phi_f = Phi_f
+        self.Phi_h = Phi_h
 
-        # Ensure mu is a flat vector
-        mu_array = jnp.asarray(mu)
-        self.mu = mu_array.flatten() if mu_array.ndim > 1 else mu_array
+        self.mu = mu
 
-        # Handle sigma2 appropriately based on its shape
-        sigma2_array = jnp.asarray(sigma2)
-        if sigma2_array.ndim == 1:
-            # Store as 1D array for efficiency
-            self.sigma2 = sigma2_array
-        else:
-            # Store the full covariance matrix
-            self.sigma2 = sigma2_array
+        self.sigma2 = sigma2
 
-        self.Q_h = jnp.asarray(Q_h)
+        self.Q_h = Q_h
 
     def get_sigma2_matrix(self) -> jnp.ndarray:
         """
@@ -207,7 +199,7 @@ class DFSVParamsPytree:
 jax.tree_util.register_pytree_node_class(DFSVParamsPytree)
 
 
-@dataclass
+@jdc.pytree_dataclass
 class DFSVParamsDataclass:
     """
     Alternative JAX-compatible pytree implementation using dataclass for DFSV parameters.
@@ -221,8 +213,8 @@ class DFSVParamsDataclass:
     """
 
     # Static parameters (excluded from PyTree)
-    N: int
-    K: int
+    N: jdc.Static[int]
+    K: jdc.Static[int]
 
     # Differentiable parameters
     lambda_r: jnp.ndarray
@@ -231,37 +223,6 @@ class DFSVParamsDataclass:
     mu: jnp.ndarray
     sigma2: jnp.ndarray
     Q_h: jnp.ndarray
-
-    # Fields to exclude from PyTree (static parameters)
-    pytree_node_fields: ClassVar[frozenset] = frozenset(
-        {"N", "K", "pytree_node_fields"}
-    )
-
-    def __post_init__(self):
-        """Convert arrays after initialization."""
-        # Convert all arrays to JAX arrays
-        self.lambda_r = jnp.asarray(self.lambda_r)
-        self.Phi_f = jnp.asarray(self.Phi_f)
-        self.Phi_h = jnp.asarray(self.Phi_h)
-
-        # Ensure mu is a flat vector
-        mu_array = jnp.asarray(self.mu)
-        self.mu = mu_array.flatten() if mu_array.ndim > 1 else mu_array
-
-        # Handle sigma2 appropriately
-        self.sigma2 = jnp.asarray(self.sigma2)
-        self.Q_h = jnp.asarray(self.Q_h)
-
-    def get_sigma2_matrix(self) -> jnp.ndarray:
-        """
-        Get sigma2 as a full covariance matrix.
-
-        Returns:
-            jnp.ndarray: Full covariance matrix with shape (N, N)
-        """
-        if self.sigma2.ndim == 1:
-            return jnp.diag(self.sigma2)
-        return self.sigma2
 
     @classmethod
     def from_dfsv_params(cls, params: DFSV_params) -> "DFSVParamsDataclass":

@@ -2,7 +2,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 from functions.simulation import DFSV_params, simulate_DFSV
-from functions.filters import DFSVBellmanFilter
+from functions.bellman_filter import DFSVBellmanFilter
 
 # Set random seed for reproducibility
 np.random.seed(42)
@@ -26,7 +26,7 @@ params = DFSV_params(
 
 print("Model parameters created successfully")
 # Generate synthetic data
-T = 20  # Just a few time points for testing
+T = 500  # Just a few time points for testing
 y, factors, log_vols = simulate_DFSV(params, T=T, seed=42)
 
 print("Data generated:")
@@ -35,27 +35,20 @@ print(f"factors shape: {factors.shape}")
 print(f"log_vols shape: {log_vols.shape}")
 # Initialize the filter
 try:
-    bf = DFSVBellmanFilter(params)
+    bf = DFSVBellmanFilter(N, K)
     print("\nBellman filter initialized")
-    print("\nJAX parameters:")
-    print(f"lambda_r shape: {bf.jax_lambda_r.shape}")
-    print(f"sigma2 shape: {bf.jax_sigma2.shape}")
-    print(f"mu shape: {bf.jax_mu.shape}")
-    print(f"Phi_f shape: {bf.jax_Phi_f.shape}")
-    print(f"Phi_h shape: {bf.jax_Phi_h.shape}")
-    print(f"Q_h shape: {bf.jax_Q_h.shape}")
 except Exception as e:
     print(f"Error during initialization: {e}")
     # Initialize state and test prediction step
 try:
     # Initialize state
-    state0, cov0 = bf.initialize_state(y)
+    state0, cov0 = bf.initialize_state(params)
     print(f"Initial state shape: {state0.shape}")
     print(f"Initial covariance shape: {cov0.shape}")
     print(f"\nInitial state:\n{state0}")
 
     # Test prediction step
-    predicted_state, predicted_cov = bf.predict(state0, cov0)
+    predicted_state, predicted_cov = bf.predict(params, state0, cov0)
     print("\nPrediction step completed")
     print(f"Predicted state:\n{predicted_state}")
 
@@ -84,19 +77,11 @@ jax_pred = jnp.array(predicted_state)
 jax_I_pred = jnp.array(np.linalg.inv(predicted_cov))
 jax_obs = jnp.array(observation)
 
-# Test objective function with new parameter order (removed K, N params)
-obj_val, grad_val = bf.obj_and_grad_fn(
-    jax_alpha, jax_pred, jax_I_pred, jax_obs, bf.jax_lambda_r, bf.jax_sigma2
-)
-print(f"Objective value at predicted state: {float(obj_val)}")
-
-# Test gradient with new parameter order
-print(f"Gradient at predicted state:\n{np.array(grad_val)}")
 # Perform update step
 print("\nPerforming update step...")
 
 updated_state, updated_cov, log_likelihood = bf.update(
-    predicted_state, predicted_cov, observation
+    params, predicted_state, predicted_cov, observation
 )
 
 
@@ -115,7 +100,7 @@ jnp.array(updated_state).block_until_ready()
 jax.profiler.stop_trace()
 with jax.profiler.trace("/tmp/jax-trace"):
     print("Running full filter...")
-    filtered_states, filtered_covs, log_likelihood = bf.filter(y)
+    filtered_states, filtered_covs, log_likelihood = bf.filter(params, y)
     print("\nFilter completed successfully!")
     print(f"Total log-likelihood: {log_likelihood}")
     print(f"\nFiltered states shape: {filtered_states.shape}")

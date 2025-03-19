@@ -82,13 +82,15 @@ def create_visual_comparison(save_path=None):
     params = create_test_parameters()
 
     # Simulate data
-    T = 200  # Length of time series
+    T = 500  # Length of time series
     returns, true_factors, true_log_vols = simulate_DFSV(params, T=T, seed=456)
 
     # Create and run Bellman filter
     print("Running Bellman filter...")
-    bf = DFSVBellmanFilter(params)
-    bf_filtered_states, bf_filtered_covs, bf_log_likelihood = bf.filter(returns)
+    bf = DFSVBellmanFilter(params.N, params.K)
+    bf_filtered_states, bf_filtered_covs, bf_log_likelihood = bf.filter_scan(
+        params, returns
+    )
 
     # Extract Bellman filter results
     bf_filtered_factors = bf.get_filtered_factors()
@@ -96,8 +98,8 @@ def create_visual_comparison(save_path=None):
 
     # Create and run particle filter
     print("Running particle filter...")
-    pf = DFSVParticleFilter(params, num_particles=1000)
-    pf_filtered_states, pf_filtered_covs, pf_log_likelihood = pf.filter(returns)
+    pf = DFSVParticleFilter(params, num_particles=8000)
+    pf_filtered_states, pf_filtered_covs, pf_log_likelihood = pf.filter(params, returns)
 
     # Extract particle filter results
     pf_filtered_factors = pf.get_filtered_factors()

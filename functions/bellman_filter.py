@@ -680,10 +680,38 @@ class DFSVBellmanFilter(DFSVFilter):
         """
         # Handle both parameter types
         if isinstance(params, DFSVParamsPytree):
-            # Use parent method but convert PyTree params to regular params first
-            return super().initialize_state(params.to_dfsv_params())
+            params = params.to_dfsv_params()
+        K = self.K
+        initial_factors = jnp.zeros((K, 1))
+
+        # Initialize log-volatilities to the unconditional mean
+        if params.mu.ndim == 1:
+            initial_log_vols = params.mu.reshape(-1, 1)
         else:
-            return super().initialize_state(params)
+            initial_log_vols = params.mu.copy()
+
+        # Combine into state vector [f; h]
+        initial_state = jnp.vstack([initial_factors, initial_log_vols])
+
+        # Initialize factor covariance
+        P_f = jnp.eye(K)
+
+        # Solve discrete Lyapunov equation: P_h = Phi_h * P_h * Phi_h' + Q_h for
+        @jit
+        def solve_discrete_lyapunov_fixed(Phi, Q, num_iters=20):
+            def body_fn(i, X):
+                return Phi @ X @ Phi.T + Q
+
+            # Start with Q (a reasonable initial guess)
+            X_final = jax.lax.fori_loop(0, num_iters, body_fn, Q)
+            return X_final
+
+        P_h = solve_discrete_lyapunov_fixed(params.Phi_h, params.Q_h)
+
+        # Construct block-diagonal covariance
+        initial_cov = jnp.block([[P_f, jnp.zeros((K, K))], [jnp.zeros((K, K)), P_h]])
+
+        return initial_state, initial_cov
 
     def predict(
         self,
@@ -888,7 +916,7 @@ class DFSVBellmanFilter(DFSVFilter):
         programming model.
 
         Args:
-            params: Parameters of the DFSV model (either DFSV_params or DFSVParamsPytree).
+            params: Parameters of the DFSV model (either DFSV_params).
             y: Observed returns with shape (T, N) or (N, T).
 
         Returns:
@@ -905,22 +933,6 @@ class DFSVBellmanFilter(DFSVFilter):
                 return iterable
 
             print("Warning: tqdm not installed. No progress bar will be shown.")
-
-        # Convert params to DFSVParamsPytree if needed for JAX compatibility
-        if not isinstance(params, DFSVParamsPytree):
-            # Convert to JAX arrays
-            if hasattr(params, "Phi_f"):
-                params.Phi_f = jnp.array(params.Phi_f)
-            if hasattr(params, "Phi_h"):
-                params.Phi_h = jnp.array(params.Phi_h)
-            if hasattr(params, "lambda_r"):
-                params.lambda_r = jnp.array(params.lambda_r)
-            if hasattr(params, "Q_h"):
-                params.Q_h = jnp.array(params.Q_h)
-            if hasattr(params, "mu"):
-                params.mu = jnp.array(params.mu)
-            if hasattr(params, "sigma2"):
-                params.sigma2 = jnp.array(params.sigma2)
 
         # Convert y to JAX array and ensure it's in (T, N) format
         y = jnp.array(y)
@@ -984,21 +996,6 @@ class DFSVBellmanFilter(DFSVFilter):
                 filtered covariances with shape (T, state_dim, state_dim),
                 and total log-likelihood.
         """
-        # Convert to JAX PyTree parameters if needed for best JAX compatibility
-        if not isinstance(params, DFSVParamsPytree):
-            # Could optionally convert to PyTree format here for maximum JAX compatibility
-            if hasattr(params, "Phi_f"):
-                params.Phi_f = jnp.array(params.Phi_f)
-            if hasattr(params, "Phi_h"):
-                params.Phi_h = jnp.array(params.Phi_h)
-            if hasattr(params, "lambda_r"):
-                params.lambda_r = jnp.array(params.lambda_r)
-            if hasattr(params, "Q_h"):
-                params.Q_h = jnp.array(params.Q_h)
-            if hasattr(params, "mu"):
-                params.mu = jnp.array(params.mu)
-            if hasattr(params, "sigma2"):
-                params.sigma2 = jnp.array(params.sigma2)
 
         # Convert y to JAX array and ensure it's in (T, N) format
         y = jnp.array(y)
@@ -1043,7 +1040,7 @@ class DFSVBellmanFilter(DFSVFilter):
         self.log_likelihood = log_likelihood
         self.is_filtered = True
 
-        return np.array(filtered_states), np.array(filtered_covs), float(log_likelihood)
+        return filtered_states, filtered_covs, log_likelihood
 
     def log_likelihood_of_params(
         self,
@@ -1116,7 +1113,7 @@ class DFSVBellmanFilter(DFSVFilter):
 
     # Create a jit-compiled version that can be used for automatic differentiation
     @staticmethod
-    @jit
+    @partial(jit, static_argnums=(0,))
     def jit_log_likelihood_of_params(
         filter_instance,  # The filter instance, marked as static
         pytree_params: DFSVParamsPytree,
