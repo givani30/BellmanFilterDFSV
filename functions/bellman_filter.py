@@ -582,7 +582,7 @@ class DFSVBellmanFilter(DFSVFilter):
 
     def _kl_penalty_impl(self, a_pred, a_updated, I_pred, I_updated):
         """
-        Compute KL penalty for the updated state.
+        Compute KL penalty for the updated state. This is used for the approximate MLE for the static parameters.
 
         Args:
             a_updated (jnp.ndarray): Updated state vector.
@@ -867,7 +867,7 @@ class DFSVBellmanFilter(DFSVFilter):
         updated_cov = (updated_cov + updated_cov.T) / 2.0
 
         # Augmented Likelihood for parameter estimation
-        val = self.log_posterior(lambda_r, sigma2, predicted_state, jax_observation)
+        val = self.log_posterior(lambda_r, sigma2, updated_state, jax_observation)
         penalty = self.kl_penalty(predicted_state, updated_state, jax_I_pred, I_updated)
         log_likelihood = (
             val - penalty

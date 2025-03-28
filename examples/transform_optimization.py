@@ -7,6 +7,8 @@ to improve numerical stability and convergence by mapping constrained parameters
 to unconstrained space.
 """
 
+
+from collections.abc import Callable
 import copy
 import os
 import sys
@@ -18,6 +20,7 @@ import jax.numpy as jnp
 import numpy as np
 from jax import grad, jit
 import jaxopt
+from jaxtyping import Array, Bool, Int, PyTree, Scalar
 # Add the parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -32,6 +35,8 @@ from functions.simulation import DFSV_params, simulate_DFSV
 # Enable 64-bit precision for better numerical stability
 jax.config.update("jax_enable_x64", True)
 
+PRIOR_MU_MEAN = -1.0
+PRIOR_MU_STD_DEV = 0.5 # Tune this value! Start with something moderate.
 
 def transform_params(params):
     """
@@ -63,7 +68,16 @@ def transform_params(params):
     transformed_phi_h = jnp.log(phi_h_bounded / (1 - phi_h_bounded))
     
     # Transform variance parameters (must be positive) using log transform
-    transformed_sigma2 = jnp.log(jnp.maximum(params.sigma2, eps))
+    # Only transform diagonal elements of sigma2 (force off-diagonals to zero)
+    if params.sigma2.ndim > 1:  # Handle matrix case
+        diag_indices = jnp.diag_indices_from(params.sigma2)
+        transformed_sigma2 = jnp.zeros_like(params.sigma2)
+        transformed_sigma2 = transformed_sigma2.at[diag_indices].set(
+            jnp.log(jnp.maximum(jnp.diag(params.sigma2), eps))
+        )
+    else:  # Handle vector case
+        transformed_sigma2 = jnp.log(jnp.maximum(params.sigma2, eps))
+    
     transformed_q_h = jnp.log(jnp.maximum(params.Q_h, eps))
     
     # Return a new params object with transformed values
@@ -95,7 +109,19 @@ def untransform_params(transformed_params):
     phi_h_original = 1.0 / (1.0 + jnp.exp(-transformed_params.Phi_h))
     
     # Apply exp to transform back variance parameters
-    sigma2_original = jnp.exp(transformed_params.sigma2)
+    # Handle matrix vs vector case for sigma2
+    if transformed_params.sigma2.ndim > 1:
+        # For matrix case, only untransform diagonal elements
+        diag_indices = jnp.diag_indices_from(transformed_params.sigma2)
+        sigma2_original = jnp.zeros_like(transformed_params.sigma2)  # Start with zeros
+        # Only exponentiate and place values on the diagonal
+        sigma2_original = sigma2_original.at[diag_indices].set(
+            jnp.exp(transformed_params.sigma2[diag_indices])
+        )
+    else:
+        # For vector case (diagonal-only representation)
+        sigma2_original = jnp.exp(transformed_params.sigma2)
+    
     q_h_original = jnp.exp(transformed_params.Q_h)
     
     # Return a new params object with untransformed values
@@ -129,7 +155,7 @@ def create_simple_model():
     sigma2 = np.array([0.1, 0.1, 0.1])
 
     # Log-volatility noise covariance
-    Q_h = np.array([[0.05]])
+    Q_h = np.array([[0.1]])
 
     # Create parameter object
     params = DFSV_params(
@@ -152,8 +178,8 @@ def create_training_data(params, T=100, seed=42):
     return returns, factors, log_vols
 
 
-@partial(jit, static_argnames=["filter"])
-def bellman_objective(params, y, filter):
+@partial(jit, static_argnames=["filter","prior_mean", "prior_std_dev"])
+def bellman_objective(params, y, filter,prior_mean,prior_std_dev):
     """
     Compute the negative log-likelihood using the Bellman filter.
     
@@ -172,8 +198,8 @@ def bellman_objective(params, y, filter):
         Negative log-likelihood value
     """
     # Run the bellman filter
-    ll = filter.jit_log_likelihood_of_params(filter, params, y)
-    return -ll
+    ll = -filter.jit_log_likelihood_of_params(filter, params, y)
+    return jnp.nan_to_num(ll, nan=1e10, posinf=1e10, neginf=1e10)
 
 
 @partial(jit, static_argnames=["filter"])
@@ -284,7 +310,7 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
     Parameters:
     -----------
     params : DFSV_params
-        Initial model parameters
+        True model parameters (only used for dimensionality reference)
     returns : np.ndarray
         Observed data
     filter : DFSVBellmanFilter
@@ -299,18 +325,31 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
     tuple
         (original_params, optimized_params, original_loss, transformed_loss)
     """
-    # Convert to JAX parameter class
+    # Convert to JAX parameter class for reference dimensions
     jax_params = DFSVParamsDataclass.from_dfsv_params(params)
     
-    # Add small perturbations to parameters 
+    # Create uninformed initial parameters
     key = jax.random.PRNGKey(42)
-    perturbed_params = jax_params.replace(
-        lambda_r=jax_params.lambda_r + 0.1 * jax.random.normal(key, jax_params.lambda_r.shape),
-        Phi_f=jax_params.Phi_f + 0.02 * jax.random.normal(jax.random.fold_in(key, 0), jax_params.Phi_f.shape),
-        Phi_h=jax_params.Phi_h + 0.02 * jax.random.normal(jax.random.fold_in(key, 1), jax_params.Phi_h.shape),
-        mu=jax_params.mu + 0.1 * jax.random.normal(jax.random.fold_in(key, 2), jax_params.mu.shape),
-        sigma2=jax_params.sigma2 + 0.05 * jax.random.normal(jax.random.fold_in(key, 3), jax_params.sigma2.shape),
-        Q_h=jax_params.Q_h + 0.01 * jax.random.normal(jax.random.fold_in(key, 4), jax_params.Q_h.shape),
+    
+    # Set uninformed initial parameters
+    # Use common default values for time series models:
+    # - Persistence parameters near 0.8 (moderately persistent but not too close to non-stationarity)
+    # - Volatility parameters based on data variance
+    # - Factor loadings with modest values
+    
+    # Calculate data variance to inform initial sigma2
+    data_variance = jnp.var(returns, axis=0)
+    N, K = params.N, params.K
+    
+    uninformed_params = DFSVParamsDataclass(
+        N=N,
+        K=K,
+        lambda_r=0.5 * jnp.ones((N, K)),  # Moderate positive loadings
+        Phi_f=0.8 * jnp.eye(K),  # Moderate persistence
+        Phi_h=0.8 * jnp.eye(K),  # Moderate persistence
+        mu=jnp.zeros(K),  # Zero mean for log volatility
+        sigma2=jnp.diag(0.5 * data_variance),  # Moderate portion of data variance
+        Q_h=0.2 * jnp.eye(K)  # Moderate volatility of volatility
     )
     
     # Create optimizer configurations
@@ -318,53 +357,200 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
     opt = optax.adam(learning_rate=learning_rate)
     
     # Define objective function for standard optimization
-    def objective(params,args):
+    def objective(params, state=None):
         return bellman_objective(params, returns, filter)
     
     # Define objective function for transformed optimization
-    def objective_transformed(transformed_params,args):
+    def objective_transformed(transformed_params, state=None):
         return transformed_bellman_objective(transformed_params, returns, filter)
-    
-    # Create solvers
-    # solver_standard = OptaxSolver(opt=opt, fun=objective, maxiter=maxiter, tol=1e-6,verbose=True)
-    # solver_transformed = OptaxSolver(opt=opt, fun=objective_transformed, maxiter=maxiter, tol=1e-6,verbose=True)
-    # solver_standard=jaxopt.LBFGS(fun=objective, maxiter=maxiter, tol=1e-6, verbose=True)
-    # solver_standard=optx.BFGS(rtol=1e-3, atol=1e-3,norm=optx.rms_norm, verbose=frozenset({"step_size", "loss"}))
-    # solver_transformed=optx.BFGS(rtol=1e-3, atol=1e-3,norm=optx.rms_norm, verbose=frozenset({"step_size", "loss"}))
-    # solver_transformed=jaxopt.LBFGS(fun=objective_transformed, maxiter=maxiter, tol=1e-6, verbose=True)
+    #Custom BFGS Solver
+    class CustomBFGS(optx.AbstractBFGS):
+        rtol:float
+        atol:float
+        norm: Callable[[PyTree], Scalar]
+        use_inverse:bool
+        descent:optx.AbstractDescent=optx.DoglegDescent()
+        search:optx.AbstractSearch=optx.BacktrackingArmijo()
+        verbose: frozenset[str]
+        def __init__(
+            self,
+            rtol: float,
+            atol: float,
+            norm: Callable[[PyTree], Scalar] = optx.max_norm,
+            use_inverse: bool = False,
+            verbose: frozenset[str] = frozenset(),
+    ):
+            self.rtol = rtol
+            self.atol = atol
+            self.norm = norm
+            self.use_inverse = use_inverse
+            self.descent = optx.DoglegDescent()
+            # self.search = optx.BacktrackingArmijo(decrease_factor=0.1,step_init=0.1)
+            self.search=optx.ClassicalTrustRegion()
+            self.verbose = verbose
+        
     # Transform parameters for transformed optimization
-    #Define line search
-    # line_search=optx.LinearTrustRegion()
-    # solver=optx.NonlinearCG(rtol=1e-3, atol=1e-3,norm=optx.rms_norm, search=line_search)
-    solver=optx.OptaxMinimiser(optim=opt,rtol=1e-3, atol=1e-3,norm=optx.rms_norm, verbose=frozenset({"step", "loss"}))
-    transformed_params = transform_params(perturbed_params)
+    # solver = optx.OptaxMinimiser(optim=opt, rtol=1e-3, atol=1e-3, norm=optx.rms_norm, 
+    #                             verbose=frozenset({"step", "loss"}))
+    # solver=optx.BFGS(rtol=1e-3, atol=1e-3, norm=optx.max_norm,verbose=frozenset({"step_size", "loss"}))
+    solver=CustomBFGS(rtol=1e-5, atol=1e-5, norm=optx.max_norm, verbose=frozenset({"step_size", "loss"}))
+    transformed_params = transform_params(uninformed_params)
     
     # Run standard optimization
-    print("\nStarting standard optimization...")
+    print("\nStarting standard optimization with uninformed parameters...")
     start_time = time.time()
-    result_standard = optx.minimise(fn=objective,solver=solver, y0=perturbed_params,max_steps=maxiter,throw=False)
+    result_standard = optx.minimise(fn=objective, solver=solver, y0=uninformed_params, max_steps=maxiter, throw=False)
     standard_time = time.time() - start_time
     print(f"Standard optimization took {standard_time:.2f} seconds")
     
     # Run transformed optimization
-    print("\nStarting transformed optimization...")
+    print("\nStarting transformed optimization with uninformed parameters...")
     start_time = time.time()
-    # result_transformed_raw = solver_transformed.run(transformed_params)
-    result_transformed_raw = optx.minimise(fn=objective_transformed,solver=solver, y0=transformed_params,max_steps=maxiter,throw=False)
+    result_transformed_raw = optx.minimise(fn=objective_transformed, solver=solver, y0=transformed_params, max_steps=maxiter, throw=False)
     transformed_time = time.time() - start_time
     print(f"Transformed optimization took {transformed_time:.2f} seconds")
     
     # Transform parameters back to original space
-    result_transformed=untransform_params(result_transformed_raw.value)
-    #caclulate objective values
-    obj_standard=objective(result_standard.value,None)
-    obj_transformed=objective_transformed(result_transformed_raw.value,None)
+    result_transformed = untransform_params(result_transformed_raw.value)
+    
+    # Calculate objective values
+    obj_standard = objective(result_standard.value, None)
+    obj_transformed = objective_transformed(result_transformed_raw.value, None)
+    
     return (result_standard.value, result_transformed, 
             obj_standard, obj_transformed)
-    # result_transformed = untransform_params(result_transformed_raw.params)
+
+
+def calculate_return_variance(params, log_vols):
+    """
+    Calculate the variance of returns based on model parameters and log volatility.
     
-    # return (result_standard.params, result_transformed, 
-    #         result_standard.state.value, result_transformed_raw.state.value)
+    Parameters:
+    -----------
+    params : DFSVParamsDataclass
+        Model parameters
+    log_vols : np.ndarray
+        Log volatility values
+        
+    Returns:
+    --------
+    np.ndarray
+        Time series of covariance matrices
+    """
+    N, K = params.N, params.K
+    lambda_r = params.lambda_r  # NxK
+    sigma2 = params.sigma2      # Nx1 or NxN
+    
+    # Ensure log_vols is 2D
+    if log_vols.ndim == 1:
+        log_vols = log_vols.reshape(-1, 1)
+    
+    T = log_vols.shape[0]
+    
+    # Initialize result array to store covariance matrices
+    result = jnp.zeros((T, N, N))
+    
+    # Convert log-volatility to volatility
+    vol = jnp.exp(log_vols)  # TxK
+    
+    # Calculate covariances for each time point
+    for t in range(T):
+        # Create the diagonal volatility matrix (KxK)
+        vol_diag_t = jnp.diag(vol[t])
+        
+        # Calculate the factor-driven part of covariance: lambda_r * vol_diag_t * lambda_r.T
+        factor_cov = lambda_r @ vol_diag_t @ lambda_r.T
+        
+        # Add idiosyncratic variance (diagonal or full matrix)
+        if sigma2.ndim == 1:
+            # Diagonal sigma2
+            total_cov = factor_cov + jnp.diag(sigma2)
+        else:
+            # Full sigma2 matrix
+            total_cov = factor_cov + sigma2
+        
+        result = result.at[t].set(total_cov)
+    
+    return result
+
+
+def plot_variance_comparison(true_params, standard_params, transformed_params, 
+                           true_log_vols, standard_log_vols, transformed_log_vols,
+                           returns, save_path=None):
+    """
+    Plot comparison of predicted vs realized return variances.
+    
+    Parameters:
+    -----------
+    true_params, standard_params, transformed_params : DFSVParamsDataclass
+        Parameter sets to compare
+    true_log_vols, standard_log_vols, transformed_log_vols : np.ndarray
+        Log volatility estimates from different methods
+    returns : np.ndarray
+        Observed returns
+    save_path : str, optional
+        Path to save the plot
+    """
+    import matplotlib.pyplot as plt
+    
+    # Calculate variances
+    true_var = calculate_return_variance(true_params, true_log_vols)
+    standard_var = calculate_return_variance(standard_params, standard_log_vols)
+    transformed_var = calculate_return_variance(transformed_params, transformed_log_vols)
+    
+    # Calculate realized squared returns (proxy for volatility)
+    squared_returns = returns**2
+    
+    # Calculate rolling variance of returns (to smooth the visualization)
+    window = 21  # Approximately one month of trading days
+    rolling_var = jnp.zeros_like(squared_returns)
+    for t in range(len(returns)):
+        start_idx = max(0, t - window + 1)
+        rolling_var = rolling_var.at[t].set(jnp.mean(squared_returns[start_idx:t+1], axis=0))
+    
+    # Extract diagonal elements (individual asset variances)
+    true_diag_var = jnp.array([true_var[t].diagonal() for t in range(true_var.shape[0])])
+    standard_diag_var = jnp.array([standard_var[t].diagonal() for t in range(standard_var.shape[0])])
+    transformed_diag_var = jnp.array([transformed_var[t].diagonal() for t in range(transformed_var.shape[0])])
+    
+    # Plot the variance comparison
+    N = true_params.N
+    fig, axes = plt.subplots(N, 1, figsize=(15, 4*N), sharex=True)
+    
+    for i in range(N):
+        ax = axes[i] if N > 1 else axes
+        
+        # Plot predicted variances
+        ax.plot(true_diag_var[:, i], 'k-', alpha=0.5, label='True Model')
+        ax.plot(standard_diag_var[:, i], 'b-', label='Standard Optimization')
+        ax.plot(transformed_diag_var[:, i], 'r-', label='Transformed Optimization')
+        
+        # Plot realized volatility
+        ax.plot(rolling_var[:, i], 'g--', alpha=0.7, label='Realized (Rolling)')
+        
+        ax.set_title(f'Asset {i+1} Return Variance')
+        ax.set_ylabel('Variance')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+    
+    plt.xlabel('Time')
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path)
+    plt.show()
+    
+    # Calculate mean squared error between predicted and realized variance
+    mse_true = jnp.mean((true_diag_var - rolling_var)**2)
+    mse_standard = jnp.mean((standard_diag_var - rolling_var)**2)
+    mse_transformed = jnp.mean((transformed_diag_var - rolling_var)**2)
+    
+    print("\nMean squared error between predicted and realized variance:")
+    print(f"True model: {mse_true:.6f}")
+    print(f"Standard optimization: {mse_standard:.6f}")
+    print(f"Transformed optimization: {mse_transformed:.6f}")
+    
+    return true_var, standard_var, transformed_var
 
 
 def main():
@@ -442,7 +628,7 @@ def main():
     plt.savefig("transform_optimization_comparison.png")
     plt.show()
     
-    print(f"\nSaved comparison plot to transform_optimization_comparison.png")
+    print("\nSaved comparison plot to transform_optimization_comparison.png")
     
     # Print parameter comparison
     print("\nParameter comparison:")
@@ -454,15 +640,28 @@ def main():
     def format_param(p, name):
         attr = getattr(p, name)
         if hasattr(attr, 'shape') and attr.size > 1:
-            return f"array{attr.shape}"
+            if attr.ndim == 1 and attr.size <= 3:
+                # For small 1D arrays, show values
+                return f"[{', '.join([f'{x:.4f}' for x in attr])}]"
+            elif attr.ndim == 2 and attr.shape[0] == 1 and attr.shape[1] == 1:
+                # For 1x1 matrices, show as scalar
+                return f"{attr[0, 0]:.4f}"
+            else:
+                # For larger arrays or matrices, just show shape
+                return f"array{attr.shape}"
         else:
+            # For scalars
             try:
-                return f"{float(attr):.4f}"
+                if hasattr(attr, 'item'):
+                    # Safe way to extract scalar from array
+                    return f"{attr.item():.4f}"
+                else:
+                    return f"{float(attr):.4f}"
             except:
                 return str(attr)
     
     # Print key parameters
-    for param_name in ['Phi_f', 'Phi_h', 'mu', 'Q_h']:
+    for param_name in ['lambda_r', 'Phi_f', 'Phi_h', 'mu', 'Q_h']:
         true_val = format_param(jax_params, param_name)
         std_val = format_param(standard_params, param_name)
         trans_val = format_param(transformed_params, param_name)
@@ -484,6 +683,16 @@ def main():
         print(f"mean={float(true_sigma.mean()):.4f} ", end="")
         print(f"mean={float(std_sigma.mean()):.4f} ", end="")
         print(f"mean={float(trans_sigma.mean()):.4f}")
+    
+    # Plot predicted vs real return variance comparison
+    print("\nPlotting predicted vs realized return variance comparison...")
+    true_var, standard_var, transformed_var = plot_variance_comparison(
+        jax_params, standard_params, transformed_params, 
+        log_vols, standard_log_vols, transformed_log_vols, 
+        returns, save_path="/home/givanib/Documents/QF_Thesis/variance_comparison.png"
+    )
+    
+    print("Saved variance comparison plot to /home/givanib/Documents/QF_Thesis/variance_comparison.png")
 
 
 if __name__ == "__main__":
