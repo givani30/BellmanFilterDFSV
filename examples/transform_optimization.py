@@ -11,6 +11,7 @@ to unconstrained space.
 from collections.abc import Callable
 import copy
 import os
+from queue import PriorityQueue
 import sys
 import time
 from functools import partial
@@ -197,13 +198,23 @@ def bellman_objective(params, y, filter,prior_mean,prior_std_dev):
     float
         Negative log-likelihood value
     """
-    # Run the bellman filter
-    ll = -filter.jit_log_likelihood_of_params(filter, params, y)
-    return jnp.nan_to_num(ll, nan=1e10, posinf=1e10, neginf=1e10)
+    # Original negative log-likelihood
+    neg_ll = -filter.jit_log_likelihood_of_params(filter, params, y)
+    safe_neg_ll = jnp.nan_to_num(neg_ll, nan=1e10, posinf=1e10, neginf=1e10)
+
+    # Calculate the penalty for mu
+    # Ensure mu is treated as scalar if needed (it is 1D array of size K=1 here)
+    current_mu = params.mu.reshape(()) # Reshape (1,) array to scalar
+    mu_penalty = 0.5 * jnp.square((current_mu - prior_mean) / prior_std_dev)
+
+    # Add penalty to the negative log-likelihood
+    total_objective = safe_neg_ll + mu_penalty
+
+    return total_objective
 
 
-@partial(jit, static_argnames=["filter"])
-def transformed_bellman_objective(transformed_params, y, filter):
+@partial(jit, static_argnames=["filter","prior_mean", "prior_std_dev"])
+def transformed_bellman_objective(transformed_params, y, filter,prior_mean,prior_std_dev):
     """
     Compute the objective function with transformed parameters.
     
@@ -225,7 +236,7 @@ def transformed_bellman_objective(transformed_params, y, filter):
     original_params = untransform_params(transformed_params)
     
     # Run the bellman filter with original parameters
-    return bellman_objective(original_params, y, filter)
+    return bellman_objective(original_params, y, filter,prior_mean,prior_std_dev)
 
 
 def compare_gradients(params, returns, filter):
@@ -247,8 +258,8 @@ def compare_gradients(params, returns, filter):
     jax_returns = jnp.array(returns)
     
     # Create gradient functions 
-    grad_orig = grad(lambda p: bellman_objective(p, jax_returns, filter))
-    grad_trans = grad(lambda p: transformed_bellman_objective(p, jax_returns, filter))
+    grad_orig = grad(lambda p: bellman_objective(p, jax_returns, filter,PRIOR_MU_MEAN, PRIOR_MU_STD_DEV))
+    grad_trans = grad(lambda p: transformed_bellman_objective(p, jax_returns, filter,PRIOR_MU_MEAN, PRIOR_MU_STD_DEV))
     
     # Compute gradients in original space
     start_time = time.time()
@@ -358,11 +369,11 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
     
     # Define objective function for standard optimization
     def objective(params, state=None):
-        return bellman_objective(params, returns, filter)
+        return bellman_objective(params, returns, filter,PRIOR_MU_MEAN, PRIOR_MU_STD_DEV)
     
     # Define objective function for transformed optimization
     def objective_transformed(transformed_params, state=None):
-        return transformed_bellman_objective(transformed_params, returns, filter)
+        return transformed_bellman_objective(transformed_params, returns, filter,PRIOR_MU_MEAN, PRIOR_MU_STD_DEV)
     #Custom BFGS Solver
     class CustomBFGS(optx.AbstractBFGS):
         rtol:float
@@ -370,7 +381,7 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
         norm: Callable[[PyTree], Scalar]
         use_inverse:bool
         descent:optx.AbstractDescent=optx.DoglegDescent()
-        search:optx.AbstractSearch=optx.BacktrackingArmijo()
+        search:optx.AbstractSearch=optx.ClassicalTrustRegion()
         verbose: frozenset[str]
         def __init__(
             self,
@@ -392,8 +403,8 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
     # Transform parameters for transformed optimization
     # solver = optx.OptaxMinimiser(optim=opt, rtol=1e-3, atol=1e-3, norm=optx.rms_norm, 
     #                             verbose=frozenset({"step", "loss"}))
-    # solver=optx.BFGS(rtol=1e-3, atol=1e-3, norm=optx.max_norm,verbose=frozenset({"step_size", "loss"}))
-    solver=CustomBFGS(rtol=1e-5, atol=1e-5, norm=optx.max_norm, verbose=frozenset({"step_size", "loss"}))
+    solver=optx.BFGS(rtol=1e-3, atol=1e-3, norm=optx.max_norm,verbose=frozenset({"step_size", "loss"}))
+    # solver=CustomBFGS(rtol=1e-5, atol=1e-5, norm=optx.max_norm, verbose=frozenset({"step_size", "loss"}))
     transformed_params = transform_params(uninformed_params)
     
     # Run standard optimization
@@ -498,15 +509,6 @@ def plot_variance_comparison(true_params, standard_params, transformed_params,
     standard_var = calculate_return_variance(standard_params, standard_log_vols)
     transformed_var = calculate_return_variance(transformed_params, transformed_log_vols)
     
-    # Calculate realized squared returns (proxy for volatility)
-    squared_returns = returns**2
-    
-    # Calculate rolling variance of returns (to smooth the visualization)
-    window = 21  # Approximately one month of trading days
-    rolling_var = jnp.zeros_like(squared_returns)
-    for t in range(len(returns)):
-        start_idx = max(0, t - window + 1)
-        rolling_var = rolling_var.at[t].set(jnp.mean(squared_returns[start_idx:t+1], axis=0))
     
     # Extract diagonal elements (individual asset variances)
     true_diag_var = jnp.array([true_var[t].diagonal() for t in range(true_var.shape[0])])
@@ -525,8 +527,6 @@ def plot_variance_comparison(true_params, standard_params, transformed_params,
         ax.plot(standard_diag_var[:, i], 'b-', label='Standard Optimization')
         ax.plot(transformed_diag_var[:, i], 'r-', label='Transformed Optimization')
         
-        # Plot realized volatility
-        ax.plot(rolling_var[:, i], 'g--', alpha=0.7, label='Realized (Rolling)')
         
         ax.set_title(f'Asset {i+1} Return Variance')
         ax.set_ylabel('Variance')
@@ -541,12 +541,10 @@ def plot_variance_comparison(true_params, standard_params, transformed_params,
     plt.show()
     
     # Calculate mean squared error between predicted and realized variance
-    mse_true = jnp.mean((true_diag_var - rolling_var)**2)
-    mse_standard = jnp.mean((standard_diag_var - rolling_var)**2)
-    mse_transformed = jnp.mean((transformed_diag_var - rolling_var)**2)
+    mse_standard = jnp.mean((standard_diag_var - true_diag_var)**2)
+    mse_transformed = jnp.mean((transformed_diag_var - true_diag_var)**2)
     
     print("\nMean squared error between predicted and realized variance:")
-    print(f"True model: {mse_true:.6f}")
     print(f"Standard optimization: {mse_standard:.6f}")
     print(f"Transformed optimization: {mse_transformed:.6f}")
     
