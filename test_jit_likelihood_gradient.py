@@ -258,8 +258,7 @@ def test_jit_likelihood_gradient():
             mean_param = np.mean(np.abs(param_value))
             param_desc = f"array({param_value.shape}), ~{mean_param:.4f}"
             
-            # Scale-corrected gradient is gradient * parameter value
-            # This gives percent change in likelihood for percent change in parameter
+            # Scale-corrected gradient is gradient * parameter value            # This gives percent change in likelihood for percent change in parameter
             scale_corrected = mean_grad * mean_param
         else:
             # For scalar parameters

@@ -9,12 +9,12 @@ from functools import partial
 from jax import jit
 from sympy import true
 
-# Add parent directory to path to import our modules
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add the parent directory to the path so we can import from functions
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import parameter classes
 from functions.simulation import DFSV_params, simulate_DFSV
-from functions.jax_params import DFSVParamsDataclass, DFSVParamsPytree
+from functions.jax_params import DFSVParamsDataclass
 from functions.bellman_filter import DFSVBellmanFilter
 from jaxopt import OptaxSolver
 import optax

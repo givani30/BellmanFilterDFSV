@@ -162,10 +162,13 @@ def dfsv_params_to_dict(params: DFSVParamsDataclass) -> dict:
         params: Parameter object or dictionary
         
     Returns:
-        dict: Dictionary of parameters
+        dict,N,K: Dictionary of parameters
     """
     if isinstance(params, dict):
-        return params
+        # Check if the dictionary contains N and K, if so remove them from the dict
+        N = params.pop("N", None)
+        K = params.pop("K", None)
+        return params,N,K
     elif isinstance(params, DFSVParamsDataclass):
         return params.to_dict()
     else:
