@@ -1,6 +1,8 @@
 from functools import partial
+from math import log
 from typing import Tuple, Union, Dict, Any
 
+from altair import LogicalAndPredicate
 import jax
 import jax.numpy as jnp
 import jax.scipy.optimize
@@ -126,7 +128,7 @@ class DFSVBellmanFilter(DFSVFilter):
         Sigma_f = jnp.diag(exp_h.flatten())
         lambda_r = lambda_r.reshape(N, K)
         A = lambda_r @ Sigma_f @ lambda_r.T
-        A += jnp.diag(jnp.diag(sigma2)) + 1e-8 * jnp.eye(N)
+        A += jnp.diag(jnp.diag(sigma2)) + 1e-6 * jnp.eye(N)
         A = 0.5 * (A + A.T)
         return A
 
@@ -266,7 +268,7 @@ class DFSVBellmanFilter(DFSVFilter):
         pred_obs = lambda_r @ f
         innovation = observation - pred_obs
         exp_log_vols = jnp.exp(log_vols)
-        A = self.build_covariance(lambda_r, exp_log_vols, sigma2)
+        A = self.build_covariance(lambda_r, exp_log_vols, sigma2)+1e-8 * jnp.eye(lambda_r.shape[0]) #add small jitter
 
         # Compute log-likelihood with Cholesky decomposition
         L = jnp.linalg.cholesky(A)
@@ -370,7 +372,7 @@ class DFSVBellmanFilter(DFSVFilter):
             def A_inv(x):
                 return jax.scipy.linalg.cho_solve(L, x)
 
-            lhs_mat = jnp.dot(lambda_r.T, A_inv(lambda_r)) + I_f
+            lhs_mat = jnp.dot(lambda_r.T, A_inv(lambda_r)) + I_f+1e-8 * jnp.eye(I_f.shape[0])
             rhs_vec = (
                 jnp.dot(lambda_r.T, A_inv(observation))
                 + jnp.dot(I_f, factors_pred)
@@ -832,7 +834,7 @@ class DFSVBellmanFilter(DFSVFilter):
         # Compute information matrix (inverse of predicted covariance)
         try:
             # Use Cholesky for numerical stability
-            jax_predicted_cov = jnp.array(predicted_cov)
+            jax_predicted_cov = jnp.array(predicted_cov)+ 1e-8 * jnp.eye(self.state_dim)
             L = jax.scipy.linalg.cholesky(jax_predicted_cov, lower=True)
             jax_I_pred = jax.scipy.linalg.cho_solve((L, True), jnp.eye(self.state_dim))
         except:
@@ -860,7 +862,7 @@ class DFSVBellmanFilter(DFSVFilter):
 
         # Compute the Hessian at the optimum for covariance estimation
         fisher_info = self.fisher_information(lambda_r, sigma2, updated_state)
-        I_updated = fisher_info + jax_I_pred
+        I_updated = fisher_info + jax_I_pred+ 1e-8 * jnp.eye(self.state_dim)
         updated_cov = jnp.linalg.inv(I_updated)
 
         # Ensure symmetry
