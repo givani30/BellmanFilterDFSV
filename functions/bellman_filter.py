@@ -1,14 +1,15 @@
-import jax.scipy.optimize
-import numpy as np
-from typing import Tuple, Union, Optional
-from functions.filters import DFSVFilter
-from functions.simulation import DFSV_params
-from functions.jax_params import DFSVParamsPytree, DFSVParamsDataclass
+from functools import partial
+from typing import Tuple, Union
+
 import jax
 import jax.numpy as jnp
-from jax import jit
+import jax.scipy.optimize
 import jaxopt
-from functools import partial
+import numpy as np
+from jax import jit
+
+from functions.filters import DFSVFilter
+from functions.simulation import DFSV_params
 
 
 class DFSVBellmanFilter(DFSVFilter):
@@ -472,8 +473,6 @@ class DFSVBellmanFilter(DFSVFilter):
             Q_h=jnp.eye(K),
         )
 
-        dummy_pytree_params = DFSVParamsPytree.from_dfsv_params(dummy_params)
-
         # Warm up individual functions
         _ = self.build_covariance(dummy_lambda_r, dummy_exp_h, dummy_sigma2)
         _ = self.fisher_information(dummy_lambda_r, dummy_sigma2, dummy_alpha)
@@ -491,7 +490,7 @@ class DFSVBellmanFilter(DFSVFilter):
         )
 
         # Also precompile functions that accept pytree params
-        _ = self.predict(dummy_pytree_params, dummy_alpha, jnp.eye(2 * K))
+        _ = self.predict(dummy_params, dummy_alpha, jnp.eye(2 * K))
 
     # @jit
     def neg_log_post_h(
@@ -667,7 +666,7 @@ class DFSVBellmanFilter(DFSVFilter):
             return jnp.array(1e10), jnp.zeros_like(x)
 
     def initialize_state(
-        self, params: Union[DFSV_params, DFSVParamsPytree]
+        self, params: DFSV_params
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Initialize state and covariance.
@@ -678,9 +677,6 @@ class DFSVBellmanFilter(DFSVFilter):
         Returns:
             Tuple[np.ndarray, np.ndarray]: Initial state and covariance.
         """
-        # Handle both parameter types
-        if isinstance(params, DFSVParamsPytree):
-            params = params.to_dfsv_params()
         K = self.K
         initial_factors = jnp.zeros((K, 1))
 
@@ -715,7 +711,7 @@ class DFSVBellmanFilter(DFSVFilter):
 
     def predict(
         self,
-        params: Union[DFSV_params, DFSVParamsPytree],
+        params: DFSV_params,
         state: np.ndarray,
         cov: np.ndarray,
     ) -> Tuple[np.ndarray, np.ndarray]:
@@ -730,19 +726,11 @@ class DFSVBellmanFilter(DFSVFilter):
         Returns:
             Tuple[np.ndarray, np.ndarray]: Predicted state and covariance.
         """
-        # Extract parameters based on the type
-        if isinstance(params, DFSVParamsPytree):
-            # JAX PyTree parameters, already JAX arrays
-            K = params.K
-            Phi_f = params.Phi_f
-            Phi_h = params.Phi_h
-            mu = params.mu
-        else:
-            # Regular DFSV_params
-            K = self.K
-            Phi_f = jnp.array(params.Phi_f)
-            Phi_h = jnp.array(params.Phi_h)
-            mu = jnp.array(params.mu.flatten() if params.mu.ndim > 1 else params.mu)
+        # Extract parameters
+        K = self.K
+        Phi_f = jnp.array(params.Phi_f)
+        Phi_h = jnp.array(params.Phi_h)
+        mu = jnp.array(params.mu.flatten() if params.mu.ndim > 1 else params.mu)
 
         # Convert state to JAX array and flatten
         state = jnp.array(state).flatten()
@@ -768,11 +756,8 @@ class DFSVBellmanFilter(DFSVFilter):
         Q_t = jnp.zeros((self.state_dim, self.state_dim))
         Q_f = jnp.diag(jnp.exp(log_vols.flatten()))  # Factor process noise
 
-        # Get Q_h based on parameter type
-        if isinstance(params, DFSVParamsPytree):
-            Q_h = params.Q_h  # Already JAX array
-        else:
-            Q_h = jnp.array(params.Q_h)  # Convert to JAX array
+ 
+        Q_h = jnp.array(params.Q_h)  # Convert to JAX array
 
         Q_t = Q_t.at[:K, :K].set(Q_f)
         Q_t = Q_t.at[K:, K:].set(Q_h)
@@ -785,7 +770,7 @@ class DFSVBellmanFilter(DFSVFilter):
 
     def update(
         self,
-        params: Union[DFSV_params, DFSVParamsPytree],
+        params: DFSV_params,
         predicted_state: np.ndarray,
         predicted_cov: np.ndarray,
         observation: np.ndarray,
@@ -802,25 +787,15 @@ class DFSVBellmanFilter(DFSVFilter):
         Returns:
             Tuple[np.ndarray, np.ndarray, float]: Updated state, updated covariance, and log-likelihood contribution.
         """
-        # Extract parameters depending on the type
-        if isinstance(params, DFSVParamsPytree):
-            # JAX PyTree parameters
-            K = params.K
-            N = params.N
-            lambda_r = params.lambda_r
-            sigma2 = params.sigma2
-            if sigma2.ndim == 1:
-                sigma2 = sigma2.reshape(-1, 1)
-        else:
-            # Regular DFSV_params
-            K = self.K
-            N = self.N
-            lambda_r = jnp.array(params.lambda_r)
-            sigma2 = jnp.array(
-                params.sigma2.reshape(-1, 1)
-                if params.sigma2.ndim == 1
-                else params.sigma2
-            )
+        # Extract parameters
+        K = self.K
+        N = self.N
+        lambda_r = jnp.array(params.lambda_r)
+        sigma2 = jnp.array(
+            params.sigma2.reshape(-1, 1)
+            if params.sigma2.ndim == 1
+            else params.sigma2
+        )
 
         # Convert inputs to JAX arrays
         jax_observation = jnp.array(observation)
@@ -872,7 +847,7 @@ class DFSVBellmanFilter(DFSVFilter):
         return updated_state, updated_cov, log_likelihood
 
     def _get_transition_matrix(
-        self, params: Union[DFSV_params, DFSVParamsPytree]
+        self, params: DFSV_params,
     ) -> jnp.ndarray:
         """
         Get the state transition matrix for the DFSV model.
@@ -883,16 +858,11 @@ class DFSVBellmanFilter(DFSVFilter):
         Returns:
             jnp.ndarray: Transition matrix.
         """
-        if isinstance(params, DFSVParamsPytree):
-            # JAX PyTree parameters
-            K = params.K
-            Phi_f = params.Phi_f
-            Phi_h = params.Phi_h
-        else:
-            # Regular DFSV_params
-            K = self.K
-            Phi_f = jnp.array(params.Phi_f)
-            Phi_h = jnp.array(params.Phi_h)
+
+        # Regular DFSV_params
+        K = self.K
+        Phi_f = jnp.array(params.Phi_f)
+        Phi_h = jnp.array(params.Phi_h)
 
         # Initialize transition matrix
         F_t = jnp.zeros((2 * K, 2 * K))
@@ -906,7 +876,7 @@ class DFSVBellmanFilter(DFSVFilter):
         return F_t
 
     def filter(
-        self, params: Union[DFSV_params, DFSVParamsPytree], y: np.ndarray
+        self, params: DFSV_params, y: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, float]:
         """
         Run the Bellman filter on the provided data with JAX optimization.
@@ -978,7 +948,7 @@ class DFSVBellmanFilter(DFSVFilter):
         return np.array(filtered_states), np.array(filtered_covs), float(log_likelihood)
 
     def filter_scan(
-        self, params: Union[DFSV_params, DFSVParamsPytree], y: np.ndarray
+        self, params: DFSV_params, y: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, float]:
         """
         Run the Bellman filter using JAX's scan for maximum efficiency.
@@ -1044,7 +1014,7 @@ class DFSVBellmanFilter(DFSVFilter):
 
     def log_likelihood_of_params(
         self,
-        pytree_params: DFSVParamsPytree,
+        pytree_params: DFSV_params,
         observations: jnp.ndarray,
     ) -> float:
         """
@@ -1065,7 +1035,7 @@ class DFSVBellmanFilter(DFSVFilter):
 
     def _log_likelihood_of_params_impl(
         self,
-        pytree_params: DFSVParamsPytree,
+        pytree_params: DFSV_params,
         observations: jnp.ndarray,
     ) -> float:
         """
@@ -1116,7 +1086,7 @@ class DFSVBellmanFilter(DFSVFilter):
     @partial(jit, static_argnums=(0,))
     def jit_log_likelihood_of_params(
         filter_instance,  # The filter instance, marked as static
-        pytree_params: DFSVParamsPytree,
+        pytree_params: DFSV_params,
         observations: jnp.ndarray,
     ) -> float:
         """

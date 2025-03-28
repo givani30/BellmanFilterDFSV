@@ -1,6 +1,8 @@
 import marimo
 
-__generated_with = "0.11.20"
+from functions.jax_params import dfsv_params_to_dict
+
+__generated_with = "0.11.28"
 app = marimo.App(width="medium")
 
 
@@ -10,6 +12,7 @@ def _(
     DFSVParamsDataclass,
     create_simple_model,
     create_training_data,
+    jax,
 ):
     # Create a simple model
     params = create_simple_model()
@@ -20,30 +23,32 @@ def _(
     # Create a JAX-compatible parameter object
     jax_params = DFSVParamsDataclass.from_dfsv_params(params)
     # Perturb the parameters
-    # jax_params = jax_params.replace(
-    #     lambda_r=jax_params.lambda_r
-    #     + 0.1 * jax.random.normal(jax.random.PRNGKey(0), jax_params.lambda_r.shape),
-    #     Phi_f=jax_params.Phi_f
-    #     + 0.1 * jax.random.normal(jax.random.PRNGKey(1), jax_params.Phi_f.shape),
-    #     Phi_h=jax_params.Phi_h
-    #     + 0.1 * jax.random.normal(jax.random.PRNGKey(2), jax_params.Phi_h.shape),
-    #     mu=jax_params.mu
-    #     + 0.1 * jax.random.normal(jax.random.PRNGKey(3), jax_params.mu.shape),
-    #     sigma2=jax_params.sigma2
-    #     + 0.1 * jax.random.normal(jax.random.PRNGKey(4), jax_params.sigma2.shape),
-    #     Q_h=jax_params.Q_h
-    #     + 0.1 * jax.random.normal(jax.random.PRNGKey(5), jax_params.Q_h.shape),
-    # )
+    jax_params = jax_params.replace(
+        lambda_r=jax_params.lambda_r
+        + 0.1 * jax.random.normal(jax.random.PRNGKey(0), jax_params.lambda_r.shape),
+        Phi_f=jax_params.Phi_f
+        + 0.1 * jax.random.normal(jax.random.PRNGKey(1), jax_params.Phi_f.shape),
+        Phi_h=jax_params.Phi_h
+        + 0.1 * jax.random.normal(jax.random.PRNGKey(2), jax_params.Phi_h.shape),
+        mu=jax_params.mu
+        + 0.1 * jax.random.normal(jax.random.PRNGKey(3), jax_params.mu.shape),
+        # sigma2=jax_params.sigma2
+        # + 0.1 * jax.random.normal(jax.random.PRNGKey(4), jax_params.sigma2.shape),
+        # Q_h=jax_params.Q_h
+        # + 0.1 * jax.random.normal(jax.random.PRNGKey(5), jax_params.Q_h.shape),
+    )
     return factors, filter, jax_params, log_vols, params, returns
 
 
 @app.cell
 def optimizerloop(
+    DFSVParamsMask,
     OptaxSolver,
     bellman_objective,
     filter,
     jax_params,
     optax,
+    print,
     returns,
     time,
 ):
@@ -51,29 +56,57 @@ def optimizerloop(
     def objective(params):
         return bellman_objective(params, returns, filter)
 
-    # solver = jaxopt.LBFGS(objective, maxiter=100, tol=1e-6, verbose=False)
+    # solver = jaxopt.LBFGS(objective, maxiter=50, tol=1e-6, verbose=True,linesearch="backtracking")
+
 
     # Create an Optax solver
-    opt = optax.adam(learning_rate=0.01)
-    solver = OptaxSolver(opt=opt, fun=objective, maxiter=100, tol=1e-6, verbose=True)
+    param_dict = dfsv_params_to_dict(jax_params)
+    mask = {
+        "lambda_r": True,
+        "Phi_f": True,
+        "Phi_h": True,
+        "mu": True,
+        "sigma2": False,
+        "Q_h": False,
+    }
+
+    # Then we can create a masked optimizer
+    # This means only fields with mask=True get updates
+    masked_optimizer = optax.chain(optax.masked(optax.adam(learning_rate=1e-3), mask=mask))
+    solver = OptaxSolver(opt=masked_optimizer, fun=objective, maxiter=50, tol=1e-6, verbose=True)
 
     # Time the solver run
     print("Starting optimization...")
     start_time = time.time()
-    result = solver.run(jax_params)
+    result = solver.run(param_dict)
     # final=result.params
     end_time = time.time()
     print(f"Optimization took {end_time - start_time:.2f} seconds")
-    return end_time, objective, opt, result, solver, start_time
+    return (
+        end_time,
+        mask,
+        masked_optimizer,
+        objective,
+        result,
+        solver,
+        start_time,
+    )
 
 
 @app.cell
-def _(result):
+def _(jnp, print, result):
     # Compare original vs optimized parameters
     print("Comparing filter output with original vs optimized parameters")
-
+    def stablize_matrix(matrix):
+        norm = jnp.linalg.norm(matrix, ord=2)
+        return matrix / (1.0 + norm)
+    final_dict= result.params
     # Convert optimized parameters back to standard format if needed
-    optimized_params = result.params
+    optimized_params = DFSVParamsDataclass.from_dict(final_dict)
+    optimized_params = optimized_params.replace(sigma2=jnp.exp(optimized_params.sigma2),
+                                                Phi_f=jnp.tanh(optimized_params.Phi_f),
+                                                Phi_h=jnp.tanh(optimized_params.Phi_h),
+                                                Q_h=jnp.exp(optimized_params.Q_h))
     # optimized_params = DFSVParamsDataclass(
     #     N=3,
     #     K=1,
@@ -85,7 +118,7 @@ def _(result):
     #     Q_h=jnp.array([[0.023]]),
     # )
     print(optimized_params)
-    return (optimized_params,)
+    return optimized_params, stablize_matrix
 
 
 @app.cell
@@ -101,8 +134,9 @@ def _(filter, jax_params, optimized_params, params, returns):
     # Extract state variables
     original_factors = original_states[:, :K]
     original_log_vols = original_states[:, K:]
-    optimized_factors = optimized_states[:, K:]
-    optimized_log_vols = optimized_states[:, :K]
+    optimized_factors = optimized_states[:, :K]  # Fixed index
+    optimized_log_vols = optimized_states[:, K:]  # Fixed index
+    optimized_states
     return (
         K,
         optimized_cov,
@@ -119,10 +153,10 @@ def _(filter, jax_params, optimized_params, params, returns):
 
 
 @app.cell
-def _(optimized_states):
+def _(optimized_log_vols):
     import pandas as pd
     import polars as pl
-    df=pl.DataFrame(optimized_states)
+    df=pl.DataFrame(optimized_log_vols)
     df
     return df, pd, pl
 
@@ -171,6 +205,7 @@ def _(
     optimized_log_vols,
     original_factors,
     original_log_vols,
+    print,
 ):
     # Calculate and print MSE for each set of parameters
     factor_mse_original = np.mean((original_factors - factors) ** 2)
@@ -188,7 +223,6 @@ def _(
     print(
         f"Log-vol MSE - Original: {logvol_mse_original:.4f}, Optimized: {logvol_mse_optimized:.4f}"
     )
-
     return (
         factor_mse_optimized,
         factor_mse_original,
@@ -198,7 +232,7 @@ def _(
 
 
 @app.cell
-def _(DFSVBellmanFilter, DFSV_params, jit, np, partial, simulate_DFSV):
+def _(DFSVBellmanFilter, DFSV_params, jit, jnp, np, partial, simulate_DFSV):
     def create_simple_model():
         """Create a simple DFSV model with one factor."""
         # Define model dimensions
@@ -216,7 +250,6 @@ def _(DFSVBellmanFilter, DFSV_params, jit, np, partial, simulate_DFSV):
 
         # Long-run mean for log-volatilities
         mu = np.array([-1.0])
-
         # Idiosyncratic variance (diagonal)
         sigma2 = np.array([0.1, 0.1, 0.1])
 
@@ -245,26 +278,52 @@ def _(DFSVBellmanFilter, DFSV_params, jit, np, partial, simulate_DFSV):
 
 
     @partial(jit, static_argnames=["filter"])
-    def bellman_objective(params, y, filter):
+    def bellman_objective(params_unconstrained, y, filter,N,K):
         """
         Compute the Bellman objective function for the DFSV model.
 
         Parameters
         ----------
         params : DFSV_params
-            Model parameters.
+            Unconstrained Model parameters.
         y : np.ndarray
             Observed data.
         filter : DFSVBellmanFilter
             Bellman filter object.
+        N : int
+            Number of observed series.
+        K : int
+            Number of factors.
 
         Returns
         -------
         float
             The Bellman objective value.
         """
+        #Create correct dataclass
+        params_unconstrained = DFSVParamsDataclass.from_dict(params_unconstrained,N,K)
+        #Transform parameters back to constrained space
+        def stablize_matrix(matrix):
+            norm = jnp.linalg.norm(matrix, ord=2)
+            return matrix / (1.0 + norm)
+        # 1. Build stable versions
+        Phi_f_stable = stablize_matrix(params_unconstrained.Phi_f)
+        Phi_h_stable = stablize_matrix(params_unconstrained.Phi_h)
+
+        # 2. Exponential transform for sigma^2 and Q_h
+        sigma2_pos = jnp.exp(params_unconstrained.sigma2)
+        Q_h_pos = jnp.exp(params_unconstrained.Q_h)
+
+        # 3. Create the new param object
+        constrained_params = params_unconstrained.replace(
+            Phi_f=Phi_f_stable,
+            Phi_h=Phi_h_stable,
+            sigma2=sigma2_pos,
+            Q_h=Q_h_pos,
+        )
+
         # run the bellman filter
-        ll = DFSVBellmanFilter.jit_log_likelihood_of_params(filter, params, y)
+        ll = DFSVBellmanFilter.jit_log_likelihood_of_params(filter, constrained_params, y)
         return -ll
     return bellman_objective, create_simple_model, create_training_data
 
@@ -278,6 +337,7 @@ def imports(__file__):
     import numpy as np
     import jax
     import jax.numpy as jnp
+    from rich import print
     from functools import partial
     from jax import jit
     from sympy import true
@@ -289,7 +349,7 @@ def imports(__file__):
     # Import parameter classes
     import marimo as mo
     from functions.simulation import DFSV_params, simulate_DFSV
-    from functions.jax_params import DFSVParamsDataclass, DFSVParamsPytree
+    from functions.jax_params import DFSVParamsDataclass, dfsv_params_to_dict
     from functions.bellman_filter import DFSVBellmanFilter
     from jaxopt import OptaxSolver
     import optax
@@ -299,7 +359,6 @@ def imports(__file__):
     return (
         DFSVBellmanFilter,
         DFSVParamsDataclass,
-        DFSVParamsPytree,
         DFSV_params,
         OptaxSolver,
         jax,
@@ -312,6 +371,7 @@ def imports(__file__):
         os,
         partial,
         plt,
+        print,
         simulate_DFSV,
         sys,
         time,
