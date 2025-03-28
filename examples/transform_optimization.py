@@ -12,7 +12,7 @@ import os
 import sys
 import time
 from functools import partial
-
+import optimistix as optx
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -318,40 +318,53 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
     opt = optax.adam(learning_rate=learning_rate)
     
     # Define objective function for standard optimization
-    def objective(params):
+    def objective(params,args):
         return bellman_objective(params, returns, filter)
     
     # Define objective function for transformed optimization
-    def objective_transformed(transformed_params):
+    def objective_transformed(transformed_params,args):
         return transformed_bellman_objective(transformed_params, returns, filter)
     
     # Create solvers
     # solver_standard = OptaxSolver(opt=opt, fun=objective, maxiter=maxiter, tol=1e-6,verbose=True)
     # solver_transformed = OptaxSolver(opt=opt, fun=objective_transformed, maxiter=maxiter, tol=1e-6,verbose=True)
-    solver_standard=jaxopt.LBFGS(fun=objective, maxiter=maxiter, tol=1e-6, verbose=True)
-    solver_transformed=jaxopt.LBFGS(fun=objective_transformed, maxiter=maxiter, tol=1e-6, verbose=True)
+    # solver_standard=jaxopt.LBFGS(fun=objective, maxiter=maxiter, tol=1e-6, verbose=True)
+    # solver_standard=optx.BFGS(rtol=1e-3, atol=1e-3,norm=optx.rms_norm, verbose=frozenset({"step_size", "loss"}))
+    # solver_transformed=optx.BFGS(rtol=1e-3, atol=1e-3,norm=optx.rms_norm, verbose=frozenset({"step_size", "loss"}))
+    # solver_transformed=jaxopt.LBFGS(fun=objective_transformed, maxiter=maxiter, tol=1e-6, verbose=True)
     # Transform parameters for transformed optimization
+    #Define line search
+    # line_search=optx.LinearTrustRegion()
+    # solver=optx.NonlinearCG(rtol=1e-3, atol=1e-3,norm=optx.rms_norm, search=line_search)
+    solver=optx.OptaxMinimiser(optim=opt,rtol=1e-3, atol=1e-3,norm=optx.rms_norm, verbose=frozenset({"step", "loss"}))
     transformed_params = transform_params(perturbed_params)
     
     # Run standard optimization
     print("\nStarting standard optimization...")
     start_time = time.time()
-    result_standard = solver_standard.run(perturbed_params)
+    result_standard = optx.minimise(fn=objective,solver=solver, y0=perturbed_params,max_steps=maxiter,throw=False)
     standard_time = time.time() - start_time
     print(f"Standard optimization took {standard_time:.2f} seconds")
     
     # Run transformed optimization
     print("\nStarting transformed optimization...")
     start_time = time.time()
-    result_transformed_raw = solver_transformed.run(transformed_params)
+    # result_transformed_raw = solver_transformed.run(transformed_params)
+    result_transformed_raw = optx.minimise(fn=objective_transformed,solver=solver, y0=transformed_params,max_steps=maxiter,throw=False)
     transformed_time = time.time() - start_time
     print(f"Transformed optimization took {transformed_time:.2f} seconds")
     
     # Transform parameters back to original space
-    result_transformed = untransform_params(result_transformed_raw.params)
+    result_transformed=untransform_params(result_transformed_raw.value)
+    #caclulate objective values
+    obj_standard=objective(result_standard.value,None)
+    obj_transformed=objective_transformed(result_transformed_raw.value,None)
+    return (result_standard.value, result_transformed, 
+            obj_standard, obj_transformed)
+    # result_transformed = untransform_params(result_transformed_raw.params)
     
-    return (result_standard.params, result_transformed, 
-            result_standard.state.value, result_transformed_raw.state.value)
+    # return (result_standard.params, result_transformed, 
+    #         result_standard.state.value, result_transformed_raw.state.value)
 
 
 def main():
@@ -376,7 +389,7 @@ def main():
     
     # Run optimization with both methods
     standard_params, transformed_params, standard_loss, transformed_loss = \
-        optimize_with_transformations(params, returns, filter, T=T, maxiter=500)
+        optimize_with_transformations(params, returns, filter, T=T, maxiter=300)
     
     print("\nOptimization results:")
     print(f"Standard optimization final loss:      {standard_loss:.4f}")
