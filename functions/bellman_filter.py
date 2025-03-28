@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Tuple, Union
+from typing import Tuple, Union, Dict, Any
 
 import jax
 import jax.numpy as jnp
@@ -10,6 +10,7 @@ from jax import jit
 
 from functions.filters import DFSVFilter
 from functions.simulation import DFSV_params
+from functions.jax_params import DFSVParamsDataclass
 
 
 class DFSVBellmanFilter(DFSVFilter):
@@ -43,6 +44,28 @@ class DFSVBellmanFilter(DFSVFilter):
         jax.config.update("jax_enable_x64", True)
 
         self._setup_jax_functions()
+
+    # Helper method to standardize parameter handling
+    def _process_params(self, params: Union[DFSV_params, Dict[str, Any], DFSVParamsDataclass]) -> Union[DFSV_params, DFSVParamsDataclass]:
+        """
+        Convert different parameter formats to a consistent format.
+        
+        Args:
+            params: Parameters in DFSV_params, DFSVParamsDataclass, or dictionary format
+            
+        Returns:
+            Union[DFSV_params, DFSVParamsDataclass]: Parameters in a consistent format
+        """
+        if isinstance(params, dict):
+            # Convert dictionary to DFSVParamsDataclass
+            N = params.get('N', self.N)  # Use self.N if not in dict
+            K = params.get('K', self.K)  # Use self.K if not in dict
+            
+            # Convert to DFSVParamsDataclass
+            return DFSVParamsDataclass.from_dict(params, N, K)
+        
+        # If it's already a DFSV_params or DFSVParamsDataclass, return it
+        return params
 
     def _setup_jax_functions(self):
         """
@@ -666,17 +689,20 @@ class DFSVBellmanFilter(DFSVFilter):
             return jnp.array(1e10), jnp.zeros_like(x)
 
     def initialize_state(
-        self, params: DFSV_params
+        self, params: Union[DFSV_params, Dict[str, Any], DFSVParamsDataclass]
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Initialize state and covariance.
 
         Args:
-            params: Model parameters, either traditional DFSV_params or JAX-compatible DFSVParamsPytree.
+            params: Model parameters in any supported format (DFSV_params, Dictionary, or DFSVParamsDataclass).
 
         Returns:
             Tuple[np.ndarray, np.ndarray]: Initial state and covariance.
         """
+        # Process parameters to ensure correct format
+        params = self._process_params(params)
+        
         K = self.K
         initial_factors = jnp.zeros((K, 1))
 
@@ -711,7 +737,7 @@ class DFSVBellmanFilter(DFSVFilter):
 
     def predict(
         self,
-        params: DFSV_params,
+        params: Union[DFSV_params, Dict[str, Any], DFSVParamsDataclass],
         state: np.ndarray,
         cov: np.ndarray,
     ) -> Tuple[np.ndarray, np.ndarray]:
@@ -719,13 +745,16 @@ class DFSVBellmanFilter(DFSVFilter):
         Perform the Bellman prediction step.
 
         Args:
-            params: Parameters of the DFSV model (either DFSV_params or DFSVParamsPytree).
+            params: Parameters of the DFSV model in any supported format.
             state: Current state estimate.
             cov: Current state covariance.
 
         Returns:
             Tuple[np.ndarray, np.ndarray]: Predicted state and covariance.
         """
+        # Process parameters to ensure correct format
+        params = self._process_params(params)
+        
         # Extract parameters
         K = self.K
         Phi_f = jnp.array(params.Phi_f)
@@ -903,7 +932,8 @@ class DFSVBellmanFilter(DFSVFilter):
                 return iterable
 
             print("Warning: tqdm not installed. No progress bar will be shown.")
-
+            
+        
         # Convert y to JAX array and ensure it's in (T, N) format
         y = jnp.array(y)
         if y.shape[0] < y.shape[1]:  # If (N, T) format
@@ -1014,7 +1044,7 @@ class DFSVBellmanFilter(DFSVFilter):
 
     def log_likelihood_of_params(
         self,
-        pytree_params: DFSV_params,
+        pytree_params: Union[DFSV_params, Dict[str, Any], DFSVParamsDataclass],
         observations: jnp.ndarray,
     ) -> float:
         """
@@ -1024,14 +1054,17 @@ class DFSVBellmanFilter(DFSVFilter):
         method to efficiently calculate the log-likelihood.
 
         Args:
-            pytree_params: JAX-compatible parameters to evaluate
+            pytree_params: Parameters in any supported format (DFSV_params, Dictionary, or DFSVParamsDataclass)
             observations: Observation data with shape (T, N) or (N, T)
 
         Returns:
             float: Log-likelihood value
         """
+        # Process parameters to ensure correct format
+        processed_params = self._process_params(pytree_params)
+        
         # Use the non-jitted implementation to avoid issues with self
-        return self._log_likelihood_of_params_impl(pytree_params, observations)
+        return self._log_likelihood_of_params_impl(processed_params, observations)
 
     def _log_likelihood_of_params_impl(
         self,
@@ -1106,7 +1139,6 @@ class DFSVBellmanFilter(DFSVFilter):
 
         # Initialize state
         init_state, init_cov = filter_instance.initialize_state(pytree_params)
-
         # Define a single step of the filter
         def filter_step(carry, observation):
             state, cov, ll_total = carry
