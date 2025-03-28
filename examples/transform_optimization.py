@@ -35,7 +35,7 @@ from functions.simulation import DFSV_params, simulate_DFSV
 
 # Enable 64-bit precision for better numerical stability
 jax.config.update("jax_enable_x64", True)
-
+jax.config.update("jax_debug_nans", True)
 PRIOR_MU_MEAN = -1.0
 PRIOR_MU_STD_DEV = 0.5 # Tune this value! Start with something moderate.
 
@@ -200,7 +200,9 @@ def bellman_objective(params, y, filter,prior_mean,prior_std_dev):
     """
     # Original negative log-likelihood
     neg_ll = -filter.jit_log_likelihood_of_params(filter, params, y)
+    # neg_ll = -filter.log_likelihood_of_params(params, y)
     safe_neg_ll = jnp.nan_to_num(neg_ll, nan=1e10, posinf=1e10, neginf=1e10)
+    # safe_neg_ll=neg_ll
 
     # Calculate the penalty for mu
     # Ensure mu is treated as scalar if needed (it is 1D array of size K=1 here)
@@ -401,9 +403,9 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
             self.verbose = verbose
         
     # Transform parameters for transformed optimization
-    # solver = optx.OptaxMinimiser(optim=opt, rtol=1e-3, atol=1e-3, norm=optx.rms_norm, 
-    #                             verbose=frozenset({"step", "loss"}))
-    solver=optx.BFGS(rtol=1e-3, atol=1e-3, norm=optx.max_norm,verbose=frozenset({"step_size", "loss"}))
+    solver = optx.OptaxMinimiser(optim=opt, rtol=1e-3, atol=1e-3, norm=optx.rms_norm, 
+                                verbose=frozenset({"step", "loss"}))
+    # solver=optx.BFGS(rtol=1e-3, atol=1e-3, norm=optx.max_norm,verbose=frozenset({"step_size", "loss"}))
     # solver=CustomBFGS(rtol=1e-5, atol=1e-5, norm=optx.max_norm, verbose=frozenset({"step_size", "loss"}))
     transformed_params = transform_params(uninformed_params)
     
@@ -569,7 +571,7 @@ def main():
     jax_params = DFSVParamsDataclass.from_dfsv_params(params)
     
     # Compare gradients
-    compare_gradients(jax_params, returns, filter)
+    # compare_gradients(jax_params, returns, filter)
     
     # Run optimization with both methods
     standard_params, transformed_params, standard_loss, transformed_loss = \
@@ -638,7 +640,16 @@ def main():
     def format_param(p, name):
         attr = getattr(p, name)
         if hasattr(attr, 'shape') and attr.size > 1:
-            if attr.ndim == 1 and attr.size <= 3:
+            if name == 'lambda_r':
+                # Special handling for lambda_r to always show all elements
+                if attr.ndim == 2:
+                    rows = []
+                    for i in range(attr.shape[0]):
+                        rows.append('[' + ', '.join([f'{x:.4f}' for x in attr[i]]) + ']')
+                    return '[' + ', '.join(rows) + ']'
+                else:
+                    return f"[{', '.join([f'{x:.4f}' for x in attr])}]"
+            elif attr.ndim == 1 and attr.size <= 3:
                 # For small 1D arrays, show values
                 return f"[{', '.join([f'{x:.4f}' for x in attr])}]"
             elif attr.ndim == 2 and attr.shape[0] == 1 and attr.shape[1] == 1:

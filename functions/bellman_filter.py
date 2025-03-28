@@ -268,7 +268,7 @@ class DFSVBellmanFilter(DFSVFilter):
         pred_obs = lambda_r @ f
         innovation = observation - pred_obs
         exp_log_vols = jnp.exp(log_vols)
-        A = self.build_covariance(lambda_r, exp_log_vols, sigma2)+1e-8 * jnp.eye(lambda_r.shape[0]) #add small jitter
+        A = self.build_covariance(lambda_r, exp_log_vols, sigma2)
 
         # Compute log-likelihood with Cholesky decomposition
         L = jnp.linalg.cholesky(A)
@@ -277,8 +277,9 @@ class DFSVBellmanFilter(DFSVFilter):
         alpha_vec = jax.scipy.linalg.solve_triangular(L, innovation, lower=True)
         quad_form = jnp.sum(alpha_vec**2)
 
-        # Log determinant
-        logdet_A = 2.0 * jnp.sum(jnp.log(jnp.diag(L)))
+        # Safe log determinant
+        diag_L= jnp.diag(L)
+        logdet_A = 2.0 * jnp.sum(jnp.log(jnp.maximum(diag_L, 1e-10)))
 
         # log-likelihood
         N_ = observation.shape[0]
@@ -556,31 +557,26 @@ class DFSVBellmanFilter(DFSVFilter):
         exp_log_vols = jnp.exp(log_vols)
         A = self.build_covariance(lambda_r, exp_log_vols, sigma2)
 
-        # Compute negative log-likelihood with Cholesky decomposition
-        try:
-            L = jnp.linalg.cholesky(A)
+        L = jnp.linalg.cholesky(A)
 
-            # Compute quadratic form via triangular solve
-            alpha_vec = jax.scipy.linalg.solve_triangular(L, innovation, lower=True)
-            quad_form = jnp.sum(alpha_vec**2)
+        # Compute quadratic form via triangular solve
+        alpha_vec = jax.scipy.linalg.solve_triangular(L, innovation, lower=True)
+        quad_form = jnp.sum(alpha_vec**2)
 
-            # Log determinant
-            logdet_A = 2.0 * jnp.sum(jnp.log(jnp.diag(L)))
+        # Safe log determinant
+        diag_L= jnp.diag(L)
+        logdet_A = 2.0 * jnp.sum(jnp.log(jnp.maximum(diag_L, 1e-10)))
 
-            # Negative log-likelihood
-            N_ = observation.shape[0]
-            neg_log_lik = 0.5 * (N_ * jnp.log(2.0 * jnp.pi) + logdet_A + quad_form)
+        # Negative log-likelihood
+        N_ = observation.shape[0]
+        neg_log_lik = 0.5 * (N_ * jnp.log(2.0 * jnp.pi) + logdet_A + quad_form)
 
-            # Prior penalty
-            state_diff = alpha - predicted_state
-            penalty = 0.5 * (state_diff @ (I_pred @ state_diff))
+        # Prior penalty
+        state_diff = alpha - predicted_state
+        penalty = 0.5 * (state_diff @ (I_pred @ state_diff))
 
-            # Return negative log-posterior
-            return neg_log_lik + penalty
-
-        except:
-            # In case of Cholesky failure, return a large value
-            return jnp.array(1e10)
+        # Return negative log-posterior
+        return neg_log_lik + penalty
 
     def _kl_penalty_impl(self, a_pred, a_updated, I_pred, I_updated):
         """
@@ -649,46 +645,43 @@ class DFSVBellmanFilter(DFSVFilter):
         A = self.build_covariance(lambda_r, exp_h, sigma2)
 
         # Compute objective and intermediate values for gradient using Cholesky
-        try:
-            L = jnp.linalg.cholesky(A)
-            alpha_vec = jax.scipy.linalg.solve_triangular(L, innovation, lower=True)
-            quad_form = jnp.sum(alpha_vec**2)
-            logdet_A = 2.0 * jnp.sum(jnp.log(jnp.diag(L)))
+        L = jnp.linalg.cholesky(A)
+        alpha_vec = jax.scipy.linalg.solve_triangular(L, innovation, lower=True)
+        quad_form = jnp.sum(alpha_vec**2)
+        
+        diag_L= jnp.diag(L)
+        logdet_A = 2.0 * jnp.sum(jnp.log(jnp.maximum(diag_L, 1e-10)))
 
-            # Negative log-likelihood
-            neg_log_lik = 0.5 * (N_ * jnp.log(2.0 * jnp.pi) + logdet_A + quad_form)
+        # Negative log-likelihood
+        neg_log_lik = 0.5 * (N_ * jnp.log(2.0 * jnp.pi) + logdet_A + quad_form)
 
-            # Prior penalty
-            state_diff = x - predicted_state
-            penalty = 0.5 * (state_diff @ (I_pred @ state_diff))
+        # Prior penalty
+        state_diff = x - predicted_state
+        penalty = 0.5 * (state_diff @ (I_pred @ state_diff))
 
-            # Total objective
-            obj = neg_log_lik + penalty
+        # Total objective
+        obj = neg_log_lik + penalty
 
-            # Compute gradient components using the already computed Cholesky factor
-            A_inv_innovation = jax.scipy.linalg.cho_solve((L, True), innovation)
-            A_inv_lambda = jax.scipy.linalg.cho_solve((L, True), lambda_r)
+        # Compute gradient components using the already computed Cholesky factor
+        A_inv_innovation = jax.scipy.linalg.cho_solve((L, True), innovation)
+        A_inv_lambda = jax.scipy.linalg.cho_solve((L, True), lambda_r)
 
-            # Gradient w.r.t factors
-            grad_f = -lambda_r.T @ A_inv_innovation
+        # Gradient w.r.t factors
+        grad_f = -lambda_r.T @ A_inv_innovation
 
-            # Gradient w.r.t log-volatilities
-            term1 = jnp.diag(lambda_r.T @ A_inv_lambda)
-            proj = lambda_r.T @ A_inv_innovation
-            term2 = proj**2
-            grad_h = 0.5 * exp_h * (term1 - term2)
+        # Gradient w.r.t log-volatilities
+        term1 = jnp.diag(lambda_r.T @ A_inv_lambda)
+        proj = lambda_r.T @ A_inv_innovation
+        term2 = proj**2
+        grad_h = 0.5 * exp_h * (term1 - term2)
 
-            # Add prior penalty gradient
-            penalty_grad = I_pred @ state_diff
+        # Add prior penalty gradient
+        penalty_grad = I_pred @ state_diff
 
-            # Combine gradients
-            grad = jnp.concatenate([grad_f, grad_h]) + penalty_grad
+        # Combine gradients
+        grad = jnp.concatenate([grad_f, grad_h]) + penalty_grad
 
-            return obj, grad.flatten()
-
-        except:
-            # In case of Cholesky failure, return a large value and zero gradient
-            return jnp.array(1e10), jnp.zeros_like(x)
+        return obj, grad.flatten()
 
     def initialize_state(
         self, params: Union[DFSV_params, Dict[str, Any], DFSVParamsDataclass]
@@ -832,16 +825,10 @@ class DFSVBellmanFilter(DFSVFilter):
         jax_observation = jnp.array(observation)
 
         # Compute information matrix (inverse of predicted covariance)
-        try:
-            # Use Cholesky for numerical stability
-            jax_predicted_cov = jnp.array(predicted_cov)+ 1e-8 * jnp.eye(self.state_dim)
-            L = jax.scipy.linalg.cholesky(jax_predicted_cov, lower=True)
-            jax_I_pred = jax.scipy.linalg.cho_solve((L, True), jnp.eye(self.state_dim))
-        except:
-            # Fallback to regularized pseudoinverse
-            jax_I_pred = jnp.linalg.pinv(
-                jnp.array(predicted_cov) + 1e-8 * jnp.eye(self.state_dim)
-            )
+        # Use Cholesky for numerical stability
+        jax_predicted_cov = jnp.array(predicted_cov)+ 1e-8 * jnp.eye(self.state_dim)
+        L = jax.scipy.linalg.cholesky(jax_predicted_cov, lower=True)
+        jax_I_pred = jax.scipy.linalg.cho_solve((L, True), jnp.eye(self.state_dim))
 
         # Ensure symmetry
         jax_I_pred = (jax_I_pred + jax_I_pred.T) / 2.0
