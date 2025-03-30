@@ -3,11 +3,17 @@ Likelihood functions for Dynamic Factor Stochastic Volatility models.
 
 This module provides functions to compute the log-likelihood for DFSV models,
 with special attention to proper expansion of expressions containing logarithms
-of exponential terms.
+of exponential terms. Also includes objective functions for optimization.
 """
 
 import numpy as np
+import jax.numpy as jnp
+from jax import jit, lax
+from functools import partial
 from functions.simulation import DFSV_params
+from functions.jax_params import DFSVParamsDataclass
+from functions.bellman_filter import DFSVBellmanFilter
+from functions.transformations import untransform_params
 
 
 def log_likelihood_observation(y_t: np.ndarray, f_t: np.ndarray, 
@@ -223,3 +229,93 @@ def kalman_filter_log_likelihood(y: np.ndarray, params: DFSV_params) -> float:
     _, _, log_likelihood = kf.filter(y)
     
     return log_likelihood
+
+
+@partial(jit, static_argnames=["filter"])
+def bellman_objective(params: DFSVParamsDataclass, y: jnp.ndarray, filter: DFSVBellmanFilter, 
+                      prior_mean: float, prior_std_dev: float) -> float:
+    """
+    Compute the negative log-likelihood using the Bellman filter, potentially with priors.
+    
+    Parameters
+    ----------
+    params : DFSVParamsDataclass
+        Model parameters
+    y : jnp.ndarray
+        Observed data
+    filter : DFSVBellmanFilter
+        Filter object
+    prior_mean : float
+        Mean for the prior distribution (e.g., on mu)
+    prior_std_dev : float
+        Standard deviation for the prior distribution (e.g., on mu)
+        
+    Returns
+    -------
+    float
+        Negative log-likelihood value + prior penalty
+    """
+    # Original negative log-likelihood
+    neg_ll = -filter.jit_log_likelihood_of_params(filter, params, y)
+    safe_neg_ll = jnp.nan_to_num(neg_ll, nan=1e10, posinf=1e10, neginf=1e10)
+    
+    # Define functions for the conditional penalty calculation
+    def calculate_penalty(operands):
+        p, mean, std_dev = operands
+        # Assuming K=1 case here based on the original logic
+        current_mu = p.mu.reshape(()) # Reshape (1,) array to scalar
+        return 0.5 * jnp.square((current_mu - mean) / std_dev)
+
+    def no_penalty(operands):
+        # Return 0.0 with the same dtype as the penalty calculation
+        return jnp.array(0.0, dtype=safe_neg_ll.dtype)
+
+    # Condition for applying the penalty
+    apply_penalty_cond = (params.K == 1) & (prior_std_dev > 0)
+    
+    # Operands for the conditional functions
+    penalty_operands = (params, prior_mean, prior_std_dev)
+
+    # Use lax.cond for conditional execution compatible with jit
+    mu_penalty = lax.cond(
+        apply_penalty_cond,
+        calculate_penalty, # Function to call if True
+        no_penalty,        # Function to call if False
+        penalty_operands   # Operands passed to the chosen function
+    )
+
+    # Add penalty to the negative log-likelihood
+    total_objective = safe_neg_ll + mu_penalty
+    return total_objective
+
+
+@partial(jit, static_argnames=["filter"])
+def transformed_bellman_objective(transformed_params: DFSVParamsDataclass, y: jnp.ndarray, 
+                                  filter: DFSVBellmanFilter, prior_mean: float, 
+                                  prior_std_dev: float) -> float:
+    """
+    Compute the objective function with transformed parameters.
+    
+    Parameters
+    ----------
+    transformed_params : DFSVParamsDataclass
+        Model parameters in transformed (unconstrained) space
+    y : jnp.ndarray
+        Observed data
+    filter : DFSVBellmanFilter
+        Filter object
+    prior_mean : float
+        Mean for the prior distribution (e.g., on mu)
+    prior_std_dev : float
+        Standard deviation for the prior distribution (e.g., on mu)
+        
+    Returns
+    -------
+    float
+        Negative log-likelihood value + prior penalty
+    """
+    # Transform parameters back to original space
+    original_params = untransform_params(transformed_params)
+    
+    # Run the bellman filter with original parameters
+    return bellman_objective(original_params, y, filter, prior_mean, prior_std_dev)

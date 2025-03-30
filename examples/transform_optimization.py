@@ -32,107 +32,18 @@ from jaxopt import OptaxSolver
 from functions.bellman_filter import DFSVBellmanFilter
 from functions.jax_params import DFSVParamsDataclass
 from functions.simulation import DFSV_params, simulate_DFSV
+# Import the transformation functions
+from functions.transformations import transform_params, untransform_params
+# Import the objective functions
+from functions.likelihood_functions import bellman_objective, transformed_bellman_objective
+# Import plotting utilities
+from utils.plotting import plot_variance_comparison
 
 # Enable 64-bit precision for better numerical stability
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_debug_nans", True)
 PRIOR_MU_MEAN = -1.0
 PRIOR_MU_STD_DEV = 0.5 # Tune this value! Start with something moderate.
-
-def transform_params(params):
-    """
-    Transform bounded parameters to unconstrained space for optimization.
-    
-    Parameters:
-    -----------
-    params : DFSVParamsDataclass
-        Model parameters in their natural (constrained) space
-        
-    Returns:
-    --------
-    DFSVParamsDataclass
-        Transformed parameters in unconstrained space
-    """
-    # Create a copy to avoid modifying the original
-    result = copy.deepcopy(params)
-    
-    # Apply logit transform to persistence parameters (bounded in 0,1)
-    # logit(p) = log(p/(1-p))
-    eps = 1e-6  # Small epsilon to avoid numerical issues at boundaries
-    
-    # Transform Phi_f (factor persistence)
-    phi_f_bounded = jnp.clip(params.Phi_f, eps, 1-eps)
-    transformed_phi_f = jnp.log(phi_f_bounded / (1 - phi_f_bounded))
-    
-    # Transform Phi_h (log-volatility persistence)
-    phi_h_bounded = jnp.clip(params.Phi_h, eps, 1-eps)
-    transformed_phi_h = jnp.log(phi_h_bounded / (1 - phi_h_bounded))
-    
-    # Transform variance parameters (must be positive) using log transform
-    # Only transform diagonal elements of sigma2 (force off-diagonals to zero)
-    if params.sigma2.ndim > 1:  # Handle matrix case
-        diag_indices = jnp.diag_indices_from(params.sigma2)
-        transformed_sigma2 = jnp.zeros_like(params.sigma2)
-        transformed_sigma2 = transformed_sigma2.at[diag_indices].set(
-            jnp.log(jnp.maximum(jnp.diag(params.sigma2), eps))
-        )
-    else:  # Handle vector case
-        transformed_sigma2 = jnp.log(jnp.maximum(params.sigma2, eps))
-    
-    transformed_q_h = jnp.log(jnp.maximum(params.Q_h, eps))
-    
-    # Return a new params object with transformed values
-    return result.replace(
-        Phi_f=transformed_phi_f,
-        Phi_h=transformed_phi_h,
-        sigma2=transformed_sigma2,
-        Q_h=transformed_q_h
-    )
-
-
-def untransform_params(transformed_params):
-    """
-    Transform parameters back from unconstrained to constrained space.
-    
-    Parameters:
-    -----------
-    transformed_params : DFSVParamsDataclass
-        Transformed parameters in unconstrained space
-        
-    Returns:
-    --------
-    DFSVParamsDataclass
-        Parameters in their natural (constrained) space
-    """
-    # Apply sigmoid to transform back persistence parameters
-    # sigmoid(x) = 1/(1+exp(-x))
-    phi_f_original = 1.0 / (1.0 + jnp.exp(-transformed_params.Phi_f))
-    phi_h_original = 1.0 / (1.0 + jnp.exp(-transformed_params.Phi_h))
-    
-    # Apply exp to transform back variance parameters
-    # Handle matrix vs vector case for sigma2
-    if transformed_params.sigma2.ndim > 1:
-        # For matrix case, only untransform diagonal elements
-        diag_indices = jnp.diag_indices_from(transformed_params.sigma2)
-        sigma2_original = jnp.zeros_like(transformed_params.sigma2)  # Start with zeros
-        # Only exponentiate and place values on the diagonal
-        sigma2_original = sigma2_original.at[diag_indices].set(
-            jnp.exp(transformed_params.sigma2[diag_indices])
-        )
-    else:
-        # For vector case (diagonal-only representation)
-        sigma2_original = jnp.exp(transformed_params.sigma2)
-    
-    q_h_original = jnp.exp(transformed_params.Q_h)
-    
-    # Return a new params object with untransformed values
-    return transformed_params.replace(
-        Phi_f=phi_f_original,
-        Phi_h=phi_h_original,
-        sigma2=sigma2_original,
-        Q_h=q_h_original
-    )
-
 
 def create_simple_model():
     """Create a simple DFSV model with one factor."""
@@ -179,68 +90,6 @@ def create_training_data(params, T=100, seed=42):
     return returns, factors, log_vols
 
 
-@partial(jit, static_argnames=["filter","prior_mean", "prior_std_dev"])
-def bellman_objective(params, y, filter,prior_mean,prior_std_dev):
-    """
-    Compute the negative log-likelihood using the Bellman filter.
-    
-    Parameters:
-    -----------
-    params : DFSVParamsDataclass
-        Model parameters
-    y : jnp.ndarray
-        Observed data
-    filter : DFSVBellmanFilter
-        Filter object
-        
-    Returns:
-    --------
-    float
-        Negative log-likelihood value
-    """
-    # Original negative log-likelihood
-    neg_ll = -filter.jit_log_likelihood_of_params(filter, params, y)
-    # neg_ll = -filter.log_likelihood_of_params(params, y)
-    safe_neg_ll = jnp.nan_to_num(neg_ll, nan=1e10, posinf=1e10, neginf=1e10)
-    # safe_neg_ll=neg_ll
-
-    # Calculate the penalty for mu
-    # Ensure mu is treated as scalar if needed (it is 1D array of size K=1 here)
-    current_mu = params.mu.reshape(()) # Reshape (1,) array to scalar
-    mu_penalty = 0.5 * jnp.square((current_mu - prior_mean) / prior_std_dev)
-
-    # Add penalty to the negative log-likelihood
-    total_objective = safe_neg_ll + mu_penalty
-
-    return total_objective
-
-
-@partial(jit, static_argnames=["filter","prior_mean", "prior_std_dev"])
-def transformed_bellman_objective(transformed_params, y, filter,prior_mean,prior_std_dev):
-    """
-    Compute the objective function with transformed parameters.
-    
-    Parameters:
-    -----------
-    transformed_params : DFSVParamsDataclass
-        Model parameters in transformed (unconstrained) space
-    y : jnp.ndarray
-        Observed data
-    filter : DFSVBellmanFilter
-        Filter object
-        
-    Returns:
-    --------
-    float
-        Negative log-likelihood value
-    """
-    # Transform parameters back to original space
-    original_params = untransform_params(transformed_params)
-    
-    # Run the bellman filter with original parameters
-    return bellman_objective(original_params, y, filter,prior_mean,prior_std_dev)
-
-
 def compare_gradients(params, returns, filter):
     """
     Compare gradients in original vs transformed parameter spaces.
@@ -259,9 +108,9 @@ def compare_gradients(params, returns, filter):
     # Convert to JAX array for gradient computation
     jax_returns = jnp.array(returns)
     
-    # Create gradient functions 
-    grad_orig = grad(lambda p: bellman_objective(p, jax_returns, filter,PRIOR_MU_MEAN, PRIOR_MU_STD_DEV))
-    grad_trans = grad(lambda p: transformed_bellman_objective(p, jax_returns, filter,PRIOR_MU_MEAN, PRIOR_MU_STD_DEV))
+    # Create gradient functions - pass prior info explicitly
+    grad_orig = grad(lambda p: bellman_objective(p, jax_returns, filter, PRIOR_MU_MEAN, PRIOR_MU_STD_DEV))
+    grad_trans = grad(lambda p: transformed_bellman_objective(p, jax_returns, filter, PRIOR_MU_MEAN, PRIOR_MU_STD_DEV))
     
     # Compute gradients in original space
     start_time = time.time()
@@ -369,13 +218,15 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
     learning_rate = 0.01
     opt = optax.adam(learning_rate=learning_rate)
     
-    # Define objective function for standard optimization
+    # Define objective function for standard optimization - use imported function
+    # Pass prior info explicitly
     def objective(params, state=None):
-        return bellman_objective(params, returns, filter,PRIOR_MU_MEAN, PRIOR_MU_STD_DEV)
+        return bellman_objective(params, returns, filter, PRIOR_MU_MEAN, PRIOR_MU_STD_DEV)
     
-    # Define objective function for transformed optimization
+    # Define objective function for transformed optimization - use imported function
+    # Pass prior info explicitly
     def objective_transformed(transformed_params, state=None):
-        return transformed_bellman_objective(transformed_params, returns, filter,PRIOR_MU_MEAN, PRIOR_MU_STD_DEV)
+        return transformed_bellman_objective(transformed_params, returns, filter, PRIOR_MU_MEAN, PRIOR_MU_STD_DEV)
     #Custom BFGS Solver
     class CustomBFGS(optx.AbstractBFGS):
         rtol:float
@@ -426,131 +277,13 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
     # Transform parameters back to original space
     result_transformed = untransform_params(result_transformed_raw.value)
     
-    # Calculate objective values
-    obj_standard = objective(result_standard.value, None)
-    obj_transformed = objective_transformed(result_transformed_raw.value, None)
+    # Calculate objective values - pass prior info explicitly
+    obj_standard = bellman_objective(result_standard.value, returns, filter, PRIOR_MU_MEAN, PRIOR_MU_STD_DEV)
+    # For transformed, we need the raw transformed output and call the transformed objective
+    obj_transformed = transformed_bellman_objective(result_transformed_raw.value, returns, filter, PRIOR_MU_MEAN, PRIOR_MU_STD_DEV)
     
     return (result_standard.value, result_transformed, 
             obj_standard, obj_transformed)
-
-
-def calculate_return_variance(params, log_vols):
-    """
-    Calculate the variance of returns based on model parameters and log volatility.
-    
-    Parameters:
-    -----------
-    params : DFSVParamsDataclass
-        Model parameters
-    log_vols : np.ndarray
-        Log volatility values
-        
-    Returns:
-    --------
-    np.ndarray
-        Time series of covariance matrices
-    """
-    N, K = params.N, params.K
-    lambda_r = params.lambda_r  # NxK
-    sigma2 = params.sigma2      # Nx1 or NxN
-    
-    # Ensure log_vols is 2D
-    if log_vols.ndim == 1:
-        log_vols = log_vols.reshape(-1, 1)
-    
-    T = log_vols.shape[0]
-    
-    # Initialize result array to store covariance matrices
-    result = jnp.zeros((T, N, N))
-    
-    # Convert log-volatility to volatility
-    vol = jnp.exp(log_vols)  # TxK
-    
-    # Calculate covariances for each time point
-    for t in range(T):
-        # Create the diagonal volatility matrix (KxK)
-        vol_diag_t = jnp.diag(vol[t])
-        
-        # Calculate the factor-driven part of covariance: lambda_r * vol_diag_t * lambda_r.T
-        factor_cov = lambda_r @ vol_diag_t @ lambda_r.T
-        
-        # Add idiosyncratic variance (diagonal or full matrix)
-        if sigma2.ndim == 1:
-            # Diagonal sigma2
-            total_cov = factor_cov + jnp.diag(sigma2)
-        else:
-            # Full sigma2 matrix
-            total_cov = factor_cov + sigma2
-        
-        result = result.at[t].set(total_cov)
-    
-    return result
-
-
-def plot_variance_comparison(true_params, standard_params, transformed_params, 
-                           true_log_vols, standard_log_vols, transformed_log_vols,
-                           returns, save_path=None):
-    """
-    Plot comparison of predicted vs realized return variances.
-    
-    Parameters:
-    -----------
-    true_params, standard_params, transformed_params : DFSVParamsDataclass
-        Parameter sets to compare
-    true_log_vols, standard_log_vols, transformed_log_vols : np.ndarray
-        Log volatility estimates from different methods
-    returns : np.ndarray
-        Observed returns
-    save_path : str, optional
-        Path to save the plot
-    """
-    import matplotlib.pyplot as plt
-    
-    # Calculate variances
-    true_var = calculate_return_variance(true_params, true_log_vols)
-    standard_var = calculate_return_variance(standard_params, standard_log_vols)
-    transformed_var = calculate_return_variance(transformed_params, transformed_log_vols)
-    
-    
-    # Extract diagonal elements (individual asset variances)
-    true_diag_var = jnp.array([true_var[t].diagonal() for t in range(true_var.shape[0])])
-    standard_diag_var = jnp.array([standard_var[t].diagonal() for t in range(standard_var.shape[0])])
-    transformed_diag_var = jnp.array([transformed_var[t].diagonal() for t in range(transformed_var.shape[0])])
-    
-    # Plot the variance comparison
-    N = true_params.N
-    fig, axes = plt.subplots(N, 1, figsize=(15, 4*N), sharex=True)
-    
-    for i in range(N):
-        ax = axes[i] if N > 1 else axes
-        
-        # Plot predicted variances
-        ax.plot(true_diag_var[:, i], 'k-', alpha=0.5, label='True Model')
-        ax.plot(standard_diag_var[:, i], 'b-', label='Standard Optimization')
-        ax.plot(transformed_diag_var[:, i], 'r-', label='Transformed Optimization')
-        
-        
-        ax.set_title(f'Asset {i+1} Return Variance')
-        ax.set_ylabel('Variance')
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-    
-    plt.xlabel('Time')
-    plt.tight_layout()
-    
-    if save_path:
-        plt.savefig(save_path)
-    plt.show()
-    
-    # Calculate mean squared error between predicted and realized variance
-    mse_standard = jnp.mean((standard_diag_var - true_diag_var)**2)
-    mse_transformed = jnp.mean((transformed_diag_var - true_diag_var)**2)
-    
-    print("\nMean squared error between predicted and realized variance:")
-    print(f"Standard optimization: {mse_standard:.6f}")
-    print(f"Transformed optimization: {mse_transformed:.6f}")
-    
-    return true_var, standard_var, transformed_var
 
 
 def main():
@@ -575,7 +308,7 @@ def main():
     
     # Run optimization with both methods
     standard_params, transformed_params, standard_loss, transformed_loss = \
-        optimize_with_transformations(params, returns, filter, T=T, maxiter=300)
+        optimize_with_transformations(params, returns, filter, T=T, maxiter=30)
     
     print("\nOptimization results:")
     print(f"Standard optimization final loss:      {standard_loss:.4f}")
