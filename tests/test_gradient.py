@@ -8,8 +8,9 @@ import os
 # Add the parent directory to the path so we can import the functions module
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from functions.filters import DFSVBellmanFilter
-from functions.simulation import DFSV_params, simulate_DFSV
+from functions.bellman_filter import DFSVBellmanFilter
+from models.dfsv import DFSV_params
+from functions.simulation import simulate_DFSV
 
 
 def numerical_gradient(func, x, *args, h=1e-6):

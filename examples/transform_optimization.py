@@ -30,14 +30,12 @@ import optax
 from jaxopt import OptaxSolver
 
 from functions.bellman_filter import DFSVBellmanFilter
-from functions.jax_params import DFSVParamsDataclass
-from functions.simulation import DFSV_params, simulate_DFSV
-# Import the transformation functions
+# Update imports to use models.dfsv directly
+from models.dfsv import DFSV_params, DFSVParamsDataclass
 from functions.transformations import transform_params, untransform_params
-# Import the objective functions
 from functions.likelihood_functions import bellman_objective, transformed_bellman_objective
-# Import plotting utilities
 from utils.plotting import plot_variance_comparison
+from functions.simulation import simulate_DFSV
 
 # Enable 64-bit precision for better numerical stability
 jax.config.update("jax_enable_x64", True)

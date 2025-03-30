@@ -6,9 +6,9 @@ to unconstrained space for optimization, and back.
 """
 import copy
 import jax.numpy as jnp
-from .jax_params import DFSVParamsDataclass # Use relative import
+from models.dfsv import DFSVParamsDataclass
 
-# Epsilon for numerical stability near boundaries (e.g., 0 or 1)
+# Epsilon for numerical stability near boundaries (e.g., 0 or 1) #TODO: exten
 EPS = 1e-6
 
 def transform_params(params: DFSVParamsDataclass) -> DFSVParamsDataclass:

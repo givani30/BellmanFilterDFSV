@@ -10,8 +10,7 @@ import numpy as np
 import jax.numpy as jnp
 from jax import jit, lax
 from functools import partial
-from functions.simulation import DFSV_params
-from functions.jax_params import DFSVParamsDataclass
+from models.dfsv import DFSV_params, DFSVParamsDataclass
 from functions.bellman_filter import DFSVBellmanFilter
 from functions.transformations import untransform_params
 
@@ -259,7 +258,8 @@ def bellman_objective(params: DFSVParamsDataclass, y: jnp.ndarray, filter: DFSVB
     neg_ll = -filter.jit_log_likelihood_of_params(filter, params, y)
     safe_neg_ll = jnp.nan_to_num(neg_ll, nan=1e10, posinf=1e10, neginf=1e10)
     
-    # Define functions for the conditional penalty calculation
+    # Define functions for the conditional penalty calculation 
+    # TODO: extend regularization framework to handle larger models
     def calculate_penalty(operands):
         p, mean, std_dev = operands
         # Assuming K=1 case here based on the original logic

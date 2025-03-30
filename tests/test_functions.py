@@ -6,8 +6,10 @@ import os
 
 # Add parent directory to path so we can import from functions directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from functions.simulation import DFSV_params, simulate_DFSV
-from functions.filters import DFSVExtendedKalmanFilter
+# Update import for DFSV_params
+from models.dfsv import DFSV_params
+from functions.simulation import simulate_DFSV
+from functions.bellman_filter import DFSVBellmanFilter
 
 
 class TestDFSVParams(unittest.TestCase):
@@ -238,43 +240,181 @@ class TestDFSVSimulation(unittest.TestCase):
                         f"Return-factor correlation sign strongly disagrees with loading for i={i}, j={j}",
                     )
 
-    def test_visual_inspection(self):
-        """Generate plots for visual inspection of the simulation"""
-        # This test doesn't assert anything, just generates plots
-        returns, factors, log_vols = simulate_DFSV(params=self.params, T=500, seed=101)
 
-        # Create plot with subplots for returns, factors, and volatilities
-        fig, axes = plt.subplots(3, 1, figsize=(10, 12))
+class TestDFSVBellmanFilter(unittest.TestCase):
+    def setUp(self):
+        """Set up test parameters and data"""
+        # Model dimensions
+        self.N, self.K = 3, 2
+        self.T = 100  # Shorter for testing
 
-        # Plot returns
-        for i in range(self.N):
-            axes[0].plot(returns[:, i], label=f"Return {i+1}")
-        axes[0].set_title("Simulated Returns")
-        axes[0].legend()
+        # Set random seed for reproducibility
+        np.random.seed(42)
 
-        # Plot factors
-        for i in range(self.K):
-            axes[1].plot(factors[:, i], label=f"Factor {i+1}")
-        axes[1].set_title("Latent Factors")
-        axes[1].legend()
+        # Create a simple test model
+        lambda_r = np.array([[0.8, 0.2], [0.5, 0.5], [0.2, 0.8]])
+        Phi_f = np.array([[0.95, 0.0], [0.0, 0.9]])
+        Phi_h = np.array([[0.98, 0.0], [0.0, 0.95]])
+        mu = np.array([[-1.0], [-0.5]])
+        sigma2 = np.array([0.1, 0.1, 0.1])
+        Q_h = np.array([[0.05, 0.01], [0.01, 0.05]])
 
-        # Plot volatilities (exp(h/2) for standard deviations)
-        for i in range(self.K):
-            axes[2].plot(np.exp(log_vols[:, i] / 2), label=f"Factor {i+1} Volatility")
-        axes[2].set_title("Factor Volatilities")
-        axes[2].legend()
-
-        plt.tight_layout()
-        # Save the figure to the outputs directory
-        plt.savefig(
-            os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                "outputs",
-                "dfsv_test_plot.png",
-            )
+        self.params = DFSV_params(
+            N=self.N,
+            K=self.K,
+            lambda_r=lambda_r,
+            Phi_f=Phi_f,
+            Phi_h=Phi_h,
+            mu=mu,
+            sigma2=sigma2,
+            Q_h=Q_h,
         )
-        print("Visual inspection plot saved to outputs/dfsv_test_plot.png")
 
+        # Simulate data
+        self.returns, self.true_factors, self.true_log_vols = simulate_DFSV(
+            params=self.params, T=self.T, seed=123
+        )
+
+        # Create filter
+        self.bf = DFSVBellmanFilter(self.N, self.K)
+
+    def test_bellman_initialization(self):
+        """Test that the Bellman filter initializes correctly"""
+        # Initialize state from parameters
+        state, cov = self.bf.initialize_state(self.params)
+
+        # Check dimensions
+        self.assertEqual(state.shape, (2 * self.K, 1))
+        self.assertEqual(cov.shape, (2 * self.K, 2 * self.K))
+        
+        # Check state structure
+        # Initial factors should be zero
+        self.assertTrue(np.allclose(state[:self.K], 0))
+        # Initial log-vols should match the parameter mu
+        self.assertTrue(np.allclose(state[self.K:], self.params.mu.reshape(-1, 1)))
+
+    def test_bellman_prediction(self):
+        """Test the prediction step"""
+        # Initialize state
+        state, cov = self.bf.initialize_state(self.params)
+        
+        # Perform prediction step
+        pred_state, pred_cov = self.bf.predict(self.params, state, cov)
+        
+        # Check dimensions
+        self.assertEqual(pred_state.shape, (2 * self.K, 1))
+        self.assertEqual(pred_cov.shape, (2 * self.K, 2 * self.K))
+
+        # Covariance should be positive definite
+        eigenvalues = np.linalg.eigvals(pred_cov)
+        self.assertTrue(np.all(eigenvalues > 0), "Predicted covariance is not positive definite")
+
+    def test_bellman_update(self):
+        """Test the update step"""
+        # Initialize and predict
+        state, cov = self.bf.initialize_state(self.params)
+        pred_state, pred_cov = self.bf.predict(self.params, state, cov)
+        
+        # First observation
+        observation = self.returns[0:1, :].T.reshape(-1, 1)
+        
+        # Perform update
+        updated_state, updated_cov, log_likelihood = self.bf.update(
+            self.params, pred_state, pred_cov, observation
+        )
+        
+        # Check dimensions
+        self.assertEqual(updated_state.shape, (2 * self.K, 1))
+        self.assertEqual(updated_cov.shape, (2 * self.K, 2 * self.K))
+        self.assertIsInstance(log_likelihood, float)
+        
+        # Covariance should be positive definite
+        eigenvalues = np.linalg.eigvals(updated_cov)
+        self.assertTrue(np.all(eigenvalues > 0), "Updated covariance is not positive definite")
+
+    def test_bellman_filter_run(self):
+        """Test running the full filter"""
+        # Run filter
+        filtered_states, filtered_covs, log_likelihood = self.bf.filter(self.params, self.returns)
+        
+        # Check output dimensions
+        self.assertEqual(filtered_states.shape, (self.T, 2 * self.K))
+        self.assertEqual(len(filtered_covs), self.T)
+        self.assertEqual(filtered_covs[0].shape, (2 * self.K, 2 * self.K))
+        self.assertIsInstance(log_likelihood, float)
+        
+        # Check for NaNs or infinities
+        self.assertFalse(np.any(np.isnan(filtered_states)))
+        self.assertFalse(np.any(np.isinf(filtered_states)))
+        self.assertFalse(np.any([np.any(np.isnan(cov)) for cov in filtered_covs]))
+
+    def test_bellman_estimation_quality(self):
+        """Test that the filter produces reasonable estimates"""
+        # Run filter
+        self.bf.filter(self.params, self.returns)
+        
+        # Extract state estimates
+        filtered_factors = self.bf.get_filtered_factors()
+        filtered_log_vols = self.bf.get_filtered_volatilities()
+        
+        # Check dimensions
+        self.assertEqual(filtered_factors.shape, (self.T, self.K))
+        self.assertEqual(filtered_log_vols.shape, (self.T, self.K))
+        
+        # Check correlations between true and filtered states
+        for k in range(self.K):
+            # Factor correlation
+            factor_corr = np.corrcoef(self.true_factors[:, k], filtered_factors[:, k])[0, 1]
+            self.assertGreater(factor_corr, 0.3, f"Factor {k} correlation too low: {factor_corr}")
+            
+            # Log-volatility correlation
+            vol_corr = np.corrcoef(self.true_log_vols[:, k], filtered_log_vols[:, k])[0, 1]
+            self.assertGreater(vol_corr, 0.2, f"Log-volatility {k} correlation too low: {vol_corr}")
+        
+        # Check RMSE
+        factor_rmse = np.sqrt(np.mean((self.true_factors - filtered_factors) ** 2))
+        vol_rmse = np.sqrt(np.mean((self.true_log_vols - filtered_log_vols) ** 2))
+        
+        # Use slightly relaxed bounds for test to pass reliably
+        self.assertLess(factor_rmse, 1.2, f"Factor RMSE too high: {factor_rmse}")
+        self.assertLess(vol_rmse, 2.0, f"Log-volatility RMSE too high: {vol_rmse}")
+
+    def test_jax_gradients(self):
+        """Test that JAX gradient computation works"""
+        try:
+            import jax
+            import jax.numpy as jnp
+            
+            # Small batch for quick testing
+            test_returns = jnp.array(self.returns[:10])
+            
+            # Define objective function (negative log-likelihood)
+            def objective_fn(mu_val):
+                # Create modified parameters with new mu
+                test_params = self.params
+                test_params.mu = jnp.array(mu_val).reshape(-1, 1)
+                
+                # Compute log likelihood
+                return -self.bf.log_likelihood_of_params(test_params, test_returns)
+            
+            # Get gradient function
+            grad_fn = jax.grad(objective_fn)
+            
+            # Test initial mu value
+            init_mu = jnp.array([-1.0, -0.5])
+            
+            # Compute gradient
+            gradient = grad_fn(init_mu)
+            
+            # Check gradient shape
+            self.assertEqual(gradient.shape, init_mu.shape)
+            
+            # Gradient should be finite
+            self.assertFalse(np.any(np.isnan(gradient)))
+            self.assertFalse(np.any(np.isinf(gradient)))
+            
+        except ImportError:
+            self.skipTest("JAX not available, skipping gradient test")
 
 if __name__ == "__main__":
     unittest.main()

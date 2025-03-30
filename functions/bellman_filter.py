@@ -1,7 +1,7 @@
 from functools import partial
-from math import log
 from typing import Tuple, Union, Dict, Any
 
+import optimistix as optx
 from altair import LogicalAndPredicate
 import jax
 import jax.numpy as jnp
@@ -11,8 +11,10 @@ import numpy as np
 from jax import jit
 
 from functions.filters import DFSVFilter
-from functions.simulation import DFSV_params
-from functions.jax_params import DFSVParamsDataclass
+# Update imports to use models.dfsv instead
+from models.dfsv import DFSV_params, DFSVParamsDataclass
+# We can keep the old imports for backward compatibility
+import functions.jax_params  # For backward compatibility
 
 
 class DFSVBellmanFilter(DFSVFilter):
@@ -394,6 +396,7 @@ class DFSVBellmanFilter(DFSVFilter):
                 jnp.ndarray: Updated log-volatility values.
             """
             # The objective function
+            #TODO: update so that this will use the Optimistix solver instead of Jaxopt
             result = self.solver_h.run(
                 init_params=h_init,
                 lambda_r=lambda_r,
@@ -844,7 +847,7 @@ class DFSVBellmanFilter(DFSVFilter):
             predicted_state,
             jax_I_pred,
             observation,
-            max_iters=10,
+            max_iters=5,
         ).reshape(-1, 1)
 
         # Compute the Hessian at the optimum for covariance estimation

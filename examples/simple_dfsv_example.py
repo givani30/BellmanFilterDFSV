@@ -17,7 +17,8 @@ from pathlib import Path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import DFSV model related functions
-from functions.simulation import DFSV_params, simulate_DFSV
+from models.dfsv import DFSV_params
+from functions.simulation import simulate_DFSV
 
 
 def create_simple_dfsv_model():

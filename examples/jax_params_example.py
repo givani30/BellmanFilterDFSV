@@ -11,14 +11,12 @@ import time
 import numpy as np
 import jax
 import jax.numpy as jnp
-from functools import partial
 
 # Add parent directory to path to import our modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Import parameter classes
-from functions.simulation import DFSV_params, simulate_DFSV
-from functions.jax_params import DFSVParamsPytree, DFSVParamsDataclass
+# Import parameter classes from the new location
+from models.dfsv import DFSV_params, DFSVParamsDataclass
 
 
 def create_test_parameters():
@@ -103,7 +101,7 @@ def log_likelihood_function(params, observation):
     # For simplicity, let's use a zero state vector (would usually come from filtering)
     f = jnp.zeros(K)
     # Default log-volatilities to mean
-    h = params.mu
+    # h = params.mu #unused
     
     # Calculate predicted observation
     pred = lambda_r @ f
@@ -142,7 +140,7 @@ def main():
     print(f"Created standard parameters with {standard_params.N} series and {standard_params.K} factors")
     
     # Convert to JAX-compatible parameters
-    pytree_params = DFSVParamsPytree.from_dfsv_params(standard_params)
+    pytree_params = DFSVParamsDataclass.from_dfsv_params(standard_params)
     dataclass_params = DFSVParamsDataclass.from_dfsv_params(standard_params)
     print("Converted to JAX-compatible parameter classes")
     

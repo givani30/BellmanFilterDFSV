@@ -17,9 +17,9 @@ import jax.numpy as jnp
 # Add the parent directory to path so we can import from functions
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Import necessary functions from your codebase
-from functions.simulation import DFSV_params, simulate_DFSV
-from functions.jax_params import DFSVParamsDataclass, dfsv_params_to_dict
+# Import necessary functions from your codebase with updated imports
+from functions.simulation import simulate_DFSV
+from models.dfsv import DFSV_params, DFSVParamsDataclass, dfsv_params_to_dict
 from functions.bellman_filter import DFSVBellmanFilter
 
 # Enable 64-bit precision
