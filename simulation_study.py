@@ -5,6 +5,7 @@
 import sys
 import os
 import subprocess
+from datetime import datetime # Added import
 
 
 import numpy as np
@@ -160,7 +161,14 @@ def main():
     T = 1000               # Time series length
     num_particles_values = [1000, 10000]  # Number of particles for PF
     num_reps = 3          # Number of repetitions for each configuration
-    output_file = 'simulation_results.csv'
+    # --- Output Configuration --- # Added section
+    results_dir = "simulation_results"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_csv_file = os.path.join(results_dir, f"{timestamp}_simulation_results.csv")
+    output_plot_file = os.path.join(results_dir, f"{timestamp}_simulation_summary_plots.html")
+
+    # Create results directory if it doesn't exist
+    os.makedirs(results_dir, exist_ok=True)
     # --------------------------------
 
     all_results = []
@@ -208,8 +216,8 @@ def main():
 
 
     # Save results
-    results_df.to_csv(output_file, index=False)
-    print(f"\nSimulation study complete. Results saved to {output_file}")
+    results_df.to_csv(output_csv_file, index=False)
+    print(f"\nSimulation study complete. Results saved to {output_csv_file}")
 
     # --- Plotting with Plotly ---
     if not results_df.empty:
@@ -404,8 +412,8 @@ def main():
             fig.update_yaxes(range=[0, 1], row=2, col=1)
 
             # Save the plot
-            fig.write_html("simulation_summary_plots.html")
-            print("Summary plots saved to simulation_summary_plots.html")
+            fig.write_html(output_plot_file)
+            print(f"Summary plots saved to {output_plot_file}")
 
         except Exception as plot_err:
             print(f"Could not generate plots: {plot_err}")

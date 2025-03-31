@@ -88,17 +88,16 @@ class DFSVBellmanFilter(DFSVFilter):
 
         # Create KL penalty as a jit-function
         self.kl_penalty = jit(self._kl_penalty_impl)
+
+        # Instantiate the BFGS solver for the h update step once
+        self.h_solver = optx.BFGS(rtol=1e-4, atol=1e-6)
+
         # Create block_coordinate_update
         self.block_coordinate_update_jit = jit(
             self._block_coordinate_update_impl,
-            static_argnums=(6,),  # max_iters is a static argument
+            static_argnums=(6, 7),  # max_iters and h_solver are static arguments
         )
-        # Create solver
-        # self.solver_h = jaxopt.LBFGS(
-        #     fun=self.neg_log_post_h,
-        #     maxiter=10,
-        #     tol=1e-4,
-        # )
+
         # Try to precompile
         try:
             self._precompile_jax_functions()
@@ -318,7 +317,8 @@ class DFSVBellmanFilter(DFSVFilter):
         pred_state: jnp.ndarray,
         I_pred: jnp.ndarray,
         observation: jnp.ndarray,
-        max_iters: int = 5,
+        max_iters: int, # Existing static arg from outer loop
+        h_solver: optx.AbstractMinimiser # New static arg: the solver instance
     ) -> jnp.ndarray:
         """
         Static implementation of block_coordinate_update.
@@ -330,7 +330,8 @@ class DFSVBellmanFilter(DFSVFilter):
             pred_state (jnp.ndarray): Predicted state vector.
             I_pred (jnp.ndarray): Predicted precision matrix.
             observation (jnp.ndarray): Observation vector.
-            max_iters (int): Maximum number of iterations.
+            max_iters (int): Maximum number of outer block coordinate iterations.
+            h_solver (optx.AbstractMinimiser): Pre-configured Optimistix solver instance.
 
         Returns:
             jnp.ndarray: Updated state vector.
@@ -375,71 +376,71 @@ class DFSVBellmanFilter(DFSVFilter):
             def A_inv(x):
                 return jax.scipy.linalg.cho_solve(L, x)
 
-            lhs_mat = jnp.dot(lambda_r.T, A_inv(lambda_r)) + I_f+1e-8 * jnp.eye(I_f.shape[0])
+            lhs_mat = jnp.dot(lambda_r.T, A_inv(lambda_r)) + I_f + 1e-8 * jnp.eye(I_f.shape[0])
             rhs_vec = (
                 jnp.dot(lambda_r.T, A_inv(observation))
                 + jnp.dot(I_f, factors_pred)
                 + jnp.dot(I_fh, (-log_vols_pred + log_volatility))
             )
 
+            # Add small regularization for stability if needed
+            # lhs_mat += 1e-8 * jnp.eye(lhs_mat.shape[0])
+
             return jnp.linalg.solve(lhs_mat, rhs_vec)
 
         def update_h_bfgs(h_init: jnp.ndarray, f: jnp.ndarray) -> jnp.ndarray:
             """
-            Minimize J(h) = neg_log_post_h(h, f, ...) w.r.t. h using BFGS.
+            Minimize J(h) = neg_log_post_h(h, f, ...) w.r.t. h using the provided BFGS solver.
 
             Args:
                 h_init (jnp.ndarray): Initial log-volatility values.
-                f (jnp.ndarray): Factor values.
+                f (jnp.ndarray): Factor values (fixed for this step).
 
             Returns:
                 jnp.ndarray: Updated log-volatility values.
             """
-            # Create a wrapper function that matches the expected signature fn(y, args)
-            def objective_fn(h, args):
-                lambda_r, sigma2, factors, predicted_state, I_pred, observation = args
+            # Objective function wrapper to match optimistix fn(y, args) signature
+            # and capture necessary variables from the outer scope.
+            def objective_fn(h, objective_args):
+                (
+                    current_lambda_r, current_sigma2, current_factors,
+                    current_predicted_state, current_I_pred, current_observation
+                ) = objective_args
+                # Call the instance method (requires neg_log_post_h to be JIT-compatible)
                 return self.neg_log_post_h(
                     log_vols=h,
-                    lambda_r=lambda_r,
-                    sigma2=sigma2,
-                    factors=factors,
-                    predicted_state=predicted_state,
-                    I_pred=I_pred,
-                    observation=observation
+                    lambda_r=current_lambda_r,
+                    sigma2=current_sigma2,
+                    factors=current_factors,
+                    predicted_state=current_predicted_state,
+                    I_pred=current_I_pred,
+                    observation=current_observation
                 )
-        
-            # Instantiate Optimistix BFGS solver
-            solver = optx.BFGS(rtol=1e-4, atol=1e-6) 
-            
-            # Prepare arguments for the objective function
-            args = (lambda_r, sigma2, f, pred_state, I_pred, observation)
-            
-            # Run the minimization
+
+            # Prepare arguments tuple for the objective function
+            objective_args = (lambda_r, sigma2, f, pred_state, I_pred, observation)
+
+            # Run the minimization using the passed solver instance
+            # Consider using fewer steps for the inner optimization than the outer loop
+            inner_max_steps = 15 # Increased from 5
             sol = optx.minimise(
                 fn=objective_fn,
-                solver=solver,
+                solver=h_solver,  # Use the solver passed from outside
                 y0=h_init,
-                args=args,
+                args=objective_args,
                 options={},
-                max_steps=max_iters,
-                throw=False
+                max_steps=inner_max_steps, # Use a specific limit for inner solver steps
+                throw=False # Prevent errors from stopping JIT compilation
             )
 
-            # Check if optimization was successful
-            def true_fun(result_params):
-                return result_params
+            # Check if optimization was successful using the result enum
+            successful = sol.result == optx.RESULTS.successful
 
-            def false_fun(initial_params):
-                return initial_params
-
-            # Use sol.result instead of checking status directly
-            is_successful = bool(sol.result)
-
+            # Conditionally return the optimized value or the initial guess
             return jax.lax.cond(
-                is_successful,
-                true_fun,
-                false_fun,
-                sol.value
+                successful,
+                lambda: sol.value, # Use the optimized value
+                lambda: h_init     # Fallback to initial value if optimization failed
             )
 
         # Update loop
@@ -449,22 +450,15 @@ class DFSVBellmanFilter(DFSVFilter):
             """
             Single iteration of the block-coordinate update.
             `carry` is (f, h).
-
-            Args:
-                _ (int): Loop index.
-                carry (Tuple[jnp.ndarray, jnp.ndarray]): Current state (factors, log-vols).
-
-            Returns:
-                Tuple[jnp.ndarray, jnp.ndarray]: Updated state (factors, log-vols).
             """
             f_current, h_current = carry
             f_new = update_factors(h_current, factors_pred, log_vols_pred)
+            # update_h_bfgs implicitly uses h_solver from the outer scope
             h_new = update_h_bfgs(h_current, f_new)
             return (f_new, h_new)
 
         # Use lax.fori_loop to run max_iters times.
         init_carry = (factors_guess, log_vols_guess)
-
         f_final, h_final = jax.lax.fori_loop(0, max_iters, body_fn, init_carry)
 
         # Return updated state
@@ -490,13 +484,20 @@ class DFSVBellmanFilter(DFSVFilter):
             pred_alpha (jnp.ndarray): Predicted state vector.
             I_pred (jnp.ndarray): Predicted precision matrix.
             observation (jnp.ndarray): Observation vector.
-            max_iters (int): Maximum number of iterations.
+            max_iters (int): Maximum number of iterations for the outer block coordinate loop.
 
         Returns:
             jnp.ndarray: Updated state vector.
         """
         return self.block_coordinate_update_jit(
-            lambda_r, sigma2, alpha, pred_alpha, I_pred, observation, max_iters
+            lambda_r,
+            sigma2,
+            alpha,
+            pred_alpha,
+            I_pred,
+            observation,
+            max_iters,
+            self.h_solver # Pass the pre-configured solver instance
         )
 
     def _precompile_jax_functions(self):
@@ -532,6 +533,7 @@ class DFSVBellmanFilter(DFSVFilter):
         _ = self.log_posterior(
             dummy_lambda_r, dummy_sigma2, dummy_alpha, dummy_observation
         )
+        # Precompile block_coordinate_update with the solver
         _ = self.block_coordinate_update(
             dummy_lambda_r,
             dummy_sigma2,
@@ -539,7 +541,7 @@ class DFSVBellmanFilter(DFSVFilter):
             dummy_pred_alpha,
             dummy_I_pred,
             dummy_observation,
-            max_iters=2,
+            max_iters=2, # Use a small number for precompilation
         )
 
         # Also precompile functions that accept pytree params
@@ -817,7 +819,8 @@ class DFSVBellmanFilter(DFSVFilter):
         # Ensure the covariance is symmetric
         predicted_cov = (predicted_cov + predicted_cov.T) / 2
 
-        return predicted_state, predicted_cov
+        # Ensure state is returned as a column vector
+        return predicted_state.reshape(-1, 1), predicted_cov
 
     def update(
         self,
@@ -875,7 +878,7 @@ class DFSVBellmanFilter(DFSVFilter):
             predicted_state,
             jax_I_pred,
             observation,
-            max_iters=5,
+            max_iters=10,
         ).reshape(-1, 1)
 
         # Compute the Hessian at the optimum for covariance estimation
@@ -893,6 +896,7 @@ class DFSVBellmanFilter(DFSVFilter):
         penalty = self.kl_penalty(predicted_state, updated_state, jax_I_pred, I_updated)
         log_likelihood = val - penalty  # Negate because we minimize negative log-posterior
 
+        # Return JAX array for log-likelihood to maintain JAX compatibility
         return updated_state, updated_cov, log_likelihood
 
     def _get_transition_matrix(

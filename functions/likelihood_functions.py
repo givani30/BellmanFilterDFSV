@@ -319,3 +319,79 @@ def transformed_bellman_objective(transformed_params: DFSVParamsDataclass, y: jn
     
     # Run the bellman filter with original parameters
     return bellman_objective(original_params, y, filter, prior_mean, prior_std_dev)
+
+
+# -------------------------------------------------------------------------
+# Particle Filter Objective Functions
+# -------------------------------------------------------------------------
+
+def pf_objective(
+    params: DFSVParamsDataclass,
+    observations: jnp.ndarray,
+    filter_instance: 'DFSVParticleFilter', # Use forward reference
+    prior_mu_mean: float = -1.0,       # Prior mean for mu
+    prior_mu_std_dev: float = 0.5      # Prior std dev for mu
+) -> float:
+    """
+    Objective function for standard parameter space using Particle Filter.
+
+    Calculates the negative log-likelihood based on the particle filter's
+    estimation, plus a prior penalty on the long-run mean 'mu'.
+
+    Args:
+        params: Model parameters as a DFSVParamsDataclass Pytree.
+        observations: Observation data.
+        filter_instance: An instance of DFSVParticleFilter.
+        prior_mu_mean: Mean of the Gaussian prior for mu.
+        prior_mu_std_dev: Standard deviation of the Gaussian prior for mu.
+
+    Returns:
+        float: Negative log-likelihood + prior penalty.
+    """
+    # Calculate log-likelihood using the particle filter method
+    log_lik = filter_instance.log_likelihood_of_params(params, observations)
+
+    # Add prior penalty for mu (assuming Gaussian prior)
+    # Ensure params.mu is 1D
+    mu_flat = params.mu.flatten()
+    prior_penalty_mu = jnp.sum(0.5 * ((mu_flat - prior_mu_mean) / prior_mu_std_dev)**2)
+
+    # Return negative log-likelihood + penalty
+    return -log_lik + prior_penalty_mu
+
+def transformed_pf_objective(
+    transformed_params: DFSVParamsDataclass,
+    observations: jnp.ndarray,
+    filter_instance: 'DFSVParticleFilter',
+    prior_mu_mean: float = -1.0,
+    prior_mu_std_dev: float = 0.5
+) -> float:
+    """
+    Objective function for transformed parameter space using Particle Filter.
+
+    Transforms parameters back to the original space, calculates the negative
+    log-likelihood using the particle filter, and adds a prior penalty.
+
+    Args:
+        transformed_params: Model parameters in transformed space.
+        observations: Observation data.
+        filter_instance: An instance of DFSVParticleFilter.
+        prior_mu_mean: Mean of the Gaussian prior for mu.
+        prior_mu_std_dev: Standard deviation of the Gaussian prior for mu.
+
+    Returns:
+        float: Negative log-likelihood + prior penalty.
+    """
+    # Untransform parameters
+    params_original = untransform_params(transformed_params)
+
+    # Calculate log-likelihood using the particle filter method
+    log_lik = filter_instance.log_likelihood_of_params(params_original, observations)
+
+    # Add prior penalty for mu (on the original scale)
+    # Ensure params_original.mu is 1D
+    mu_flat = params_original.mu.flatten()
+    prior_penalty_mu = jnp.sum(0.5 * ((mu_flat - prior_mu_mean) / prior_mu_std_dev)**2)
+
+    # Return negative log-likelihood + penalty
+    return -log_lik + prior_penalty_mu
