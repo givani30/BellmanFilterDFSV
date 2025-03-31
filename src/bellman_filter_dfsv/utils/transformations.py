@@ -6,7 +6,7 @@ to unconstrained space for optimization, and back.
 """
 import copy
 import jax.numpy as jnp
-from qf_thesis.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 
 # Epsilon for numerical stability near boundaries (e.g., 0 or 1) #TODO: exten
 EPS = 1e-6

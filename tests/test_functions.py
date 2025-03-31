@@ -9,9 +9,9 @@ import os
 # sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Updated imports
-from qf_thesis.models.dfsv import DFSVParamsDataclass # Import the JAX dataclass
-from qf_thesis.core.simulation import simulate_DFSV
-from qf_thesis.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Import the JAX dataclass
+from bellman_filter_dfsv.core.simulation import simulate_DFSV
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
 
 
 # Removed TestDFSVParams class as it tested the deleted DFSV_params class

@@ -12,7 +12,7 @@ from jax import jit
 
 from .base import DFSVFilter # Import base class from sibling module
 # Update imports to use models.dfsv instead
-from qf_thesis.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 # Remove redundant jax_params import
 from ._bellman_impl import build_covariance_impl, fisher_information_impl, log_posterior_impl, kl_penalty_impl
 from ._bellman_optim import update_factors, update_h_bfgs # Import optimization helpers

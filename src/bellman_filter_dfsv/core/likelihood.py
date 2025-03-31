@@ -10,10 +10,10 @@ import numpy as np
 import jax.numpy as jnp
 from jax import jit, lax
 from functools import partial
-from qf_thesis.models.dfsv import DFSV_params, DFSVParamsDataclass
-from qf_thesis.core.filters.bellman import DFSVBellmanFilter
-from qf_thesis.utils.transformations import untransform_params
-from qf_thesis.core.filters.particle import DFSVParticleFilter # Added for type hints
+from bellman_filter_dfsv.models.dfsv import DFSV_params, DFSVParamsDataclass
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.utils.transformations import untransform_params
+from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter # Added for type hints
 
 
 def log_likelihood_observation(y_t: np.ndarray, f_t: np.ndarray, 
@@ -220,7 +220,7 @@ def kalman_filter_log_likelihood(y: np.ndarray, params: DFSV_params) -> float:
         Marginal log-likelihood value
     """
     # Import here to avoid circular imports
-    from qf_thesis.core.filters.kalman import DFSVExtendedKalmanFilter # Assuming future location
+    from bellman_filter_dfsv.core.filters.kalman import DFSVExtendedKalmanFilter # Assuming future location
     
     # Initialize Kalman filter
     kf = DFSVExtendedKalmanFilter(params)

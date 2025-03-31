@@ -21,7 +21,7 @@ from jax import jit
 
 # Local imports
 # Removed import of DFSV_params from simulation
-from qf_thesis.models.dfsv import DFSVParamsDataclass # Only import the dataclass
+from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Only import the dataclass
 from .base import DFSVFilter # Import base class from sibling module
 
 # Try importing tqdm for progress bars, provide a fallback

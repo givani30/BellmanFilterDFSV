@@ -12,10 +12,10 @@ import numpy as np
 import jax.numpy as jnp # Add JAX numpy import
 
 # Updated imports
-from qf_thesis.core.filters.bellman import DFSVBellmanFilter
-from qf_thesis.core.filters.particle import DFSVParticleFilter
-from qf_thesis.models.dfsv import DFSVParamsDataclass # Import the JAX dataclass
-from qf_thesis.core.simulation import simulate_DFSV
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
+from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Import the JAX dataclass
+from bellman_filter_dfsv.core.simulation import simulate_DFSV
 
 
 def create_test_parameters() -> DFSVParamsDataclass: # Update return type hint

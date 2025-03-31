@@ -1,4 +1,4 @@
-# src/qf_thesis/core/filters/_bellman_impl.py
+# src/bellman_filter_dfsv/core/filters/_bellman_impl.py
 """
 Static JAX implementations of core Bellman filter calculations.
 """

@@ -1,8 +1,8 @@
 import numpy as np
 import jax.numpy as jnp # Add JAX numpy import
-from qf_thesis.core.filters.bellman import DFSVBellmanFilter
-from qf_thesis.core.simulation import simulate_DFSV
-from qf_thesis.models.dfsv import DFSVParamsDataclass # Import the JAX dataclass
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.core.simulation import simulate_DFSV
+from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Import the JAX dataclass
 
 # Create a small test model for testing
 N = 3  # Number of observed series

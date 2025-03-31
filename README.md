@@ -1,4 +1,4 @@
-# QF Thesis - Dynamic Factor Stochastic Volatility (DFSV) Models in JAX
+# BellmanFilterDFSV - Dynamic Factor Stochastic Volatility (DFSV) Models in JAX
 
 This repository contains the Python code for a Quantitative Finance thesis project focused on implementing, simulating, and filtering Dynamic Factor Stochastic Volatility (DFSV) models using JAX for enhanced performance.
 
@@ -22,7 +22,7 @@ This project is currently under active development. Features and APIs might chan
 1.  **Clone the repository:**
     ```bash
     git clone <repository-url> # Replace <repository-url> with the actual URL
-    cd QF_Thesis
+    cd BellmanFilterDFSV
     ```
 
 2.  **Create and activate a virtual environment:** (Recommended)
@@ -33,7 +33,7 @@ This project is currently under active development. Features and APIs might chan
     # .\.venv\Scripts\activate  # On Windows
 
     # Or using conda
-    # conda create -n qf_thesis python=3.10 # Or your preferred Python version >= 3.10
+    # conda create -n bellman_filter_dfsv python=3.10 # Or your preferred Python version >= 3.10
     # conda activate qf_thesis
     ```
 
@@ -49,14 +49,14 @@ This project is currently under active development. Features and APIs might chan
 
 ## Usage Example: Simulating a Simple DFSV Model
 
-The following example demonstrates how to define parameters for a DFSV model (with K=1 factor and N=3 observed series) and simulate data using the `qf_thesis` package. This is based on `scripts/simple_dfsv_example.py`.
+The following example demonstrates how to define parameters for a DFSV model (with K=1 factor and N=3 observed series) and simulate data using the `bellman_filter_dfsv` package. This is based on `scripts/simple_dfsv_example.py`.
 
 ```python
 import jax.numpy as jnp
 import numpy as np
 import matplotlib.pyplot as plt
-from qf_thesis.models.dfsv import DFSVParamsDataclass
-from qf_thesis.core.simulation import simulate_DFSV
+from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.simulation import simulate_DFSV
 
 # 1. Define Model Parameters (K=1, N=3)
 params = DFSVParamsDataclass(
@@ -105,8 +105,8 @@ Explore the `scripts/` and `examples/` directories for more detailed use cases, 
 
 ## Project Structure
 
-```
-QF_Thesis/
+```python
+BellmanFilterDFSV/
 ├── .clinerules           # Custom rules for Roo AI assistant
 ├── .coveragerc           # Coverage configuration
 ├── .gitignore            # Git ignore rules
@@ -119,7 +119,7 @@ QF_Thesis/
 ├── outputs/              # Generated outputs (plots, results)
 ├── scripts/              # Standalone scripts for running experiments, analysis
 ├── src/                  # Source code directory
-│   └── qf_thesis/        # Main package
+│   └── bellman_filter_dfsv/ # Main package
 │       ├── __init__.py
 │       ├── core/           # Core algorithms (filters, simulation, likelihood)
 │       │   └── filters/      # Filter implementations (Particle, Bellman, etc.)
@@ -138,10 +138,12 @@ pytest .
 ```
 
 To run tests with coverage:
+
 ```bash
 coverage run -m pytest .
 coverage report -m
 ```
+
 (Requires `coverage` package: `pip install coverage`)
 
 ## Contributing

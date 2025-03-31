@@ -5,7 +5,7 @@ This module provides utilities to simulate DFSV models using the parameter
 classes defined in the models module.
 """
 import numpy as np
-from qf_thesis.models.dfsv import DFSVParamsDataclass # Use the JAX dataclass
+from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Use the JAX dataclass
 
 def simulate_DFSV(params: DFSVParamsDataclass, f0: np.ndarray = None, h0: np.ndarray = None, T: int = 100, seed: int = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """

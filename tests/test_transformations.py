@@ -16,8 +16,8 @@ from pathlib import Path
 # sys.path.append(str(Path(__file__).parent.parent))
 
 # Updated imports
-from qf_thesis.models.dfsv import DFSVParamsDataclass # Removed unused DFSV_params import
-from qf_thesis.utils.transformations import transform_params, untransform_params
+from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Removed unused DFSV_params import
+from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params
 
 class TestParameterTransformations(unittest.TestCase):
     """Tests for parameter transformation functions."""

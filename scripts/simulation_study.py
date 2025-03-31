@@ -20,10 +20,10 @@ import sys
 # Imports should work if qf_thesis is installed editable
 
 # Updated imports
-from qf_thesis.models.dfsv import DFSVParamsDataclass # Import the JAX dataclass
-from qf_thesis.core.simulation import simulate_DFSV
-from qf_thesis.core.filters.bellman import DFSVBellmanFilter
-from qf_thesis.core.filters.particle import DFSVParticleFilter
+from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Import the JAX dataclass
+from bellman_filter_dfsv.core.simulation import simulate_DFSV
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
 
 def create_sim_parameters(N, K, seed=None) -> DFSVParamsDataclass: # Update return type hint
     """

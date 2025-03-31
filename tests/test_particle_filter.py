@@ -17,9 +17,9 @@ from pathlib import Path
 # sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Updated imports to use the new package structure
-from qf_thesis.core.filters.particle import DFSVParticleFilter
-from qf_thesis.core.simulation import simulate_DFSV
-from qf_thesis.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
+from bellman_filter_dfsv.core.simulation import simulate_DFSV
+from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 
 
 class TestParticleFilter(unittest.TestCase):

@@ -1,4 +1,4 @@
-# src/qf_thesis/core/filters/_bellman_optim.py
+# src/bellman_filter_dfsv/core/filters/_bellman_optim.py
 """
 Standalone JAX functions for Bellman filter optimization steps.
 """

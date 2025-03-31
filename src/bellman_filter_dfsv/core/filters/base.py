@@ -1,4 +1,4 @@
-# src/qf_thesis/core/filters/base.py
+# src/bellman_filter_dfsv/core/filters/base.py
 """
 Base class for filters applied to Dynamic Factor Stochastic Volatility models.
 """
@@ -14,7 +14,7 @@ from jax import jit
 # Assuming DFSVParamsDataclass will be importable from the models directory
 # We'll use absolute imports once the package structure is fully set up
 # For now, let's use a placeholder or assume it's available via qf_thesis.models.dfsv
-from qf_thesis.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 
 # Try importing tqdm for progress bars, provide a fallback
 try:

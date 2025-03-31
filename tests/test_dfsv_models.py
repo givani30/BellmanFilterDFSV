@@ -14,7 +14,7 @@ from pathlib import Path
 # sys.path.append(str(Path(__file__).parent.parent))
 
 # Updated imports
-from qf_thesis.models.dfsv import DFSVParamsDataclass, dfsv_params_to_dict # Removed DFSV_params
+from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass, dfsv_params_to_dict # Removed DFSV_params
 
 
 class TestDFSVModels(unittest.TestCase):
