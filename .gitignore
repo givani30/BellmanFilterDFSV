@@ -51,4 +51,4 @@ jax-trace/*
 #more stuff
 .roomodes
 .clinerules
-.covareagerc
+.coveragerc

@@ -1,4 +1,0 @@
-- Use the virtualenv in .venv for all python code executions
-- Adhere to google standards for documentation
--Prefer jax functions over numpy. This codebase is Jax-based
-- Use uv for package management

@@ -1,4 +1,0 @@
-[run]
-# Omit any Python files in shibokensupport
-omit =
-    */shibokensupport/*
