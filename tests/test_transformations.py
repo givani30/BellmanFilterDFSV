@@ -12,11 +12,12 @@ import sys
 import os
 from pathlib import Path
 
-# Add parent directory to path to import from our modules
-sys.path.append(str(Path(__file__).parent.parent))
+# Remove sys.path hack
+# sys.path.append(str(Path(__file__).parent.parent))
 
-from models.dfsv import DFSV_params, DFSVParamsDataclass
-from functions.transformations import transform_params, untransform_params
+# Updated imports
+from qf_thesis.models.dfsv import DFSVParamsDataclass # Removed unused DFSV_params import
+from qf_thesis.utils.transformations import transform_params, untransform_params
 
 class TestParameterTransformations(unittest.TestCase):
     """Tests for parameter transformation functions."""

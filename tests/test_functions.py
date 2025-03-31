@@ -1,129 +1,20 @@
 import unittest
 import numpy as np
+import jax.numpy as jnp # Add JAX numpy import
 import matplotlib.pyplot as plt
 import sys
 import os
 
-# Add parent directory to path so we can import from functions directory
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-# Update import for DFSV_params
-from models.dfsv import DFSV_params
-from functions.simulation import simulate_DFSV
-from functions.bellman_filter import DFSVBellmanFilter
+# Remove sys.path hack
+# sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Updated imports
+from qf_thesis.models.dfsv import DFSVParamsDataclass # Import the JAX dataclass
+from qf_thesis.core.simulation import simulate_DFSV
+from qf_thesis.core.filters.bellman import DFSVBellmanFilter
 
 
-class TestDFSVParams(unittest.TestCase):
-
-    def test_valid_dimensions(self):
-        """Test that valid dimensions are accepted."""
-        # Set parameters
-        N, K = 5, 2
-
-        # Create arrays with correct dimensions
-        lambda_r = np.random.rand(N, K)
-        Phi_f = np.random.rand(K, K)
-        Phi_h = np.random.rand(K, K)
-        mu = np.random.rand(K, 1)
-        sigma2 = np.random.rand(N, 1)
-        Q_h = np.eye(K) * 0.1
-
-        # This should not raise an error
-        params = DFSV_params(
-            N=N,
-            K=K,
-            lambda_r=lambda_r,
-            Phi_f=Phi_f,
-            Phi_h=Phi_h,
-            mu=mu,
-            sigma2=sigma2,
-            Q_h=Q_h,
-        )
-
-        # Test with mu as 1D array
-        mu_1d = np.random.rand(K)
-        params = DFSV_params(
-            N=N,
-            K=K,
-            lambda_r=lambda_r,
-            Phi_f=Phi_f,
-            Phi_h=Phi_h,
-            mu=mu_1d,
-            sigma2=sigma2,
-            Q_h=Q_h,
-        )
-
-    def test_invalid_lambda_r(self):
-        """Test that invalid lambda_r dimensions raise error."""
-        N, K = 5, 2
-        lambda_r = np.random.rand(K, N)  # Incorrect dimensions (K,N) instead of (N,K)
-        Phi_f = np.random.rand(K, K)
-        Phi_h = np.random.rand(K, K)
-        mu = np.random.rand(K, 1)
-        sigma2 = np.random.rand(N, 1)
-        Q_h = np.eye(K) * 0.1  # Adding Q_h parameter
-
-        with self.assertRaises(ValueError) as context:
-            DFSV_params(
-                N=N,
-                K=K,
-                lambda_r=lambda_r,
-                Phi_f=Phi_f,
-                Phi_h=Phi_h,
-                mu=mu,
-                sigma2=sigma2,
-                Q_h=Q_h,
-            )
-
-        self.assertIn("lambda_r should be shape", str(context.exception))
-
-    def test_invalid_Phi_f(self):
-        """Test that invalid Phi_f dimensions raise error."""
-        N, K = 5, 2
-        lambda_r = np.random.rand(N, K)
-        Phi_f = np.random.rand(K + 1, K)  # Incorrect dimensions
-        Phi_h = np.random.rand(K, K)
-        mu = np.random.rand(K, 1)
-        sigma2 = np.random.rand(N, 1)
-        Q_h = np.eye(K) * 0.1  # Adding Q_h parameter
-
-        with self.assertRaises(ValueError) as context:
-            DFSV_params(
-                N=N,
-                K=K,
-                lambda_r=lambda_r,
-                Phi_f=Phi_f,
-                Phi_h=Phi_h,
-                mu=mu,
-                sigma2=sigma2,
-                Q_h=Q_h,
-            )
-
-        self.assertIn("Phi_f should be shape", str(context.exception))
-
-    def test_invalid_mu(self):
-        """Test that invalid mu dimensions raise error."""
-        N, K = 5, 2
-        lambda_r = np.random.rand(N, K)
-        Phi_f = np.random.rand(K, K)
-        Phi_h = np.random.rand(K, K)
-        mu = np.random.rand(K + 1, 1)  # Incorrect dimensions
-        sigma2 = np.random.rand(N, 1)
-        Q_h = np.eye(K) * 0.1  # Adding Q_h parameter
-
-        with self.assertRaises(ValueError) as context:
-            DFSV_params(
-                N=N,
-                K=K,
-                lambda_r=lambda_r,
-                Phi_f=Phi_f,
-                Phi_h=Phi_h,
-                mu=mu,
-                sigma2=sigma2,
-                Q_h=Q_h,
-            )
-
-        self.assertIn("mu should be shape", str(context.exception))
-
+# Removed TestDFSVParams class as it tested the deleted DFSV_params class
 
 class TestDFSVSimulation(unittest.TestCase):
 
@@ -147,22 +38,23 @@ class TestDFSVSimulation(unittest.TestCase):
         # Other parameters
         self.lambda_r = np.random.normal(0, 1, size=(self.N, self.K))
         self.mu = np.random.normal(-1, 0.5, size=(self.K, 1))
-        self.sigma2 = np.diag(np.exp(np.random.normal(-1, 0.5, size=self.N)))
+        self.sigma2 = np.exp(np.random.normal(-1, 0.5, size=self.N)) # Keep as 1D array
 
         # Create positive definite Q_h matrix
         Q_h_raw = np.random.normal(0, 0.5, size=(self.K, self.K))
         self.Q_h = 0.1 * (Q_h_raw @ Q_h_raw.T)
 
         # Create model parameters
-        self.params = DFSV_params(
+        # Create model parameters using JAX dataclass
+        self.params = DFSVParamsDataclass(
             N=self.N,
             K=self.K,
-            lambda_r=self.lambda_r,
-            Phi_f=self.Phi_f,
-            Phi_h=self.Phi_h,
-            mu=self.mu,
-            sigma2=self.sigma2,
-            Q_h=self.Q_h,
+            lambda_r=jnp.array(self.lambda_r),
+            Phi_f=jnp.array(self.Phi_f),
+            Phi_h=jnp.array(self.Phi_h),
+            mu=jnp.array(self.mu.flatten()), # Ensure mu is 1D for dataclass
+            sigma2=jnp.array(self.sigma2), # Pass 1D sigma2
+            Q_h=jnp.array(self.Q_h),
         )
 
     def test_simulation_output_dimensions(self):
@@ -259,15 +151,16 @@ class TestDFSVBellmanFilter(unittest.TestCase):
         sigma2 = np.array([0.1, 0.1, 0.1])
         Q_h = np.array([[0.05, 0.01], [0.01, 0.05]])
 
-        self.params = DFSV_params(
+        # Create model parameters using JAX dataclass
+        self.params = DFSVParamsDataclass(
             N=self.N,
             K=self.K,
-            lambda_r=lambda_r,
-            Phi_f=Phi_f,
-            Phi_h=Phi_h,
-            mu=mu,
-            sigma2=sigma2,
-            Q_h=Q_h,
+            lambda_r=jnp.array(lambda_r),
+            Phi_f=jnp.array(Phi_f),
+            Phi_h=jnp.array(Phi_h),
+            mu=jnp.array(mu.flatten()), # Ensure mu is 1D
+            sigma2=jnp.array(sigma2), # Pass 1D sigma2
+            Q_h=jnp.array(Q_h),
         )
 
         # Simulate data
@@ -291,7 +184,7 @@ class TestDFSVBellmanFilter(unittest.TestCase):
         # Initial factors should be zero
         self.assertTrue(np.allclose(state[:self.K], 0))
         # Initial log-vols should match the parameter mu
-        self.assertTrue(np.allclose(state[self.K:], self.params.mu.reshape(-1, 1)))
+        self.assertTrue(np.allclose(state[self.K:].flatten(), self.params.mu)) # Compare flattened JAX array
 
     def test_bellman_prediction(self):
         """Test the prediction step"""
@@ -392,12 +285,12 @@ class TestDFSVBellmanFilter(unittest.TestCase):
             
             # Define objective function (negative log-likelihood)
             def objective_fn(mu_val):
-                # Create modified parameters with new mu
-                test_params = self.params
-                test_params.mu = jnp.array(mu_val).reshape(-1, 1)
-                
-                # Compute log likelihood
-                return -self.bf.log_likelihood_of_params(test_params, test_returns)
+                # Create modified parameters using replace method
+                # Ensure mu_val is a JAX array with the correct shape (K,)
+                modified_params = self.params.replace(mu=jnp.array(mu_val))
+
+                # Compute log likelihood using the modified JAX dataclass
+                return -self.bf.log_likelihood_of_params(modified_params, test_returns)
             
             # Get gradient function
             grad_fn = jax.grad(objective_fn)

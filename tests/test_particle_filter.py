@@ -13,12 +13,13 @@ import jax.numpy as jnp # Add this import
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-# Add parent directory to path to import modules
-sys.path.insert(0, str(Path(__file__).parent.parent))
-# Updated imports to use functions directory
-from functions.filters import DFSVParticleFilter
-from functions.simulation import DFSV_params, simulate_DFSV
-from models.dfsv import DFSVParamsDataclass # Add this import
+# Remove sys.path hack - imports should work if package is installed editable
+# sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Updated imports to use the new package structure
+from qf_thesis.core.filters.particle import DFSVParticleFilter
+from qf_thesis.core.simulation import simulate_DFSV
+from qf_thesis.models.dfsv import DFSVParamsDataclass
 
 
 class TestParticleFilter(unittest.TestCase):
@@ -84,19 +85,9 @@ class TestParticleFilter(unittest.TestCase):
         # Create test parameters (now returns DFSVParamsDataclass)
         params_dataclass = self.create_test_parameters()
 
-        # Simulate data using a compatible format if needed (simulate_DFSV might expect the old class)
-        # Temporarily create old class instance for simulation ONLY
-        params_sim = DFSV_params(
-            N=params_dataclass.N, K=params_dataclass.K,
-            lambda_r=np.array(params_dataclass.lambda_r), # Convert back for sim
-            Phi_f=np.array(params_dataclass.Phi_f),
-            Phi_h=np.array(params_dataclass.Phi_h),
-            mu=np.array(params_dataclass.mu),
-            sigma2=np.array(params_dataclass.sigma2),
-            Q_h=np.array(params_dataclass.Q_h)
-        )
+        # Simulate data using the JAX dataclass directly
         T = 200  # Time series length
-        returns, true_factors, true_log_vols = simulate_DFSV(params_sim, T=T, seed=42)
+        returns, true_factors, true_log_vols = simulate_DFSV(params_dataclass, T=T, seed=42)
 
         # Create and run particle filter using the DATACLASS
         pf = DFSVParticleFilter(params_dataclass, num_particles=500)
@@ -147,18 +138,9 @@ class TestParticleFilter(unittest.TestCase):
         # Create test parameters (now returns DFSVParamsDataclass)
         params_dataclass = self.create_test_parameters()
 
-        # Simulate data using a compatible format if needed
-        params_sim = DFSV_params(
-            N=params_dataclass.N, K=params_dataclass.K,
-            lambda_r=np.array(params_dataclass.lambda_r),
-            Phi_f=np.array(params_dataclass.Phi_f),
-            Phi_h=np.array(params_dataclass.Phi_h),
-            mu=np.array(params_dataclass.mu),
-            sigma2=np.array(params_dataclass.sigma2),
-            Q_h=np.array(params_dataclass.Q_h)
-        )
+        # Simulate data using the JAX dataclass directly
         T = 500
-        returns, true_factors, true_log_vols = simulate_DFSV(params_sim, T=T, seed=123)
+        returns, true_factors, true_log_vols = simulate_DFSV(params_dataclass, T=T, seed=123)
 
         # Create and run particle filter with more particles for stability, using DATACLASS
         pf = DFSVParticleFilter(params_dataclass, num_particles=1000)
@@ -185,18 +167,9 @@ class TestParticleFilter(unittest.TestCase):
         # Create test parameters (now returns DFSVParamsDataclass)
         params_dataclass = self.create_test_parameters()
 
-        # Simulate data using compatible format if needed
-        params_sim = DFSV_params(
-            N=params_dataclass.N, K=params_dataclass.K,
-            lambda_r=np.array(params_dataclass.lambda_r),
-            Phi_f=np.array(params_dataclass.Phi_f),
-            Phi_h=np.array(params_dataclass.Phi_h),
-            mu=np.array(params_dataclass.mu),
-            sigma2=np.array(params_dataclass.sigma2),
-            Q_h=np.array(params_dataclass.Q_h)
-        )
+        # Simulate data using the JAX dataclass directly
         T = 1000  # Shorter series for this test
-        returns, _, _ = simulate_DFSV(params_sim, T=T, seed=789)
+        returns, _, _ = simulate_DFSV(params_dataclass, T=T, seed=789)
 
         # Create and run particle filter using DATACLASS
         pf = DFSVParticleFilter(params_dataclass, num_particles=500)
@@ -257,18 +230,9 @@ class TestParticleFilter(unittest.TestCase):
         # Create test parameters (now returns DFSVParamsDataclass)
         params_dataclass = self.create_test_parameters()
 
-        # Simulate data using compatible format if needed
-        params_sim = DFSV_params(
-            N=params_dataclass.N, K=params_dataclass.K,
-            lambda_r=np.array(params_dataclass.lambda_r),
-            Phi_f=np.array(params_dataclass.Phi_f),
-            Phi_h=np.array(params_dataclass.Phi_h),
-            mu=np.array(params_dataclass.mu),
-            sigma2=np.array(params_dataclass.sigma2),
-            Q_h=np.array(params_dataclass.Q_h)
-        )
+        # Simulate data using the JAX dataclass directly
         T = 600
-        returns, true_factors, true_log_vols = simulate_DFSV(params_sim, T=T, seed=456)
+        returns, true_factors, true_log_vols = simulate_DFSV(params_dataclass, T=T, seed=456)
 
         # Create and run particle filter using DATACLASS
         pf = DFSVParticleFilter(params_dataclass, num_particles=1000)
@@ -391,18 +355,9 @@ class TestParticleFilter(unittest.TestCase):
         # Create test parameters (now returns DFSVParamsDataclass)
         params_dataclass = self.create_test_parameters()
 
-        # Simulate data using compatible format if needed
-        params_sim = DFSV_params(
-            N=params_dataclass.N, K=params_dataclass.K,
-            lambda_r=np.array(params_dataclass.lambda_r),
-            Phi_f=np.array(params_dataclass.Phi_f),
-            Phi_h=np.array(params_dataclass.Phi_h),
-            mu=np.array(params_dataclass.mu),
-            sigma2=np.array(params_dataclass.sigma2),
-            Q_h=np.array(params_dataclass.Q_h)
-        )
+        # Simulate data using the JAX dataclass directly
         T = 150  # Moderate time series length
-        returns, _, _ = simulate_DFSV(params_sim, T=T, seed=111)
+        returns, _, _ = simulate_DFSV(params_dataclass, T=T, seed=111)
 
         # Convert returns to JAX array
         jax_returns = jnp.array(returns)

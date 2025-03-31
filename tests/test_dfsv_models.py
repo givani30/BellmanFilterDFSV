@@ -1,8 +1,7 @@
 """
-Tests for the DFSV parameter classes in the models.dfsv module.
+Tests for the DFSV parameter dataclass in the models.dfsv module.
 
-This module contains comprehensive tests for both the NumPy-based DFSV_params class
-and the JAX-compatible DFSVParamsDataclass.
+This module contains tests for the JAX-compatible DFSVParamsDataclass.
 """
 
 import unittest
@@ -11,14 +10,15 @@ import sys
 import os
 from pathlib import Path
 
-# Add parent directory to path to import from our modules
-sys.path.append(str(Path(__file__).parent.parent))
+# Remove sys.path hack
+# sys.path.append(str(Path(__file__).parent.parent))
 
-from models.dfsv import DFSV_params, DFSVParamsDataclass, dfsv_params_to_dict
+# Updated imports
+from qf_thesis.models.dfsv import DFSVParamsDataclass, dfsv_params_to_dict # Removed DFSV_params
 
 
 class TestDFSVModels(unittest.TestCase):
-    """Tests for the DFSV parameter classes."""
+    """Tests for the DFSVParamsDataclass."""
 
     def setUp(self):
         """Set up test parameters with correct dimensions."""
@@ -32,157 +32,19 @@ class TestDFSVModels(unittest.TestCase):
         self.sigma2 = np.array([0.1, 0.1, 0.1])
         self.Q_h = np.array([[0.05, 0.01], [0.01, 0.05]])
 
-    def test_dfsv_params_initialization(self):
-        """Test initialization of DFSV_params with valid parameters."""
-        params = DFSV_params(
-            N=self.N,
-            K=self.K,
-            lambda_r=self.lambda_r,
-            Phi_f=self.Phi_f,
-            Phi_h=self.Phi_h,
-            mu=self.mu,
-            sigma2=self.sigma2,
-            Q_h=self.Q_h
-        )
-
-        # Check that parameters were stored correctly
-        np.testing.assert_array_equal(params.lambda_r, self.lambda_r)
-        np.testing.assert_array_equal(params.Phi_f, self.Phi_f)
-        np.testing.assert_array_equal(params.Phi_h, self.Phi_h)
-        np.testing.assert_array_equal(params.mu, self.mu)
-        # sigma2 is converted to diagonal matrix if 1D
-        np.testing.assert_array_equal(params.sigma2, np.diag(self.sigma2))
-        np.testing.assert_array_equal(params.Q_h, self.Q_h)
-
-    def test_dfsv_params_validation(self):
-        """Test that validation catches dimension mismatches."""
-        # Test lambda_r with wrong dimensions
-        lambda_r_wrong = np.random.rand(self.K, self.N)  # Transposed dimensions
-        with self.assertRaises(ValueError):
-            DFSV_params(
-                N=self.N,
-                K=self.K,
-                lambda_r=lambda_r_wrong,  # Wrong dimensions
-                Phi_f=self.Phi_f,
-                Phi_h=self.Phi_h,
-                mu=self.mu,
-                sigma2=self.sigma2,
-                Q_h=self.Q_h
-            )
-
-        # Test Phi_f with wrong dimensions
-        Phi_f_wrong = np.random.rand(self.K, self.K + 1)  # Wrong columns
-        with self.assertRaises(ValueError):
-            DFSV_params(
-                N=self.N,
-                K=self.K,
-                lambda_r=self.lambda_r,
-                Phi_f=Phi_f_wrong,  # Wrong dimensions
-                Phi_h=self.Phi_h,
-                mu=self.mu,
-                sigma2=self.sigma2,
-                Q_h=self.Q_h
-            )
-
-    def test_dfsv_params_no_validation(self):
-        """Test initialization without validation."""
-        # Create parameters with incorrect dimensions but validation=False
-        lambda_r_wrong = np.random.rand(self.K, self.N)  # Transposed dimensions
-        
-        # This should not raise an error since validation is disabled
-        params = DFSV_params(
-            N=self.N,
-            K=self.K,
-            lambda_r=lambda_r_wrong,
-            Phi_f=self.Phi_f,
-            Phi_h=self.Phi_h,
-            mu=self.mu,
-            sigma2=self.sigma2,
-            Q_h=self.Q_h,
-            validate=False
-        )
-        
-        # Check that parameters were stored as-is without validation
-        np.testing.assert_array_equal(params.lambda_r, lambda_r_wrong)
-
-    def test_sigma2_handling(self):
-        """Test different forms of sigma2 parameter."""
-        # Test with 1D array
-        sigma2_1d = np.array([0.1, 0.2, 0.3])
-        params = DFSV_params(
-            N=self.N,
-            K=self.K,
-            lambda_r=self.lambda_r,
-            Phi_f=self.Phi_f,
-            Phi_h=self.Phi_h,
-            mu=self.mu,
-            sigma2=sigma2_1d,
-            Q_h=self.Q_h
-        )
-        np.testing.assert_array_equal(params.sigma2, np.diag(sigma2_1d))
-        
-        # Test with 2D diagonal matrix
-        sigma2_diag = np.diag([0.1, 0.2, 0.3])
-        params = DFSV_params(
-            N=self.N,
-            K=self.K,
-            lambda_r=self.lambda_r,
-            Phi_f=self.Phi_f,
-            Phi_h=self.Phi_h,
-            mu=self.mu,
-            sigma2=sigma2_diag,
-            Q_h=self.Q_h
-        )
-        np.testing.assert_array_equal(params.sigma2, sigma2_diag)
-        
-        # Test with full 2D matrix
-        sigma2_full = np.array([[0.1, 0.01, 0.01], [0.01, 0.2, 0.01], [0.01, 0.01, 0.3]])
-        params = DFSV_params(
-            N=self.N,
-            K=self.K,
-            lambda_r=self.lambda_r,
-            Phi_f=self.Phi_f,
-            Phi_h=self.Phi_h,
-            mu=self.mu,
-            sigma2=sigma2_full,
-            Q_h=self.Q_h
-        )
-        np.testing.assert_array_equal(params.sigma2, sigma2_full)
-
+    # Removed tests related to the old DFSV_params class:
+    # - test_dfsv_params_initialization
+    # - test_dfsv_params_validation
+    # - test_dfsv_params_no_validation
+    # - test_sigma2_handling
     def test_jax_dataclass_initialization(self):
         """Test initialization of the JAX-compatible dataclass."""
         try:
             import jax
             import jax.numpy as jnp
             
-            # Create numpy-based params first
-            np_params = DFSV_params(
-                N=self.N,
-                K=self.K,
-                lambda_r=self.lambda_r,
-                Phi_f=self.Phi_f,
-                Phi_h=self.Phi_h,
-                mu=self.mu,
-                sigma2=self.sigma2,
-                Q_h=self.Q_h
-            )
-            
-            # Convert to JAX dataclass
-            jax_params = DFSVParamsDataclass.from_dfsv_params(np_params)
-            
-            # Check that dimensions and values are preserved
-            self.assertEqual(jax_params.N, self.N)
-            self.assertEqual(jax_params.K, self.K)
-            np.testing.assert_allclose(np.array(jax_params.lambda_r), self.lambda_r)
-            np.testing.assert_allclose(np.array(jax_params.Phi_f), self.Phi_f)
-            np.testing.assert_allclose(np.array(jax_params.Phi_h), self.Phi_h)
-            np.testing.assert_allclose(np.array(jax_params.mu), self.mu)
-            np.testing.assert_allclose(np.array(jax_params.sigma2), np.diag(self.sigma2))
-            np.testing.assert_allclose(np.array(jax_params.Q_h), self.Q_h)
-            
-            # Check that arrays are actually JAX arrays
-            self.assertIsInstance(jax_params.lambda_r, jnp.ndarray)
-            self.assertIsInstance(jax_params.Phi_f, jnp.ndarray)
+            # Removed creation of np_params and conversion via from_dfsv_params
+            # Test direct initialization instead
             
             # Test direct initialization
             direct_jax_params = DFSVParamsDataclass(
@@ -192,7 +54,7 @@ class TestDFSVModels(unittest.TestCase):
                 Phi_f=jnp.array(self.Phi_f),
                 Phi_h=jnp.array(self.Phi_h),
                 mu=jnp.array(self.mu),
-                sigma2=jnp.array(np.diag(self.sigma2)),
+                sigma2=jnp.array(self.sigma2), # Initialize with 1D array
                 Q_h=jnp.array(self.Q_h)
             )
             
@@ -202,43 +64,7 @@ class TestDFSVModels(unittest.TestCase):
         except ImportError:
             self.skipTest("JAX not available, skipping JAX dataclass tests")
 
-    def test_jax_dataclass_to_original(self):
-        """Test conversion from JAX dataclass back to original DFSV_params."""
-        try:
-            import jax
-            import jax.numpy as jnp
-            
-            # Create numpy-based params first
-            np_params = DFSV_params(
-                N=self.N,
-                K=self.K,
-                lambda_r=self.lambda_r,
-                Phi_f=self.Phi_f,
-                Phi_h=self.Phi_h,
-                mu=self.mu,
-                sigma2=self.sigma2,
-                Q_h=self.Q_h
-            )
-            
-            # Convert to JAX dataclass and back
-            jax_params = DFSVParamsDataclass.from_dfsv_params(np_params)
-            converted_back = jax_params.to_dfsv_params()
-            
-            # Check that dimensions and values are preserved
-            self.assertEqual(converted_back.N, self.N)
-            self.assertEqual(converted_back.K, self.K)
-            np.testing.assert_allclose(converted_back.lambda_r, self.lambda_r)
-            np.testing.assert_allclose(converted_back.Phi_f, self.Phi_f)
-            np.testing.assert_allclose(converted_back.Phi_h, self.Phi_h)
-            np.testing.assert_allclose(converted_back.mu, self.mu)
-            
-            # Check that arrays are now NumPy arrays
-            self.assertIsInstance(converted_back.lambda_r, np.ndarray)
-            self.assertIsInstance(converted_back.Phi_f, np.ndarray)
-            
-        except ImportError:
-            self.skipTest("JAX not available, skipping JAX dataclass tests")
-
+    # Removed test_jax_dataclass_to_original as to_dfsv_params method is deleted.
     def test_jax_replace(self):
         """Test the replace method of the JAX dataclass."""
         try:
@@ -253,7 +79,7 @@ class TestDFSVModels(unittest.TestCase):
                 Phi_f=jnp.array(self.Phi_f),
                 Phi_h=jnp.array(self.Phi_h),
                 mu=jnp.array(self.mu),
-                sigma2=jnp.array(np.diag(self.sigma2)),
+                sigma2=jnp.array(self.sigma2), # Use 1D array
                 Q_h=jnp.array(self.Q_h)
             )
             
@@ -271,7 +97,7 @@ class TestDFSVModels(unittest.TestCase):
             # Check that other parameters remain unchanged
             np.testing.assert_allclose(np.array(updated_params.lambda_r), self.lambda_r)
             np.testing.assert_allclose(np.array(updated_params.Phi_h), self.Phi_h)
-            np.testing.assert_allclose(np.array(updated_params.sigma2), np.diag(self.sigma2))
+            np.testing.assert_allclose(np.array(updated_params.sigma2), self.sigma2)
             np.testing.assert_allclose(np.array(updated_params.Q_h), self.Q_h)
             
             # Check that the original object is not modified
@@ -295,7 +121,7 @@ class TestDFSVModels(unittest.TestCase):
                 Phi_f=jnp.array(self.Phi_f),
                 Phi_h=jnp.array(self.Phi_h),
                 mu=jnp.array(self.mu),
-                sigma2=jnp.array(np.diag(self.sigma2)),
+                sigma2=jnp.array(self.sigma2), # Use 1D array
                 Q_h=jnp.array(self.Q_h)
             )
             
@@ -340,7 +166,7 @@ class TestDFSVModels(unittest.TestCase):
                 Phi_f=jnp.array(self.Phi_f),
                 Phi_h=jnp.array(self.Phi_h),
                 mu=jnp.array(self.mu),
-                sigma2=jnp.array(np.diag(self.sigma2)),
+                sigma2=jnp.array(self.sigma2), # Use 1D array
                 Q_h=jnp.array(self.Q_h)
             )
             

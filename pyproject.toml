@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qf_thesis"
+version = "0.1.0"
+description = "Econometrics thesis project code for filtering DFSV models."
+readme = "README.md" # Optional: if you create one later
+requires-python = ">=3.10" # Adjust based on your Python version
+dependencies = [
+    "pandas",
+    "numpy",
+    "jax",
+    "jaxlib",
+    "jax-dataclasses",
+    "matplotlib",
+    "jaxopt",
+    "sympy",
+    "optax",
+    "optimistix",
+    "jaxtyping",
+    "plotly",
+    "tqdm",
+    "altair",
+    "pytest",
+    "scipy",
+    # Add any other direct dependencies here
+]
+
+[tool.setuptools.packages.find]
+where = ["src"] # Look for packages in src/
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "coverage",
+    "flake8",
+    "black",
+    # Add other development tools
+]
