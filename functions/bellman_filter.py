@@ -94,11 +94,11 @@ class DFSVBellmanFilter(DFSVFilter):
             static_argnums=(6,),  # max_iters is a static argument
         )
         # Create solver
-        self.solver_h = jaxopt.LBFGS(
-            fun=self.neg_log_post_h,
-            maxiter=10,
-            tol=1e-4,
-        )
+        # self.solver_h = jaxopt.LBFGS(
+        #     fun=self.neg_log_post_h,
+        #     maxiter=10,
+        #     tol=1e-4,
+        # )
         # Try to precompile
         try:
             self._precompile_jax_functions()
@@ -395,27 +395,51 @@ class DFSVBellmanFilter(DFSVFilter):
             Returns:
                 jnp.ndarray: Updated log-volatility values.
             """
-            # The objective function
-            #TODO: update so that this will use the Optimistix solver instead of Jaxopt
-            result = self.solver_h.run(
-                init_params=h_init,
-                lambda_r=lambda_r,
-                sigma2=sigma2,
-                factors=f,
-                predicted_state=pred_state,
-                I_pred=I_pred,
-                observation=observation,
+            # Create a wrapper function that matches the expected signature fn(y, args)
+            def objective_fn(h, args):
+                lambda_r, sigma2, factors, predicted_state, I_pred, observation = args
+                return self.neg_log_post_h(
+                    log_vols=h,
+                    lambda_r=lambda_r,
+                    sigma2=sigma2,
+                    factors=factors,
+                    predicted_state=predicted_state,
+                    I_pred=I_pred,
+                    observation=observation
+                )
+        
+            # Instantiate Optimistix BFGS solver
+            solver = optx.BFGS(rtol=1e-4, atol=1e-6) 
+            
+            # Prepare arguments for the objective function
+            args = (lambda_r, sigma2, f, pred_state, I_pred, observation)
+            
+            # Run the minimization
+            sol = optx.minimise(
+                fn=objective_fn,
+                solver=solver,
+                y0=h_init,
+                args=args,
+                options={},
+                max_steps=max_iters,
+                throw=False
             )
 
             # Check if optimization was successful
-            def true_fun(h):
-                return h
+            def true_fun(result_params):
+                return result_params
 
-            def false_fun(h):
-                return h_init
+            def false_fun(initial_params):
+                return initial_params
+
+            # Use sol.result instead of checking status directly
+            is_successful = bool(sol.result)
 
             return jax.lax.cond(
-                result.state.error < 1e-4, true_fun, false_fun, result.params
+                is_successful,
+                true_fun,
+                false_fun,
+                sol.value
             )
 
         # Update loop
@@ -519,9 +543,9 @@ class DFSVBellmanFilter(DFSVFilter):
         )
 
         # Also precompile functions that accept pytree params
-        _ = self.predict(dummy_params, dummy_alpha, jnp.eye(2 * K))
+        # _ = self.predict(dummy_params, dummy_alpha, jnp.eye(2 * K))
 
-    # @jit
+    @partial(jit, static_argnums=(0,))  # Mark self as static argument
     def neg_log_post_h(
         self,
         log_vols: jnp.ndarray,
@@ -828,10 +852,14 @@ class DFSVBellmanFilter(DFSVFilter):
         jax_observation = jnp.array(observation)
 
         # Compute information matrix (inverse of predicted covariance)
-        # Use Cholesky for numerical stability
-        jax_predicted_cov = jnp.array(predicted_cov)+ 1e-8 * jnp.eye(self.state_dim)
-        L = jax.scipy.linalg.cholesky(jax_predicted_cov, lower=True)
-        jax_I_pred = jax.scipy.linalg.cho_solve((L, True), jnp.eye(self.state_dim))
+        # Use Cholesky for numerical stability with regularization
+        jax_predicted_cov = jnp.array(predicted_cov) + 1e-8 * jnp.eye(self.state_dim)
+        try:
+            L = jax.scipy.linalg.cholesky(jax_predicted_cov, lower=True)
+            jax_I_pred = jax.scipy.linalg.cho_solve((L, True), jnp.eye(self.state_dim))
+        except:
+            # Fallback to regularized pseudoinverse if Cholesky fails
+            jax_I_pred = jnp.linalg.pinv(jax_predicted_cov)
 
         # Ensure symmetry
         jax_I_pred = (jax_I_pred + jax_I_pred.T) / 2.0
@@ -852,8 +880,10 @@ class DFSVBellmanFilter(DFSVFilter):
 
         # Compute the Hessian at the optimum for covariance estimation
         fisher_info = self.fisher_information(lambda_r, sigma2, updated_state)
-        I_updated = fisher_info + jax_I_pred+ 1e-8 * jnp.eye(self.state_dim)
-        updated_cov = jnp.linalg.inv(I_updated)
+        I_updated = fisher_info + jax_I_pred + 1e-8 * jnp.eye(self.state_dim)
+        
+        # Use pseudoinverse for better numerical stability
+        updated_cov = jnp.linalg.pinv(I_updated)
 
         # Ensure symmetry
         updated_cov = (updated_cov + updated_cov.T) / 2.0
@@ -861,9 +891,7 @@ class DFSVBellmanFilter(DFSVFilter):
         # Augmented Likelihood for parameter estimation
         val = self.log_posterior(lambda_r, sigma2, updated_state, jax_observation)
         penalty = self.kl_penalty(predicted_state, updated_state, jax_I_pred, I_updated)
-        log_likelihood = (
-            val - penalty
-        )  # Negate because we minimize negative log-posterior
+        log_likelihood = val - penalty  # Negate because we minimize negative log-posterior
 
         return updated_state, updated_cov, log_likelihood
 
@@ -973,7 +1001,7 @@ class DFSVBellmanFilter(DFSVFilter):
         self, params: DFSV_params, y: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, float]:
         """
-        Run the Bellman filter using JAX's scan for maximum efficiency.
+        Run the Bellman filter using JAX's scan operation for maximum efficiency.
 
         This implementation uses JAX's scan operation for efficient filtering without a
         progress bar. Ideal for production use or when performance is critical.

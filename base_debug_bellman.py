@@ -70,7 +70,7 @@ print(f"Observation values:\n{observation}")
 # Check JAX objective function
 print("\nTesting JAX objective function...")
 alpha_test = predicted_state.copy()
-alpha_test[0] = 0.7
+alpha_test = alpha_test.at[0].set(0.7)
 # Convert inputs for JAX
 jax_alpha = jnp.array(alpha_test)
 jax_pred = jnp.array(predicted_state)
