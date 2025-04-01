@@ -7,7 +7,7 @@ name = "bellman-filter-dfsv"
 version = "0.1.0"
 description = "Econometrics thesis project code for filtering DFSV models."
 readme = "README.md" # Optional: if you create one later
-requires-python = ">=3.10" # Adjust based on your Python version
+requires-python = ">=3.12" # Adjust based on your Python version
 dependencies = [
     "pandas",
     "numpy",
@@ -26,6 +26,7 @@ dependencies = [
     "pytest",
     "scipy",
     # Add any other direct dependencies here
+    "gcsfs", # Added for Google Cloud Storage access
     "pyarrow>=19.0.1",
 ]
 

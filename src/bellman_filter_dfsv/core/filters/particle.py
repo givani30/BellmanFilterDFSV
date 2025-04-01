@@ -412,7 +412,6 @@ class DFSVParticleFilter(DFSVFilter):
 
         return rng_key, next_particles, next_normalized_log_weights, ess
 
-
     def filter(
         self, params: DFSVParamsDataclass, observations: Union[np.ndarray, jnp.ndarray]
     ) -> Tuple[np.ndarray, np.ndarray, float]:
