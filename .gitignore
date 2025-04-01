@@ -52,3 +52,10 @@ jax-trace/*
 .roomodes
 .clinerules
 .coveragerc
+simulation_results_raw/*
+
+memory-bank/*
+memory-bank/activeContext.md
+memory-bank/decisionLog.md
+memory-bank/progress.md
+memory-bank/systemPatterns.md

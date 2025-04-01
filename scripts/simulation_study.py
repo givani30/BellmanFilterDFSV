@@ -5,7 +5,9 @@
 import sys
 import os
 import subprocess
-from datetime import datetime # Added import
+from datetime import datetime
+from pathlib import Path # Added import
+import json # Added import
 
 
 import numpy as np
@@ -62,7 +64,7 @@ def create_sim_parameters(N, K, seed=None) -> DFSVParamsDataclass: # Update retu
 
     # Volatility covariance matrix (ensure positive definite)
     Q_h_raw = np.random.normal(0, 0.2, size=(K, K))
-    Q_h = 0.1 * (Q_h_raw @ Q_h_raw.T) + np.eye(K) * 1e-4 # Ensure positive definite
+    Q_h = 1.0 * (Q_h_raw @ Q_h_raw.T) + np.eye(K) * 1e-4 # Ensure positive definite (Increased scaling factor)
 
     # Create parameter dataclass object using JAX arrays
     params = DFSVParamsDataclass(
@@ -88,7 +90,16 @@ def calculate_accuracy(true_values, estimated_values):
     rmse = np.sqrt(np.mean((true_values - estimated_values) ** 2, axis=0))
     correlations = []
     for k in range(true_values.shape[1]):
-        corr = np.corrcoef(true_values[:, k], estimated_values[:, k])[0, 1]
+        # Handle potential NaN values in correlation calculation
+        valid_mask = ~np.isnan(true_values[:, k]) & ~np.isnan(estimated_values[:, k])
+        if np.sum(valid_mask) < 2: # Need at least 2 points for correlation
+             corr = np.nan
+        else:
+             corr_matrix = np.corrcoef(true_values[valid_mask, k], estimated_values[valid_mask, k])
+             if corr_matrix.shape == (2, 2):
+                 corr = corr_matrix[0, 1]
+             else: # Handle cases where variance is zero -> corrcoef returns scalar
+                 corr = np.nan if np.isnan(corr_matrix) else 1.0 # Or handle as appropriate
         correlations.append(corr)
     return rmse, np.array(correlations)
 
@@ -106,320 +117,236 @@ def run_single_simulation(N, K, T, num_particles, seed, filter_type='both'):
         filter_type (str): Which filter to run ('bf', 'pf', or 'both').
 
     Returns:
-        dict: Dictionary containing configuration and results.
+        tuple: (metrics_dict, raw_data_dict)
+               metrics_dict contains configuration and scalar results.
+               raw_data_dict contains the raw time series arrays.
     """
     print(f"Running simulation: N={N}, K={K}, T={T}, Filter={filter_type}, Particles={num_particles if filter_type == 'pf' else 'N/A'}, Seed={seed}")
-    results = {
+    # Initialize return structures
+    metrics = {
         'N': N, 'K': K, 'T': T, 'num_particles': num_particles if filter_type == 'pf' else None, 'seed': seed,
         'bf_time': None, 'pf_time': None,
         'bf_rmse_f': None, 'bf_corr_f': None, 'bf_rmse_h': None, 'bf_corr_h': None,
         'pf_rmse_f': None, 'pf_corr_f': None, 'pf_rmse_h': None, 'pf_corr_h': None,
         'error': None
     }
+    raw_data = {
+        'returns': None, 'true_factors': None, 'true_log_vols': None,
+        'filtered_factors_bf': None, 'filtered_log_vols_bf': None,
+        'filtered_factors_pf': None, 'filtered_log_vols_pf': None
+    }
+    # Initialize filtered data placeholders to None
+    filtered_factors_bf = None
+    filtered_log_vols_bf = None
+    filtered_factors_pf = None
+    filtered_log_vols_pf = None
 
     try:
         # 1. Create parameters and simulate data
         params = create_sim_parameters(N, K, seed=seed)
         returns, true_factors, true_log_vols = simulate_DFSV(params=params, T=T, seed=seed+1)
+        raw_data['returns'] = returns
+        raw_data['true_factors'] = true_factors
+        raw_data['true_log_vols'] = true_log_vols
 
         # 2. Run Bellman Filter if needed
         if filter_type in ['bf', 'both']:
             bf = DFSVBellmanFilter(N, K)
             start_time_bf = time.time()
+            # Assuming filter_scan returns filtered state and cov, or filter object has methods
+            # Let's assume the filter object stores results internally for now
             bf.filter_scan(params, returns)
             end_time_bf = time.time()
-            results['bf_time'] = end_time_bf - start_time_bf
-            filtered_factors_bf = bf.get_filtered_factors()
-            filtered_log_vols_bf = bf.get_filtered_volatilities()
-            results['bf_rmse_f'], results['bf_corr_f'] = calculate_accuracy(true_factors, filtered_factors_bf)
-            results['bf_rmse_h'], results['bf_corr_h'] = calculate_accuracy(true_log_vols, filtered_log_vols_bf)
+            metrics['bf_time'] = end_time_bf - start_time_bf
+            # Check if methods exist before calling
+            if hasattr(bf, 'get_filtered_factors') and hasattr(bf, 'get_filtered_volatilities'):
+                filtered_factors_bf = bf.get_filtered_factors()
+                filtered_log_vols_bf = bf.get_filtered_volatilities()
+                raw_data['filtered_factors_bf'] = filtered_factors_bf
+                raw_data['filtered_log_vols_bf'] = filtered_log_vols_bf
+                metrics['bf_rmse_f'], metrics['bf_corr_f'] = calculate_accuracy(true_factors, filtered_factors_bf)
+                metrics['bf_rmse_h'], metrics['bf_corr_h'] = calculate_accuracy(true_log_vols, filtered_log_vols_bf)
+            else:
+                 print("Warning: Bellman filter object missing get_filtered_factors or get_filtered_volatilities method.")
+
 
         # 3. Run Particle Filter if needed
         if filter_type in ['pf', 'both']:
+            # Ensure num_particles is valid
+            if num_particles is None or num_particles <= 0:
+                 raise ValueError("num_particles must be a positive integer for Particle Filter.")
             pf = DFSVParticleFilter(params, num_particles=num_particles)
             start_time_pf = time.time()
-            pf.filter(params, returns)
+            # Assuming filter method returns results or stores them
+            # Let's assume filter method returns tuple: (filtered_states, filtered_covs, log_likelihood)
+            # And the object has methods to get factors/vols separately
+            _, _, _ = pf.filter(observations=returns) # Use observations keyword arg
             end_time_pf = time.time()
-            results['pf_time'] = end_time_pf - start_time_pf
-            filtered_factors_pf = pf.get_filtered_factors()
-            filtered_log_vols_pf = pf.get_filtered_volatilities()
-            results['pf_rmse_f'], results['pf_corr_f'] = calculate_accuracy(true_factors, filtered_factors_pf)
-            results['pf_rmse_h'], results['pf_corr_h'] = calculate_accuracy(true_log_vols, filtered_log_vols_pf)
+            metrics['pf_time'] = end_time_pf - start_time_pf
+            # Check if methods exist before calling
+            if hasattr(pf, 'get_filtered_factors') and hasattr(pf, 'get_filtered_volatilities'):
+                filtered_factors_pf = pf.get_filtered_factors()
+                filtered_log_vols_pf = pf.get_filtered_volatilities()
+                raw_data['filtered_factors_pf'] = filtered_factors_pf
+                raw_data['filtered_log_vols_pf'] = filtered_log_vols_pf
+                metrics['pf_rmse_f'], metrics['pf_corr_f'] = calculate_accuracy(true_factors, filtered_factors_pf)
+                metrics['pf_rmse_h'], metrics['pf_corr_h'] = calculate_accuracy(true_log_vols, filtered_log_vols_pf)
+            else:
+                 print("Warning: Particle filter object missing get_filtered_factors or get_filtered_volatilities method.")
+
 
         print(f"Finished simulation: N={N}, K={K}, Filter={filter_type}, Seed={seed}. "
-              f"{f'BF Time: {results["bf_time"]:.2f}s' if results["bf_time"] is not None else ''}"
-              f"{f', PF Time: {results["pf_time"]:.2f}s' if results["pf_time"] is not None else ''}")
+              f"{f'BF Time: {metrics["bf_time"]:.2f}s' if metrics["bf_time"] is not None else ''}"
+              f"{f', PF Time: {metrics["pf_time"]:.2f}s' if metrics["pf_time"] is not None else ''}")
 
     except Exception as e:
         print(f"Error during simulation N={N}, K={K}, Filter={filter_type}, Seed={seed}: {e}")
-        results['error'] = str(e)
+        metrics['error'] = str(e)
 
-    return results
+    # Return both metrics and raw data
+    return metrics, raw_data
 
 def main():
     """Main function to run the simulation study."""
-    # --- Simulation Configuration ---
-    N_values = [ 5, 10, 50]  # Example values for N
-    K_values = [2, 3, 5,10]   # Example values for K
-    T = 1000               # Time series length
-    num_particles_values = [1000, 10000]  # Number of particles for PF
-    num_reps = 3          # Number of repetitions for each configuration
-    # --- Output Configuration --- # Added section
-    results_dir = "simulation_results"
+
+    # --- Configuration ---
+    SIMULATION_CONFIG = {
+        "N_values": [5, 10], # Reduced for faster testing initially
+        "K_values": [2, 3],   # Reduced for faster testing initially
+        "T": 500,             # Reduced for faster testing initially
+        "num_particles_values": [1000], # Reduced for faster testing initially
+        "num_reps": 2,        # Reduced for faster testing initially
+        "base_results_dir": "simulation_results_raw",
+        "save_format": "npz", # Options: "npz", "parquet" (requires pyarrow)
+    }
+
+    # --- Setup Output Directory ---
+    base_results_path = Path(SIMULATION_CONFIG["base_results_dir"])
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_csv_file = os.path.join(results_dir, f"{timestamp}_simulation_results.csv")
-    output_plot_file = os.path.join(results_dir, f"{timestamp}_simulation_summary_plots.html")
+    study_dir_name = f"study_{timestamp}"
+    study_path = base_results_path / study_dir_name
+    study_path.mkdir(parents=True, exist_ok=True)
+    print(f"Saving results to: {study_path}")
 
-    # Create results directory if it doesn't exist
-    os.makedirs(results_dir, exist_ok=True)
-    # --------------------------------
+    # Save config to study directory
+    config_save_path = study_path / "simulation_config.json"
+    with open(config_save_path, 'w') as f:
+        # Convert Path object to string for JSON serialization
+        config_to_save = SIMULATION_CONFIG.copy()
+        config_to_save["base_results_dir"] = str(config_to_save["base_results_dir"])
+        json.dump(config_to_save, f, indent=4)
+    print(f"Saved configuration to {config_save_path}")
 
-    all_results = []
-    total_sims = len(N_values) * len(K_values) * (1 + len(num_particles_values)) * num_reps
+    # --- Simulation Loop ---
+    total_sims = len(SIMULATION_CONFIG["N_values"]) * len(SIMULATION_CONFIG["K_values"]) * (1 + len(SIMULATION_CONFIG["num_particles_values"])) * SIMULATION_CONFIG["num_reps"]
     current_sim = 0
 
-    for N in N_values:
-        for K in K_values:
+    for N in SIMULATION_CONFIG["N_values"]:
+        for K in SIMULATION_CONFIG["K_values"]:
             if K > N: # Skip cases where K > N if not meaningful for the model
                 print(f"Skipping N={N}, K={K} as K > N")
-                total_sims -= (1 + len(num_particles_values)) * num_reps # Adjust total count
+                total_sims -= (1 + len(SIMULATION_CONFIG["num_particles_values"])) * SIMULATION_CONFIG["num_reps"] # Adjust total count
                 continue
-            
+
             # Run Bellman Filter once for each N,K configuration
-            for rep in range(num_reps):
+            for rep in range(SIMULATION_CONFIG["num_reps"]):
                 current_sim += 1
                 seed = N * 1000 + K * 100 + rep
-                print(f"\n--- Starting Bellman Filter Simulation {current_sim}/{total_sims} ---")
-                print(f"Configuration: N={N}, K={K}, Rep={rep+1}")
-                sim_result = run_single_simulation(N, K, T, None, seed, filter_type='bf')
-                all_results.append(sim_result)
+                run_label = f"config_N{N}_K{K}_BF_rep{rep}"
+                run_path = study_path / run_label
+                run_path.mkdir(exist_ok=True)
+
+                print(f"\n--- Starting Bellman Filter Simulation {current_sim}/{total_sims} ({run_label}) ---")
+                metrics, raw_data = run_single_simulation(N, K, SIMULATION_CONFIG["T"], None, seed, filter_type='bf')
+
+                # Save results for this run
+                metrics_path = run_path / "metrics.json"
+                # Convert numpy arrays in metrics to lists for JSON serialization
+                serializable_metrics = {}
+                for key, value in metrics.items():
+                    if isinstance(value, np.ndarray):
+                         # Handle potential NaN values before converting to list
+                         if np.isnan(value).any():
+                              serializable_metrics[key] = [float('nan') if np.isnan(v) else v for v in value]
+                         else:
+                              serializable_metrics[key] = value.tolist()
+                    elif isinstance(value, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64)):
+                         serializable_metrics[key] = int(value) # Convert numpy int types
+                    elif isinstance(value, (np.floating, np.float16, np.float32, np.float64)): # Use np.floating
+                         serializable_metrics[key] = float(value) # Convert numpy float types
+                    elif isinstance(value, (np.bool_)):
+                         serializable_metrics[key] = bool(value) # Convert numpy bool types
+                    else:
+                         serializable_metrics[key] = value
+                with open(metrics_path, 'w') as f:
+                    json.dump(serializable_metrics, f, indent=4)
+
+                if SIMULATION_CONFIG["save_format"] == "npz":
+                    raw_data_path = run_path / "raw_data.npz"
+                    # Filter out None values before saving
+                    data_to_save = {k: v for k, v in raw_data.items() if v is not None}
+                    np.savez_compressed(raw_data_path, **data_to_save)
+                # Add elif for parquet later if needed
+                # elif SIMULATION_CONFIG["save_format"] == "parquet":
+                #     try:
+                #         import pyarrow as pa
+                #         import pyarrow.parquet as pq
+                #         # Convert arrays to pandas DFs or directly to pyarrow tables
+                #         # Example: pd.DataFrame(raw_data['returns']).to_parquet(run_path / 'returns.parquet')
+                #         print("Parquet saving not fully implemented yet.")
+                #     except ImportError:
+                #         print("Error: pyarrow is required to save in parquet format.")
+
+                print(f"Saved results for {run_label} to {run_path}")
+
 
             # Run Particle Filter with different particle counts
-            for num_particles in num_particles_values:
-                for rep in range(num_reps):
+            for num_particles in SIMULATION_CONFIG["num_particles_values"]:
+                for rep in range(SIMULATION_CONFIG["num_reps"]):
                     current_sim += 1
                     seed = N * 1000 + K * 100 + num_particles + rep
-                    print(f"\n--- Starting Particle Filter Simulation {current_sim}/{total_sims} ---")
-                    print(f"Configuration: N={N}, K={K}, Particles={num_particles}, Rep={rep+1}")
-                    sim_result = run_single_simulation(N, K, T, num_particles, seed, filter_type='pf')
-                    all_results.append(sim_result)
+                    run_label = f"config_N{N}_K{K}_PF{num_particles}_rep{rep}"
+                    run_path = study_path / run_label
+                    run_path.mkdir(exist_ok=True)
 
-    # Convert results to DataFrame
-    results_df = pd.DataFrame(all_results)
+                    print(f"\n--- Starting Particle Filter Simulation {current_sim}/{total_sims} ({run_label}) ---")
+                    metrics, raw_data = run_single_simulation(N, K, SIMULATION_CONFIG["T"], num_particles, seed, filter_type='pf')
 
-    # Process array results (RMSE, Corr) for easier analysis - e.g., average over factors
-    for filt in ['bf', 'pf']:
-        for metric in ['rmse', 'corr']:
-            for state in ['f', 'h']:
-                col_name = f'{filt}_{metric}_{state}'
-                # Calculate mean across factors/volatilities for summary
-                results_df[f'{col_name}_mean'] = results_df[col_name].apply(lambda x: np.mean(x) if isinstance(x, np.ndarray) else x)
-                # Keep the original array too if needed, or drop it
-                # results_df = results_df.drop(columns=[col_name])
+                    # Save results for this run
+                    metrics_path = run_path / "metrics.json"
+                    # Convert numpy arrays in metrics to lists for JSON serialization
+                    serializable_metrics = {}
+                    for key, value in metrics.items():
+                         if isinstance(value, np.ndarray):
+                              # Handle potential NaN values before converting to list
+                              if np.isnan(value).any():
+                                   serializable_metrics[key] = [float('nan') if np.isnan(v) else v for v in value]
+                              else:
+                                   serializable_metrics[key] = value.tolist()
+                         elif isinstance(value, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64)):
+                              serializable_metrics[key] = int(value) # Convert numpy int types
+                         elif isinstance(value, (np.floating, np.float16, np.float32, np.float64)): # Use np.floating
+                              serializable_metrics[key] = float(value) # Convert numpy float types
+                         elif isinstance(value, (np.bool_)):
+                              serializable_metrics[key] = bool(value) # Convert numpy bool types
+                         else:
+                              serializable_metrics[key] = value
+                    with open(metrics_path, 'w') as f:
+                        json.dump(serializable_metrics, f, indent=4)
 
+                    if SIMULATION_CONFIG["save_format"] == "npz":
+                        raw_data_path = run_path / "raw_data.npz"
+                        # Filter out None values before saving
+                        data_to_save = {k: v for k, v in raw_data.items() if v is not None}
+                        np.savez_compressed(raw_data_path, **data_to_save)
+                    # Add elif for parquet later if needed
+                    # elif SIMULATION_CONFIG["save_format"] == "parquet":
+                    #     # See comment above
+                    #     print("Parquet saving not fully implemented yet.")
 
-    # Save results
-    results_df.to_csv(output_csv_file, index=False)
-    print(f"\nSimulation study complete. Results saved to {output_csv_file}")
+                    print(f"Saved results for {run_label} to {run_path}")
 
-    # --- Plotting with Plotly ---
-    if not results_df.empty:
-        try:
-            import plotly.graph_objects as go
-            from plotly.subplots import make_subplots
-            import plotly.io as pio
-
-            # Aggregate results across replications
-            agg_results = results_df.groupby(['N', 'K', 'num_particles']).agg({
-                'bf_time': 'mean',
-                'pf_time': 'mean',
-                'bf_corr_f_mean': 'mean',
-                'pf_corr_f_mean': 'mean',
-                'bf_corr_h_mean': 'mean',
-                'pf_corr_h_mean': 'mean'
-            }).reset_index()
-
-            # Set the default template to a clean, modern style
-            pio.templates.default = "plotly_white"
-
-            # Create subplots
-            fig = make_subplots(
-                rows=2, cols=2,
-                subplot_titles=(
-                    'Computation Time vs K',
-                    'Factor Estimation Accuracy',
-                    'Log-Volatility Estimation Accuracy',
-                    'Computation Time vs N'
-                )
-            )
-
-            # Time vs K for different N
-            for n_val in agg_results['N'].unique():
-                # Bellman Filter
-                bf_subset = agg_results[(agg_results['N'] == n_val) & (agg_results['num_particles'].isna())]
-                fig.add_trace(
-                    go.Scatter(
-                        x=bf_subset['K'],
-                        y=bf_subset['bf_time'],
-                        name=f'BF (N={n_val})',
-                        mode='lines+markers',
-                        line=dict(width=2),
-                        marker=dict(size=8)
-                    ),
-                    row=1, col=1
-                )
-
-                # Particle Filter with different particle counts
-                for num_particles in num_particles_values:
-                    pf_subset = agg_results[(agg_results['N'] == n_val) & (agg_results['num_particles'] == num_particles)]
-                    fig.add_trace(
-                        go.Scatter(
-                            x=pf_subset['K'],
-                            y=pf_subset['pf_time'],
-                            name=f'PF (N={n_val}, {num_particles} particles)',
-                            mode='lines+markers',
-                            line=dict(width=2, dash='dash'),
-                            marker=dict(size=8)
-                        ),
-                        row=1, col=1
-                    )
-
-            # Factor Correlation vs K
-            for n_val in agg_results['N'].unique():
-                # Bellman Filter
-                bf_subset = agg_results[(agg_results['N'] == n_val) & (agg_results['num_particles'].isna())]
-                fig.add_trace(
-                    go.Scatter(
-                        x=bf_subset['K'],
-                        y=bf_subset['bf_corr_f_mean'],
-                        name=f'BF (N={n_val})',
-                        mode='lines+markers',
-                        line=dict(width=2),
-                        marker=dict(size=8),
-                        showlegend=False
-                    ),
-                    row=1, col=2
-                )
-
-                # Particle Filter with different particle counts
-                for num_particles in num_particles_values:
-                    pf_subset = agg_results[(agg_results['N'] == n_val) & (agg_results['num_particles'] == num_particles)]
-                    fig.add_trace(
-                        go.Scatter(
-                            x=pf_subset['K'],
-                            y=pf_subset['pf_corr_f_mean'],
-                            name=f'PF (N={n_val}, {num_particles} particles)',
-                            mode='lines+markers',
-                            line=dict(width=2, dash='dash'),
-                            marker=dict(size=8),
-                            showlegend=False
-                        ),
-                        row=1, col=2
-                    )
-
-            # Log-Volatility Correlation vs K
-            for n_val in agg_results['N'].unique():
-                # Bellman Filter
-                bf_subset = agg_results[(agg_results['N'] == n_val) & (agg_results['num_particles'].isna())]
-                fig.add_trace(
-                    go.Scatter(
-                        x=bf_subset['K'],
-                        y=bf_subset['bf_corr_h_mean'],
-                        name=f'BF (N={n_val})',
-                        mode='lines+markers',
-                        line=dict(width=2),
-                        marker=dict(size=8),
-                        showlegend=False
-                    ),
-                    row=2, col=1
-                )
-
-                # Particle Filter with different particle counts
-                for num_particles in num_particles_values:
-                    pf_subset = agg_results[(agg_results['N'] == n_val) & (agg_results['num_particles'] == num_particles)]
-                    fig.add_trace(
-                        go.Scatter(
-                            x=pf_subset['K'],
-                            y=pf_subset['pf_corr_h_mean'],
-                            name=f'PF (N={n_val}, {num_particles} particles)',
-                            mode='lines+markers',
-                            line=dict(width=2, dash='dash'),
-                            marker=dict(size=8),
-                            showlegend=False
-                        ),
-                        row=2, col=1
-                    )
-
-            # Time vs N for different K
-            for k_val in agg_results['K'].unique():
-                # Bellman Filter
-                bf_subset = agg_results[(agg_results['K'] == k_val) & (agg_results['num_particles'].isna())]
-                fig.add_trace(
-                    go.Scatter(
-                        x=bf_subset['N'],
-                        y=bf_subset['bf_time'],
-                        name=f'BF (K={k_val})',
-                        mode='lines+markers',
-                        line=dict(width=2),
-                        marker=dict(size=8),
-                        showlegend=False
-                    ),
-                    row=2, col=2
-                )
-
-                # Particle Filter with different particle counts
-                for num_particles in num_particles_values:
-                    pf_subset = agg_results[(agg_results['K'] == k_val) & (agg_results['num_particles'] == num_particles)]
-                    fig.add_trace(
-                        go.Scatter(
-                            x=pf_subset['N'],
-                            y=pf_subset['pf_time'],
-                            name=f'PF (K={k_val}, {num_particles} particles)',
-                            mode='lines+markers',
-                            line=dict(width=2, dash='dash'),
-                            marker=dict(size=8),
-                            showlegend=False
-                        ),
-                        row=2, col=2
-                    )
-
-            # Update layout
-            fig.update_layout(
-                height=1000,
-                width=1200,
-                title_text="Simulation Study Results (Averaged over Replications)",
-                title_x=0.5,
-                showlegend=True,
-                legend=dict(
-                    yanchor="top",
-                    y=0.99,
-                    xanchor="left",
-                    x=1.05
-                ),
-                template="plotly_white"
-            )
-
-            # Update axes labels
-            fig.update_xaxes(title_text="K (Number of Factors)", row=1, col=1)
-            fig.update_xaxes(title_text="K (Number of Factors)", row=1, col=2)
-            fig.update_xaxes(title_text="K (Number of Factors)", row=2, col=1)
-            fig.update_xaxes(title_text="N (Number of Assets)", row=2, col=2)
-
-            fig.update_yaxes(title_text="Average Computation Time (s)", row=1, col=1)
-            fig.update_yaxes(title_text="Average Factor Correlation", row=1, col=2)
-            fig.update_yaxes(title_text="Average Log-Volatility Correlation", row=2, col=1)
-            fig.update_yaxes(title_text="Average Computation Time (s)", row=2, col=2)
-
-            # Set y-axis ranges for correlation plots
-            fig.update_yaxes(range=[0, 1], row=1, col=2)
-            fig.update_yaxes(range=[0, 1], row=2, col=1)
-
-            # Save the plot
-            fig.write_html(output_plot_file)
-            print(f"Summary plots saved to {output_plot_file}")
-
-        except Exception as plot_err:
-            print(f"Could not generate plots: {plot_err}")
+    print(f"\nSimulation study complete. Results saved in: {study_path}")
 
 
 if __name__ == "__main__":

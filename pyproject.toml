@@ -26,6 +26,7 @@ dependencies = [
     "pytest",
     "scipy",
     # Add any other direct dependencies here
+    "pyarrow>=19.0.1",
 ]
 
 [tool.setuptools.packages.find]

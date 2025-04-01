@@ -62,10 +62,12 @@ def neg_log_post_h(
     # Note: log_posterior_fn computes log p(y|alpha), so we negate it.
     neg_log_lik = -log_posterior_fn(lambda_r, sigma2, alpha, observation)
 
-    # 2. Compute prior penalty part
-    #    0.5 * (alpha - alpha_pred)^T I_pred (alpha - alpha_pred)
-    state_diff = alpha - predicted_state
-    prior_penalty = 0.5 * jnp.dot(state_diff, jnp.dot(I_pred, state_diff))
+    # 2. Compute prior penalty part (using only h components for decoupling test)
+    #    0.5 * (h - h_pred)^T I_pred_hh (h - h_pred)
+    h_pred = predicted_state[K:]
+    h_diff = log_vols - h_pred
+    I_pred_hh = I_pred[K:, K:]
+    prior_penalty = 0.5 * jnp.dot(h_diff, jnp.dot(I_pred_hh, h_diff))
 
     # Total objective
     return neg_log_lik + prior_penalty
@@ -85,8 +87,8 @@ def update_h_bfgs(
     build_covariance_fn: BuildCovarianceFn,
     log_posterior_fn: LogPosteriorFn,
     h_solver: optx.AbstractMinimiser, # Pass solver instance
-    inner_max_steps: int = 15,
-) -> jnp.ndarray:
+    inner_max_steps: int = 50, # Increased for debugging
+) -> Tuple[jnp.ndarray, bool]: # Updated return type hint
     """
     Minimize neg_log_post_h w.r.t. h using the provided BFGS solver.
 
@@ -105,7 +107,7 @@ def update_h_bfgs(
         inner_max_steps: Max steps for the inner BFGS optimization.
 
     Returns:
-        Updated log-volatility values.
+        Tuple[jnp.ndarray, bool]: Updated log-volatility values and a boolean indicating success.
     """
     # Objective function wrapper to match optimistix fn(y, args) signature
     # It captures necessary variables from the outer scope (passed as args).
@@ -149,12 +151,12 @@ def update_h_bfgs(
     # Check if optimization was successful
     successful = sol.result == optx.RESULTS.successful
 
-    # Conditionally return the optimized value or the initial guess
+    # Conditionally return the optimized value or the initial guess, plus success status
     return jax.lax.cond(
-        successful,
-        lambda: sol.value, # Use the optimized value
-        lambda: h_init     # Fallback to initial value if optimization failed
-    )
+        pred=successful,
+        true_fun=lambda: (sol.value, True),  # Use the optimized value, return True
+        false_fun=lambda: (sol.value, False) # Return optimizer's final value even on failure, return False
+    ) # Returns (updated_h, success_status)
 
 
 @partial(jax.jit, static_argnames=("K", "build_covariance_fn"))
