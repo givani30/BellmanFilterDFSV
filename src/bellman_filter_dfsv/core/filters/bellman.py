@@ -782,6 +782,7 @@ class DFSVBellmanFilter(DFSVFilter):
         # Convert final log-likelihood sum from JAX scalar to Python float
         self.total_log_likelihood = float(final_carry[2])
 
+
         return self.filtered_states, self.filtered_covs, self.total_log_likelihood
 
 

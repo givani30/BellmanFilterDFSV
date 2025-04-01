@@ -237,11 +237,11 @@ def main():
 
     # --- Configuration ---
     SIMULATION_CONFIG = {
-        "N_values": [5, 10, 20, 50, 100, 150], # Further expanded N range
+        "N_values": [5, 10, 20,50,100,150], # Further expanded N range. Full set to be run is 5, 10, 20, 50, 100, 150
         "K_values": [2, 3, 5, 10, 15],       # Further expanded K range
         "T": 1500,                           # Increased time series length
-        "num_particles_values": [1000, 5000, 10000, 20000], # Further expanded particle counts
-        "num_reps": 1,                     # Significantly increased number of replicates
+        "num_particles_values": [1000,5000,10000,20000], # Further expanded particle counts. 1000, 5000, 10000, 20000
+        "num_reps": 100,                     # Significantly increased number of replicates 100 in full study
         "base_results_dir": "simulation_results_raw",
         "save_format": "npz", # Options: "npz", "parquet" (requires pyarrow)
     }
@@ -421,59 +421,83 @@ def main():
                          print(f"      Error creating parameters for {run_label}: {e}. Skipping replicate.")
                          # Optionally log error to a file or metrics
                          continue # Skip to next replicate
-                returns_rep, true_factors_rep, true_log_vols_rep = simulate_DFSV(params=params_rep, T=T, seed=seed+1)
+                    # <<< Correctly indented block starts here >>>
+                    returns_rep, true_factors_rep, true_log_vols_rep = simulate_DFSV(params=params_rep, T=T, seed=seed+1)
 
-                # 2. Run filtering using the single BF instance
-                metrics, raw_data_out = run_single_simulation(
-                    N=N, K=K, T=T, seed=seed,
-                    params=params_rep,
-                    returns=returns_rep,
-                    true_factors=true_factors_rep,
-                    true_log_vols=true_log_vols_rep,
-                    bf_instance=bf_instance, # Pass the instance
-                    pf_instance=None,
-                    num_particles=None
-                )
+                    # 2. Run filtering using the single BF instance
+                    metrics, raw_data_out = run_single_simulation(
+                        N=N, K=K, T=T, seed=seed,
+                        params=params_rep,
+                        returns=returns_rep,
+                        true_factors=true_factors_rep,
+                        true_log_vols=true_log_vols_rep,
+                        bf_instance=bf_instance, # Pass the instance
+                        pf_instance=None,
+                        num_particles=None
+                    )
 
-                # 3. Save results for this run
-                metrics_path = run_path / "metrics.json"
-                # Convert numpy arrays in metrics to lists for JSON serialization
-                serializable_metrics = {}
-                for key, value in metrics.items():
-                    if isinstance(value, np.ndarray):
-                         # Handle potential NaN values before converting to list
-                         if np.isnan(value).any():
-                              serializable_metrics[key] = [float('nan') if np.isnan(v) else v for v in value]
-                         else:
-                              serializable_metrics[key] = value.tolist()
-                    elif isinstance(value, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64)):
-                         serializable_metrics[key] = int(value) # Convert numpy int types
-                    elif isinstance(value, (np.floating, np.float16, np.float32, np.float64)): # Use np.floating
-                         serializable_metrics[key] = float(value) # Convert numpy float types
-                    elif isinstance(value, (np.bool_)):
-                         serializable_metrics[key] = bool(value) # Convert numpy bool types
+                    # 3. Check for errors during simulation before saving
+                    if metrics.get('error'):
+                        print(f"      --- Skipping save for {run_label} due to error during simulation: {metrics['error']} ---")
+                        # Optionally save just the error metric
+                        try:
+                            metrics_path = run_path / "metrics_error.json"
+                            serializable_metrics = {'error': metrics['error'], 'N': N, 'K': K, 'T': T, 'seed': seed, 'filter_type': 'BF'}
+                            with open(metrics_path, 'w') as f:
+                                json.dump(serializable_metrics, f, indent=4)
+                            print(f"      Saved error details to {metrics_path}")
+                        except Exception as save_err:
+                            print(f"      !!!!!! FAILED TO SAVE ERROR DETAILS for {run_label}: {save_err}")
                     else:
-                         serializable_metrics[key] = value
-                with open(metrics_path, 'w') as f:
-                    json.dump(serializable_metrics, f, indent=4)
+                        # 4. Save results for this run (only if no error occurred during simulation)
+                        try: # Add try block for saving
+                            metrics_path = run_path / "metrics.json"
+                            # Convert numpy arrays in metrics to lists for JSON serialization
+                            serializable_metrics = {}
+                            for key, value in metrics.items():
+                                if isinstance(value, np.ndarray):
+                                     # Handle potential NaN values before converting to list
+                                     if np.isnan(value).any():
+                                          serializable_metrics[key] = [float('nan') if np.isnan(v) else v for v in value]
+                                     else:
+                                          serializable_metrics[key] = value.tolist()
+                                elif isinstance(value, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64)):
+                                     serializable_metrics[key] = int(value) # Convert numpy int types
+                                elif isinstance(value, (np.floating, np.float16, np.float32, np.float64)): # Use np.floating
+                                     serializable_metrics[key] = float(value) # Convert numpy float types
+                                elif isinstance(value, (np.bool_)):
+                                     serializable_metrics[key] = bool(value) # Convert numpy bool types
+                                else:
+                                     serializable_metrics[key] = value
+                            with open(metrics_path, 'w') as f:
+                                json.dump(serializable_metrics, f, indent=4)
 
-                if SIMULATION_CONFIG["save_format"] == "npz":
-                    raw_data_path = run_path / "raw_data.npz"
-                    # Filter out None values before saving (use raw_data_out)
-                    data_to_save = {k: v for k, v in raw_data_out.items() if v is not None}
-                    np.savez_compressed(raw_data_path, **data_to_save)
-                # Add elif for parquet later if needed
-                # elif SIMULATION_CONFIG["save_format"] == "parquet":
-                #     try:
-                #         import pyarrow as pa
-                #         import pyarrow.parquet as pq
-                #         # Convert arrays to pandas DFs or directly to pyarrow tables
-                #         # Example: pd.DataFrame(raw_data['returns']).to_parquet(run_path / 'returns.parquet')
-                #         print("Parquet saving not fully implemented yet.")
-                #     except ImportError:
-                #         print("Error: pyarrow is required to save in parquet format.")
+                            if SIMULATION_CONFIG["save_format"] == "npz":
+                                raw_data_path = run_path / "raw_data.npz"
+                                # Filter out None values before saving (use raw_data_out)
+                                data_to_save = {k: v for k, v in raw_data_out.items() if v is not None}
+                                if data_to_save: # Only save if there's actually data
+                                    np.savez_compressed(raw_data_path, **data_to_save)
+                                else:
+                                    print(f"      Warning: No raw data to save for {run_label} (filtered results might be missing).")
 
-                print(f"Saved results for {run_label} to {run_path}")
+                            # Add elif for parquet later if needed
+                            # elif SIMULATION_CONFIG["save_format"] == "parquet":
+                            #     # ... (parquet logic) ...
+
+                            print(f"    Saved results for {run_label} to {run_path}")
+
+                        except Exception as e:
+                            print(f"    !!!!!! ERROR SAVING RESULTS for {run_label} to {run_path}: {e}")
+                            # Attempt to remove potentially corrupted files if save failed mid-way
+                            if 'metrics_path' in locals() and metrics_path.exists():
+                                try: metrics_path.unlink()
+                                except OSError: pass
+                            if 'raw_data_path' in locals() and raw_data_path.exists():
+                                try: raw_data_path.unlink()
+                                except OSError: pass
+                            # Continue to the next replicate instead of crashing
+                    # <<< End of correctly indented block >>>
 
 
             # --- Particle Filter Runs ---
@@ -567,40 +591,67 @@ def main():
                         num_particles=num_particles # Pass num_particles for metrics
                     )
 
-                    # 3. Save results for this run
-                    metrics_path = run_path / "metrics.json"
-                    # Convert numpy arrays in metrics to lists for JSON serialization
-                    serializable_metrics = {}
-                    for key, value in metrics.items():
-                         if isinstance(value, np.ndarray):
-                              # Handle potential NaN values before converting to list
-                              if np.isnan(value).any():
-                                   serializable_metrics[key] = [float('nan') if np.isnan(v) else v for v in value]
-                              else:
-                                   serializable_metrics[key] = value.tolist()
-                         elif isinstance(value, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64)):
-                              serializable_metrics[key] = int(value) # Convert numpy int types
-                         elif isinstance(value, (np.floating, np.float16, np.float32, np.float64)): # Use np.floating
-                              serializable_metrics[key] = float(value) # Convert numpy float types
-                         elif isinstance(value, (np.bool_)):
-                              serializable_metrics[key] = bool(value) # Convert numpy bool types
-                         else:
-                              serializable_metrics[key] = value
-                    with open(metrics_path, 'w') as f:
-                        json.dump(serializable_metrics, f, indent=4)
+                    # 3. Check for errors during simulation before saving
+                    if metrics.get('error'):
+                        print(f"      --- Skipping save for {run_label} due to error during simulation: {metrics['error']} ---")
+                        # Optionally save just the error metric
+                        try:
+                            metrics_path = run_path / "metrics_error.json"
+                            serializable_metrics = {'error': metrics['error'], 'N': N, 'K': K, 'T': T, 'seed': seed, 'filter_type': 'PF', 'num_particles': num_particles}
+                            with open(metrics_path, 'w') as f:
+                                json.dump(serializable_metrics, f, indent=4)
+                            print(f"      Saved error details to {metrics_path}")
+                        except Exception as save_err:
+                            print(f"      !!!!!! FAILED TO SAVE ERROR DETAILS for {run_label}: {save_err}")
+                    else:
+                        # 4. Save results for this run (only if no error occurred during simulation)
+                        try: # Add try block for saving
+                            metrics_path = run_path / "metrics.json"
+                            # Convert numpy arrays in metrics to lists for JSON serialization
+                            serializable_metrics = {}
+                            for key, value in metrics.items():
+                                 if isinstance(value, np.ndarray):
+                                      # Handle potential NaN values before converting to list
+                                      if np.isnan(value).any():
+                                           serializable_metrics[key] = [float('nan') if np.isnan(v) else v for v in value]
+                                      else:
+                                           serializable_metrics[key] = value.tolist()
+                                 elif isinstance(value, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64)):
+                                      serializable_metrics[key] = int(value) # Convert numpy int types
+                                 elif isinstance(value, (np.floating, np.float16, np.float32, np.float64)): # Use np.floating
+                                      serializable_metrics[key] = float(value) # Convert numpy float types
+                                 elif isinstance(value, (np.bool_)):
+                                      serializable_metrics[key] = bool(value) # Convert numpy bool types
+                                 else:
+                                      serializable_metrics[key] = value
+                            with open(metrics_path, 'w') as f:
+                                json.dump(serializable_metrics, f, indent=4)
 
-                    if SIMULATION_CONFIG["save_format"] == "npz":
-                        raw_data_path = run_path / "raw_data.npz"
-                        # Filter out None values before saving (use raw_data_out)
-                        data_to_save = {k: v for k, v in raw_data_out.items() if v is not None}
-                        np.savez_compressed(raw_data_path, **data_to_save)
-                    # Add elif for parquet later if needed
-                    # elif SIMULATION_CONFIG["save_format"] == "parquet":
-                    #     # See comment above
-                    #     print("Parquet saving not fully implemented yet.")
+                            if SIMULATION_CONFIG["save_format"] == "npz":
+                                raw_data_path = run_path / "raw_data.npz"
+                                # Filter out None values before saving (use raw_data_out)
+                                data_to_save = {k: v for k, v in raw_data_out.items() if v is not None}
+                                if data_to_save: # Only save if there's actually data
+                                    np.savez_compressed(raw_data_path, **data_to_save)
+                                else:
+                                     print(f"      Warning: No raw data to save for {run_label} (filtered results might be missing).")
+                            # Add elif for parquet later if needed
+                            # elif SIMULATION_CONFIG["save_format"] == "parquet":
+                            #     # See comment above
+                            #     print("Parquet saving not fully implemented yet.")
 
-                    print(f"Saved results for {run_label} to {run_path}")
+                            print(f"    Saved results for {run_label} to {run_path}")
 
+                        except Exception as e:
+                            print(f"    !!!!!! ERROR SAVING RESULTS for {run_label} to {run_path}: {e}")
+                            # Attempt to remove potentially corrupted files if save failed mid-way
+                            if 'metrics_path' in locals() and metrics_path.exists():
+                                try: metrics_path.unlink()
+                                except OSError: pass
+                            if 'raw_data_path' in locals() and raw_data_path.exists():
+                                try: raw_data_path.unlink()
+                                except OSError: pass
+                            # Continue to the next replicate instead of crashing
     print(f"\nSimulation study complete. Results saved in: {study_path}")
     # --- Clean up checkpoint on successful completion ---
     try:
