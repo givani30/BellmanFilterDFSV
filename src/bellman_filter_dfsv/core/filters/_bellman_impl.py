@@ -68,31 +68,63 @@ def fisher_information_impl(
     h = alpha[K:]
     exp_h = jnp.exp(h)
 
-    # Build covariance using the passed function
-    A = build_covariance_fn(lambda_r, exp_h, sigma2)
-    L = jax.scipy.linalg.cho_factor(A, lower=True)
+    # --- Optimized FIM using Woodbury Identity & Rank-1 Reformulation ---
+    # A = D + U C U.T where D=diag(sigma2), U=lambda_r, C=diag(exp(h))
+    # Ainv = Dinv - Dinv U (Cinv + U.T Dinv U)^-1 U.T Dinv
+    # Let M = Cinv + U.T Dinv U
 
-    # Helper function to compute A^-1 @ x using Cholesky
-    def A_inv(x):
-        return jax.scipy.linalg.cho_solve(L, x)
+    # Ensure sigma2 is 1D for easy diagonal inversion
+    sigma2_1d = sigma2 if sigma2.ndim == 1 else jnp.diag(sigma2)
+    # Add small jitter for numerical stability before inversion
+    Dinv_diag = 1.0 / (sigma2_1d + 1e-8)
+    Cinv_diag = 1.0 / (exp_h + 1e-8)
 
-    # Mean part
-    A_inv_lambda_r = A_inv(lambda_r)
-    mean_part = lambda_r.T @ A_inv_lambda_r
-    I_fh = jnp.zeros((K, K))
+    # Precompute Dinv @ U
+    Dinv_lambda_r = lambda_r * Dinv_diag[:, None] # (N, K)
 
-    # Covariance part
-    def partial_sigma(k):
-        lambda_r_k = jnp.take(lambda_r, k, axis=1)
-        exp_h_k = jnp.take(exp_h, k)
-        return exp_h_k * jnp.outer(lambda_r_k, lambda_r_k)
+    # Compute M = Cinv + U.T @ Dinv @ U (K x K matrix)
+    M = jnp.diag(Cinv_diag) + lambda_r.T @ Dinv_lambda_r # (K,K)
 
-    dSigmas = jax.vmap(partial_sigma)(jnp.arange(K))
-    B = jax.vmap(A_inv)(dSigmas)
-    cov_part_block = 0.5 * jnp.einsum("kij, lji -> kl", B, B)
+    # Cholesky decomposition of M for stable inversion
+    try:
+        # Use cho_factor for consistency if needed, but cholesky is fine
+        L_M = jax.scipy.linalg.cholesky(M, lower=True)
+    except jnp.linalg.LinAlgError:
+        # Fallback if M is not positive definite
+        M_jittered = M + 1e-6 * jnp.eye(K)
+        L_M = jax.scipy.linalg.cholesky(M_jittered, lower=True)
 
-    # Assemble
-    I_fisher = jnp.block([[mean_part, I_fh], [I_fh.T, cov_part_block]]) # Corrected I_fh transpose
+    # --- Compute U_matrix = A_inv @ lambda_r ---
+    # We need to compute Ainv @ lambda_r using Woodbury:
+    # Ainv @ U = Dinv @ U - Dinv @ U @ (Minv @ (U.T @ Dinv @ U))
+    # Let V = U.T @ Dinv @ U = lambda_r.T @ Dinv_lambda_r (K x K matrix)
+    V = M - jnp.diag(Cinv_diag) # (K, K)
+
+    # Solve M @ Z = V for Z using Cholesky: L_M L_M.T Z = V
+    # Z = Minv @ V
+    Z = jax.scipy.linalg.cho_solve((L_M, True), V) # (K, K)
+
+    # U_matrix = Dinv @ U - (Dinv @ U) @ Z
+    U_matrix = Dinv_lambda_r - Dinv_lambda_r @ Z # (N, K)
+
+    # --- Compute I_ff (mean_part) ---
+    # I_ff = lambda_r.T @ A_inv @ lambda_r = lambda_r.T @ U_matrix
+    I_ff = lambda_r.T @ U_matrix # (K, K)
+
+    # --- Compute I_hh (cov_part_block) using Rank-1 Reformulation ---
+    # I_hh[k, l] = 0.5 * exp(h_k + h_l) * (lambda_r_k.T @ A_inv @ lambda_r_l)^2
+    # Note that lambda_r_k.T @ A_inv @ lambda_r_l is exactly I_ff[k, l]
+    # Use outer product for exp(h_k + h_l)
+    exp_h_outer = jnp.outer(exp_h, exp_h) # (K, K)
+    I_hh = 0.5 * exp_h_outer * (I_ff ** 2) # (K, K)
+
+    # --- Assemble ---
+    I_fh = jnp.zeros((K, K)) # Block diagonal assumption
+    I_fisher = jnp.block([[I_ff, I_fh], [I_fh.T, I_hh]])
+
+    # Ensure symmetry (numerical precision might cause small asymmetries)
+    I_fisher = 0.5 * (I_fisher + I_fisher.T)
+
     return I_fisher
 
 
