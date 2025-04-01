@@ -3,8 +3,7 @@
 
 # Check if we're in the correct environment
 import sys
-import os
-import subprocess
+import argparse # Added import
 from datetime import datetime
 from pathlib import Path # Added import
 import json # Added import
@@ -12,11 +11,7 @@ import json # Added import
 
 import numpy as np
 import jax.numpy as jnp # Add JAX numpy import
-import pandas as pd
 import time
-import matplotlib.pyplot as plt
-import os
-import sys
 
 # Remove sys.path hack
 # Imports should work if qf_thesis is installed editable
@@ -222,69 +217,210 @@ def run_single_simulation(
     # Return metrics and the raw data dict (which now includes filtered results)
     return metrics, raw_data_out
 
+def save_checkpoint(path: Path, indices: dict):
+    """Saves the next indices to the checkpoint file."""
+    try:
+        with open(path, 'w') as f:
+            json.dump(indices, f, indent=4)
+        # print(f"Checkpoint saved: {indices}") # Optional: for debugging
+    except Exception as e:
+        print(f"Warning: Could not save checkpoint to {path}: {e}")
+
+
+
 def main():
+    parser = argparse.ArgumentParser(description='Run DFSV simulation study with optional resume.')
+    parser.add_argument('--resume_study', type=str, help='Name of the study directory (e.g., study_YYYYMMDD_HHMMSS) to resume.')
+    args = parser.parse_args()
+
     """Main function to run the simulation study."""
 
     # --- Configuration ---
     SIMULATION_CONFIG = {
         "N_values": [5, 10, 20, 50, 100, 150], # Further expanded N range
         "K_values": [2, 3, 5, 10, 15],       # Further expanded K range
-        "T": 1000,                           # Increased time series length
+        "T": 1500,                           # Increased time series length
         "num_particles_values": [1000, 5000, 10000, 20000], # Further expanded particle counts
-        "num_reps": 100,                     # Significantly increased number of replicates
+        "num_reps": 1,                     # Significantly increased number of replicates
         "base_results_dir": "simulation_results_raw",
         "save_format": "npz", # Options: "npz", "parquet" (requires pyarrow)
     }
 
-    # --- Setup Output Directory ---
+    # --- Setup Output Directory & Load Config/Checkpoint ---
     base_results_path = Path(SIMULATION_CONFIG["base_results_dir"])
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    study_dir_name = f"study_{timestamp}"
-    study_path = base_results_path / study_dir_name
-    study_path.mkdir(parents=True, exist_ok=True)
-    print(f"Saving results to: {study_path}")
+    start_indices = {"N": 0, "K": 0, "filter_type": "BF", "particles": 0, "rep": 0} # Default start indices
 
-    # Save config to study directory
-    config_save_path = study_path / "simulation_config.json"
-    with open(config_save_path, 'w') as f:
-        # Convert Path object to string for JSON serialization
-        config_to_save = SIMULATION_CONFIG.copy()
-        config_to_save["base_results_dir"] = str(config_to_save["base_results_dir"])
-        json.dump(config_to_save, f, indent=4)
-    print(f"Saved configuration to {config_save_path}")
+    if args.resume_study:
+        study_dir_name = args.resume_study
+        study_path = base_results_path / study_dir_name
+        print(f"Attempting to resume study: {study_path}")
+        if not study_path.is_dir():
+            print(f"Error: Resume directory not found: {study_path}")
+            sys.exit(1)
+
+        # Load config from the specific study directory
+        config_load_path = study_path / "simulation_config.json"
+        if not config_load_path.exists():
+             print(f"Error: simulation_config.json not found in resume directory: {config_load_path}")
+             sys.exit(1)
+        try:
+            with open(config_load_path, 'r') as f:
+                SIMULATION_CONFIG = json.load(f)
+                # Ensure base_results_dir is Path object if needed later, though it's mainly for setup
+                SIMULATION_CONFIG["base_results_dir"] = Path(SIMULATION_CONFIG["base_results_dir"])
+            print(f"Loaded configuration from {config_load_path}")
+        except Exception as e:
+            print(f"Error loading configuration from {config_load_path}: {e}")
+            sys.exit(1)
+
+        # Try to load checkpoint
+        checkpoint_path = study_path / "checkpoint.json"
+        if checkpoint_path.exists():
+            try:
+                with open(checkpoint_path, 'r') as f:
+                    loaded_indices = json.load(f)
+                    # Basic validation (can be expanded)
+                    if all(k in loaded_indices for k in start_indices):
+                        start_indices = loaded_indices
+                        print(f"Loaded checkpoint. Resuming from: N_idx={start_indices['N']}, K_idx={start_indices['K']}, Filter={start_indices['filter_type']}, Particles_idx={start_indices['particles']}, Rep={start_indices['rep']}")
+                    else:
+                        print("Warning: Checkpoint file format invalid. Starting from beginning of resume directory.")
+            except Exception as e:
+                print(f"Warning: Could not load checkpoint file {checkpoint_path}: {e}. Starting from beginning of resume directory.")
+        else:
+            print("No checkpoint file found. Starting from beginning of resume directory (will skip completed runs).")
+
+    else:
+        # Start a new study
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        study_dir_name = f"study_{timestamp}"
+        study_path = base_results_path / study_dir_name
+        study_path.mkdir(parents=True, exist_ok=True)
+        print(f"Starting new study. Saving results to: {study_path}")
+
+        # Save config to the new study directory
+        config_save_path = study_path / "simulation_config.json"
+        try:
+            with open(config_save_path, 'w') as f:
+                config_to_save = SIMULATION_CONFIG.copy()
+                # Store base_results_dir as string in JSON
+                config_to_save["base_results_dir"] = str(config_to_save["base_results_dir"])
+                json.dump(config_to_save, f, indent=4)
+            print(f"Saved configuration to {config_save_path}")
+        except Exception as e:
+            print(f"Error saving configuration to {config_save_path}: {e}")
+            sys.exit(1)
+        # Define checkpoint path for the new study
+        checkpoint_path = study_path / "checkpoint.json"
+
 
     # --- Simulation Loop ---
+    # Define checkpoint path (ensure it's defined in both resume/new cases)
+    checkpoint_path = study_path / "checkpoint.json"
     T = SIMULATION_CONFIG["T"] # Get T once
+    # Note: total_sims calculation might be slightly off if resuming, but it's just for progress display
     total_sims = len(SIMULATION_CONFIG["N_values"]) * len(SIMULATION_CONFIG["K_values"]) * (1 + len(SIMULATION_CONFIG["num_particles_values"])) * SIMULATION_CONFIG["num_reps"]
-    current_sim = 0
+    current_sim = 0 # This counter also might be off when resuming, consider removing or adjusting if precise count needed
 
-    for N in SIMULATION_CONFIG["N_values"]:
-        for K in SIMULATION_CONFIG["K_values"]:
-            if K > N: # Skip cases where K > N if not meaningful for the model
+    # Get config lists once
+    N_values = SIMULATION_CONFIG["N_values"]
+    K_values = SIMULATION_CONFIG["K_values"]
+    num_particles_values = SIMULATION_CONFIG["num_particles_values"]
+    num_reps = SIMULATION_CONFIG["num_reps"]
+
+    # --- Outer Loops with Resume Logic ---
+    for n_idx, N in enumerate(N_values):
+        if n_idx < start_indices["N"]:
+            continue # Skip N values before the checkpoint
+
+        for k_idx, K in enumerate(K_values):
+            # Skip K values before the checkpoint only if we are at the starting N index
+            if n_idx == start_indices["N"] and k_idx < start_indices["K"]:
+                continue # Skip K values
+
+            if K > N: # Skip cases where K > N
                 print(f"Skipping N={N}, K={K} as K > N")
-                # Adjust total count based on skipped PF runs as well
-                num_pf_configs = len(SIMULATION_CONFIG["num_particles_values"])
-                total_sims -= (1 + num_pf_configs) * SIMULATION_CONFIG["num_reps"]
                 continue
 
             print(f"\n=== Processing Configuration N={N}, K={K} ===")
 
             # --- Bellman Filter Runs ---
-            # Instantiate BF once for this N, K config
-            print(f"  Instantiating Bellman Filter (N={N}, K={K})...")
-            bf_instance = DFSVBellmanFilter(N, K)
-            print(f"  Running {SIMULATION_CONFIG['num_reps']} replicates for Bellman Filter...")
-            for rep in range(SIMULATION_CONFIG["num_reps"]):
-                current_sim += 1
-                seed = N * 1000 + K * 100 + rep # Unique seed per replicate
-                run_label = f"config_N{N}_K{K}_BF_rep{rep}"
-                run_path = study_path / run_label
-                run_path.mkdir(exist_ok=True)
+            run_bf = True
+            # Skip BF runs if checkpoint starts at PF for this N/K
+            if n_idx == start_indices["N"] and k_idx == start_indices["K"] and start_indices["filter_type"] == "PF":
+                 print(f"Checkpoint starts at PF for N={N}, K={K}. Skipping BF runs.")
+                 run_bf = False
 
-                print(f"    --- Starting BF Replicate {rep+1}/{SIMULATION_CONFIG['num_reps']} (Sim {current_sim}/{total_sims}, {run_label}) ---")
+            if run_bf:
+                print(f"  Instantiating Bellman Filter (N={N}, K={K})...")
+                try:
+                    bf_instance = DFSVBellmanFilter(N, K)
+                except Exception as e:
+                    print(f"  Error instantiating Bellman Filter for N={N}, K={K}: {e}. Skipping BF runs for this config.")
+                    continue # Skip to next K or N
 
-                # 1. Create parameters and simulate data for this replicate
-                params_rep = create_sim_parameters(N, K, seed=seed)
+                print(f"  Running {num_reps} replicates for Bellman Filter...")
+                start_rep_bf = 0
+                # Adjust starting replicate if resuming within BF for this N/K
+                if n_idx == start_indices["N"] and k_idx == start_indices["K"] and start_indices["filter_type"] == "BF":
+                    start_rep_bf = start_indices["rep"]
+
+                for rep in range(start_rep_bf, num_reps):
+                    # --- Checkpoint Update (Before starting work) ---
+                    next_n_idx, next_k_idx, next_filter_type, next_particles_idx, next_rep = n_idx, k_idx, "BF", 0, rep + 1
+
+                    if next_rep >= num_reps: # Finished all BF reps for this N/K
+                        if num_particles_values: # Check if there are any PF runs configured
+                            next_filter_type = "PF"
+                            next_particles_idx = 0
+                            next_rep = 0
+                        else: # No PF runs, move to next K/N directly
+                            next_filter_type = "BF"
+                            next_rep = 0
+                            next_k_idx += 1
+                            if next_k_idx >= len(K_values):
+                                next_k_idx = 0
+                                next_n_idx += 1
+                                # We don't need to check K>N here, outer loop handles it
+
+                    # Prepare checkpoint data (only save if not finished all N)
+                    if next_n_idx < len(N_values):
+                        next_indices = {
+                            "N": next_n_idx,
+                            "K": next_k_idx,
+                            "filter_type": next_filter_type,
+                            "particles": next_particles_idx,
+                            "rep": next_rep
+                        }
+                        save_checkpoint(checkpoint_path, next_indices)
+                    # Else: If next_n_idx is out of bounds, we are done, checkpoint will be deleted later
+
+                    # current_sim += 1 # Counter adjustment needed if resuming
+                    seed = N * 1000 + K * 100 + rep # Unique seed per replicate
+                    run_label = f"config_N{N}_K{K}_BF_rep{rep}"
+                    run_path = study_path / run_label
+                    metrics_path = run_path / "metrics.json" # Define metrics path
+
+                    # Check if already completed
+                    if metrics_path.exists():
+                        print(f"    Skipping completed BF Replicate {run_label}")
+                        continue
+
+                    # --- Checkpoint Update (Before starting work) ---
+                    # Calculate next state and save checkpoint HERE
+                    # (Implementation deferred to next step)
+
+                    # --- Start Actual Work ---
+                    run_path.mkdir(exist_ok=True) # Create dir only if not skipping
+                    print(f"    --- Starting BF Replicate {rep+1}/{num_reps} ({run_label}) ---")
+
+                    # 1. Create parameters and simulate data for this replicate
+                    try:
+                        params_rep = create_sim_parameters(N, K, seed=seed)
+                    except Exception as e:
+                         print(f"      Error creating parameters for {run_label}: {e}. Skipping replicate.")
+                         # Optionally log error to a file or metrics
+                         continue # Skip to next replicate
                 returns_rep, true_factors_rep, true_log_vols_rep = simulate_DFSV(params=params_rep, T=T, seed=seed+1)
 
                 # 2. Run filtering using the single BF instance
@@ -341,26 +477,82 @@ def main():
 
 
             # --- Particle Filter Runs ---
-            for num_particles in SIMULATION_CONFIG["num_particles_values"]:
-                # Instantiate PF once for this N, K, num_particles config
-                # Use a base seed for PF initialization that's consistent across replicates
-                pf_base_seed = N * 100 + K * 10 + num_particles
-                print(f"  Instantiating Particle Filter (N={N}, K={K}, P={num_particles}, seed={pf_base_seed})...")
-                pf_instance = DFSVParticleFilter(N=N, K=K, num_particles=num_particles, seed=pf_base_seed)
+            for p_idx, num_particles in enumerate(num_particles_values):
+                 # Skip particle counts before the checkpoint only if we are at the starting N/K and filter is PF
+                if n_idx == start_indices["N"] and k_idx == start_indices["K"] and start_indices["filter_type"] == "PF" and p_idx < start_indices["particles"]:
+                    continue # Skip particle counts
 
-                print(f"  Running {SIMULATION_CONFIG['num_reps']} replicates for Particle Filter (P={num_particles})...")
-                for rep in range(SIMULATION_CONFIG["num_reps"]):
-                    current_sim += 1
+                # Instantiate PF once for this N, K, num_particles config
+                pf_base_seed = N * 100 + K * 10 + num_particles # Consistent base seed
+                print(f"  Instantiating Particle Filter (N={N}, K={K}, P={num_particles}, seed={pf_base_seed})...")
+                try:
+                    pf_instance = DFSVParticleFilter(N=N, K=K, num_particles=num_particles, seed=pf_base_seed)
+                except Exception as e:
+                    print(f"  Error instantiating Particle Filter for N={N}, K={K}, P={num_particles}: {e}. Skipping PF runs for this particle count.")
+                    continue # Skip to next particle count
+
+                print(f"  Running {num_reps} replicates for Particle Filter (P={num_particles})...")
+                start_rep_pf = 0
+                # Adjust starting replicate if resuming within PF for this N/K/Particles
+                if n_idx == start_indices["N"] and k_idx == start_indices["K"] and start_indices["filter_type"] == "PF" and p_idx == start_indices["particles"]:
+                    start_rep_pf = start_indices["rep"]
+
+                for rep in range(start_rep_pf, num_reps):
+                    # current_sim += 1 # Counter adjustment needed if resuming
+                    # --- Checkpoint Update (Before starting work) ---
+                    next_n_idx, next_k_idx, next_filter_type, next_particles_idx, next_rep = n_idx, k_idx, "PF", p_idx, rep + 1
+
+                    if next_rep >= num_reps: # Finished all PF reps for this particle count
+                        next_particles_idx += 1
+                        next_rep = 0
+                        if next_particles_idx >= len(num_particles_values): # Finished all particle counts
+                            next_filter_type = "BF" # Go back to BF for next K/N
+                            next_particles_idx = 0
+                            next_rep = 0
+                            next_k_idx += 1
+                            if next_k_idx >= len(K_values):
+                                next_k_idx = 0
+                                next_n_idx += 1
+                                # We don't need to check K>N here, outer loop handles it
+
+                    # Prepare checkpoint data (only save if not finished all N)
+                    if next_n_idx < len(N_values):
+                        next_indices = {
+                            "N": next_n_idx,
+                            "K": next_k_idx,
+                            "filter_type": next_filter_type,
+                            "particles": next_particles_idx,
+                            "rep": next_rep
+                        }
+                        save_checkpoint(checkpoint_path, next_indices)
+                    # Else: If next_n_idx is out of bounds, we are done, checkpoint will be deleted later
+
                     # Unique seed per replicate, distinct from BF seeds and PF base seed
                     seed = N * 10000 + K * 1000 + num_particles * 10 + rep
                     run_label = f"config_N{N}_K{K}_PF{num_particles}_rep{rep}"
                     run_path = study_path / run_label
-                    run_path.mkdir(exist_ok=True)
+                    metrics_path = run_path / "metrics.json" # Define metrics path
 
-                    print(f"    --- Starting PF Replicate {rep+1}/{SIMULATION_CONFIG['num_reps']} (Sim {current_sim}/{total_sims}, {run_label}) ---")
+                    # Check if already completed
+                    if metrics_path.exists():
+                        print(f"    Skipping completed PF Replicate {run_label}")
+                        continue
+
+                    # --- Checkpoint Update (Before starting work) ---
+                    # Calculate next state and save checkpoint HERE
+                    # (Implementation deferred to next step)
+
+                    # --- Start Actual Work ---
+                    run_path.mkdir(exist_ok=True) # Create dir only if not skipping
+                    print(f"    --- Starting PF Replicate {rep+1}/{num_reps} ({run_label}) ---")
 
                     # 1. Create parameters and simulate data for this replicate
-                    params_rep = create_sim_parameters(N, K, seed=seed)
+                    try:
+                        params_rep = create_sim_parameters(N, K, seed=seed)
+                    except Exception as e:
+                         print(f"      Error creating parameters for {run_label}: {e}. Skipping replicate.")
+                         # Optionally log error to a file or metrics
+                         continue # Skip to next replicate
                     returns_rep, true_factors_rep, true_log_vols_rep = simulate_DFSV(params=params_rep, T=T, seed=seed+1)
 
                     # 2. Run filtering using the single PF instance
@@ -410,6 +602,14 @@ def main():
                     print(f"Saved results for {run_label} to {run_path}")
 
     print(f"\nSimulation study complete. Results saved in: {study_path}")
+    # --- Clean up checkpoint on successful completion ---
+    try:
+        if checkpoint_path.exists():
+            checkpoint_path.unlink()
+            print(f"Successfully deleted checkpoint file: {checkpoint_path}")
+    except Exception as e:
+        print(f"Warning: Could not delete checkpoint file {checkpoint_path}: {e}")
+
 
 
 if __name__ == "__main__":

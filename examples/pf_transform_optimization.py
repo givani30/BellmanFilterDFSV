@@ -192,8 +192,8 @@ def main():
     
     # Create a Particle Filter object
     num_particles = 1000 # Increased particles for stability
-    filter_pf = DFSVParticleFilter(params, num_particles=num_particles)
-    
+    filter_pf = DFSVParticleFilter(N=params.N, K=params.K, num_particles=num_particles) # Instantiate with N, K
+
     # Convert true params to JAX parameter class for reference
     jax_params_true = DFSVParamsDataclass.from_dfsv_params(params)
     

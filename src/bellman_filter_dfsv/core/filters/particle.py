@@ -32,8 +32,8 @@ except ImportError:
         warnings.warn("tqdm not installed. Progress bars will not be shown.")
         return iterable
 
-# Enable 64-bit precision for JAX if needed (can be set globally)
-jax.config.update("jax_enable_x64", True)
+# Precision should be controlled by the calling script, not set globally here.
+# jax.config.update("jax_enable_x64", True) # REMOVED
 
 
 # --- Particle Filter Implementation ---
@@ -146,8 +146,8 @@ class DFSVParticleFilter(DFSVFilter):
         if not isinstance(params, DFSVParamsDataclass):
             raise TypeError(f"Input must be a DFSVParamsDataclass, got {type(params)}")
 
-        # Convert relevant fields to JAX arrays, ensuring correct dtype (e.g., float64)
-        default_dtype = jnp.float64 # Explicitly use float64
+        # Convert relevant fields to JAX arrays, ensuring correct dtype (e.g., float32)
+        default_dtype = jnp.float32 # Use float32 for potential speedup
         updates = {}
         changed = False
         for field_name in ["lambda_r", "Phi_f", "Phi_h", "mu", "sigma2", "Q_h"]:
@@ -205,9 +205,9 @@ class DFSVParticleFilter(DFSVFilter):
                 "Initial covariance matrix must be positive definite for sampling."
             ) from e
 
-        # Initialize weights to uniform normalized log weights
+        # Initialize weights to uniform normalized log weights (using float32)
         log_weights_normalized = jnp.full(
-            self.num_particles, -jnp.log(self.num_particles)
+            self.num_particles, -jnp.log(self.num_particles), dtype=jnp.float32
         )
 
         return rng_key, particles, log_weights_normalized
@@ -276,22 +276,23 @@ class DFSVParticleFilter(DFSVFilter):
         particles: jnp.ndarray,          # (state_dim, P)
         observation: jnp.ndarray,        # (N, 1)
         factor_loadings: jnp.ndarray,    # (N, K)
-        obs_noise_cov: jnp.ndarray,      # (N, N) - Idiosyncratic variance matrix R_t
+        obs_noise_variances: jnp.ndarray,# (N,) - Diagonal elements of R_t
         K: int,
         N: int,
     ) -> jnp.ndarray:                     # (P,)
         """
-        Compute the log-likelihood log p(y_t | x_t) for each particle x_t.
+        Compute the log-likelihood log p(y_t | x_t) for each particle x_t,
+        assuming diagonal observation noise covariance R_t = diag(obs_noise_variances).
 
         Uses the observation equation: y_t = lambda_r @ f_t + epsilon_t
-        where epsilon_t ~ N(0, R_t) and R_t = diag(sigma2).
+        where epsilon_t ~ N(0, R_t).
 
         Args:
             particles: Predicted particles x_t (state_dim, num_particles).
             observation: Current observation y_t (N, 1).
             factor_loadings: Factor loading matrix lambda_r (N, K).
-            obs_noise_cov: Observation noise covariance matrix R_t (N, N).
-                           Typically diag(sigma2).
+            obs_noise_variances: Diagonal elements (variances) of the observation
+                noise covariance matrix R_t (N,).
             K: Number of factors (static).
             N: Number of observations (static).
 
@@ -308,55 +309,33 @@ class DFSVParticleFilter(DFSVFilter):
         # observation is (N, 1), expected_observation is (N, P) -> broadcasting
         observation_error = observation - expected_observation  # Shape (N, P)
 
-        # Compute log probability density of N(observation_error | 0, obs_noise_cov)
-        # Use vmap with the static helper method for Cholesky approach
+        # Pre-calculate log determinant of R_t = diag(variances)
+        # Add epsilon for numerical stability if variances are near zero
+        safe_variances = jnp.maximum(obs_noise_variances, 1e-10)
+        log_det_R = jnp.sum(jnp.log(safe_variances)) # log|R| = sum(log(variances))
+
+        # Define function to compute log probability for a single particle's error
+        @partial(jit, static_argnums=(2,)) # N is static inside vmap
+        def _log_prob_single(error_p, variances_p, N_p):
+            # Quadratic form: error^T @ R^{-1} @ error = sum(error_i^2 / variance_i)
+            quad_form = jnp.sum((error_p ** 2) / variances_p)
+            # Log likelihood: -0.5 * (N*log(2pi) + log_det_R + quad_form)
+            # Ensure float32 constant
+            log2pi = jnp.log(jnp.array(2 * jnp.pi, dtype=jnp.float32))
+            log_prob = -0.5 * (N_p * log2pi + log_det_R + quad_form)
+            return log_prob.astype(jnp.float32) # Explicitly cast result
+
+        # Compute log probability density using vmap over the particle dimension (axis 1 of error)
+        # Broadcast variances and N
         log_likelihoods = jax.vmap(
-            DFSVParticleFilter._compute_logprob_cholesky,
-            in_axes=(1, None, None),  # Map over axis 1 of error, broadcast cov and N
+            _log_prob_single,
+            in_axes=(1, None, None), # Map over axis 1 of error, broadcast variances and N
             out_axes=0,
-        )(observation_error, obs_noise_cov, N)  # Result shape (P,)
+        )(observation_error, safe_variances, N)  # Result shape (P,)
 
         return log_likelihoods
 
-    @staticmethod
-    @partial(jit, static_argnums=(2,)) # N is static
-    def _compute_logprob_cholesky(
-        observation_error: jnp.ndarray, # (N,)
-        covariance: jnp.ndarray,        # (N, N)
-        N: int
-    ) -> float:
-        """
-        Compute log N(observation_error | 0, covariance) using Cholesky.
-
-        Args:
-            observation_error: Difference y - E[y|x] for a single particle (N,).
-            covariance: Covariance matrix R_t (N, N).
-            N: Dimension of observation (static).
-
-        Returns:
-            Log-likelihood value for the particle.
-        """
-        try:
-            # L @ L.T = covariance
-            L = jax.scipy.linalg.cholesky(covariance, lower=True)
-            # Solve L @ x = observation_error for x using forward substitution
-            x = jax.scipy.linalg.solve_triangular(L, observation_error, lower=True)
-            # Quadratic form: error^T @ Sigma^{-1} @ error = x^T @ x
-            quad_form = jnp.sum(x**2)
-            # Log determinant: log|Sigma| = 2 * sum(log(diag(L)))
-            # Add epsilon for numerical stability if diagonal elements are near zero
-            safe_diag_L = jnp.maximum(jnp.diag(L), 1e-10) # Epsilon
-            log_det_sigma = 2 * jnp.sum(jnp.log(safe_diag_L))
-
-            # Log likelihood: -0.5 * (N*log(2pi) + log_det_sigma + quad_form)
-            log_prob = -0.5 * (N * jnp.log(2 * jnp.pi) + log_det_sigma + quad_form)
-
-        except jnp.linalg.LinAlgError:
-            # Handle cases where Cholesky fails (matrix not positive definite)
-            log_prob = -jnp.inf # Assign very low likelihood
-
-        return log_prob
-
+    # Removed _compute_logprob_cholesky static method as it's replaced by direct calculation
 
     @partial(jit, static_argnums=(0,)) # self is static
     def resample_particles(
@@ -411,8 +390,8 @@ class DFSVParticleFilter(DFSVFilter):
             indices = jnp.clip(indices, 0, n - 1)
             # Select particles based on indices
             resampled_particles = particles_resample[:, indices]
-            # Reset weights to uniform normalized log weights after resampling
-            resampled_log_weights = jnp.full(n, -jnp.log(n))
+            # Reset weights to uniform normalized log weights after resampling (using float32)
+            resampled_log_weights = jnp.full(n, -jnp.log(n), dtype=jnp.float32)
             return key_resample, resampled_particles, resampled_log_weights
 
         # --- Define Conditional Branches ---
@@ -494,21 +473,24 @@ class DFSVParticleFilter(DFSVFilter):
                 "Q_h matrix from passed params must be positive definite."
             ) from e
 
-        # Compute observation noise covariance matrix R from passed params
+        # Compute observation noise variances (diagonal of R) from passed params
         sigma2_curr = jax_params.sigma2
         if sigma2_curr.ndim == 1:
             if sigma2_curr.shape[0] != N:
-                 raise ValueError(f"sigma2 (1D) length {sigma2_curr.shape[0]} != N ({N})")
-            obs_noise_cov = jnp.diag(sigma2_curr)
+                raise ValueError(f"sigma2 (1D) length {sigma2_curr.shape[0]} != N ({N})")
+            obs_noise_variances = sigma2_curr # Assume it's already the variances
         elif sigma2_curr.ndim == 2:
             if sigma2_curr.shape != (N, N):
-                 raise ValueError(f"sigma2 (2D) shape {sigma2_curr.shape} != ({N}, {N})")
-            obs_noise_cov = sigma2_curr
+                raise ValueError(f"sigma2 (2D) shape {sigma2_curr.shape} != ({N}, {N})")
+            # Ensure it's diagonal and extract variances
+            if not jnp.allclose(sigma2_curr, jnp.diag(jnp.diag(sigma2_curr))):
+                warnings.warn("sigma2 is 2D but not diagonal. Extracting diagonal for particle filter likelihood.")
+            obs_noise_variances = jnp.diag(sigma2_curr)
         else:
             raise ValueError(f"sigma2 has invalid shape {sigma2_curr.shape}")
 
         # Extract factor loadings
-        factor_loadings = jax_params.lambda_r
+        factor_loadings = jax_params.lambda_r # Shape (N, K)
 
         # --- Initialize state for scan ---
         # Use the instance's current rng_key, but pass params explicitly
@@ -528,7 +510,7 @@ class DFSVParticleFilter(DFSVFilter):
             self_static, # Pass self statically for methods like resample
             params_static: DFSVParamsDataclass, # Pass params statically for this run
             chol_Q_h_static: jnp.ndarray,       # Pass chol_Q_h statically for this run
-            obs_noise_cov_static: jnp.ndarray,  # Pass obs_noise_cov statically for this run
+            obs_noise_variances: jnp.ndarray,   # Pass obs_noise_variances statically
             K_static: int,                      # Pass K statically
             N_static: int,                      # Pass N statically
             state: PFScanState,                 # The dynamic state
@@ -543,12 +525,12 @@ class DFSVParticleFilter(DFSVFilter):
                 key, current_particles, params_static, chol_Q_h_static
             )
 
-            # 2. Weight (pass factor_loadings and obs_noise_cov)
+            # 2. Weight (pass factor_loadings and obs_noise_variances)
             log_likelihood_terms = self_static.compute_log_likelihood_particle(
                 predicted_particles,
                 observation,
                 params_static.lambda_r, # Get factor loadings from params
-                obs_noise_cov_static,   # Use passed obs_noise_cov
+                obs_noise_variances,    # Use passed obs_noise_variances (matches signature)
                 K_static,
                 N_static,
             )
@@ -595,7 +577,7 @@ class DFSVParticleFilter(DFSVFilter):
             self, # Pass self statically
             jax_params, # Pass params statically for this run
             chol_Q_h, # Pass chol_Q_h statically for this run
-            obs_noise_cov, # Pass obs_noise_cov statically for this run
+            obs_noise_variances, # Pass obs_noise_variances statically for this run
             K, # Pass K statically
             N, # Pass N statically
         ))
@@ -792,12 +774,23 @@ class DFSVParticleFilter(DFSVFilter):
         K = params.K
 
         # --- Prepare static parameters for scan body ---
-        # Precompute observation noise covariance matrix R
+        # Precompute observation noise variances (diagonal of R)
         sigma2_curr = params.sigma2
         if sigma2_curr.ndim == 1:
-            obs_noise_cov = jnp.diag(sigma2_curr)
-        else: # Assume 2D
-            obs_noise_cov = sigma2_curr
+            if sigma2_curr.shape[0] != N:
+                # This check might be redundant if params validation is done elsewhere,
+                # but kept for safety within the JITted function context.
+                return jnp.array(-jnp.inf) # Invalid params -> low likelihood
+            obs_noise_variances = sigma2_curr
+        elif sigma2_curr.ndim == 2:
+            if sigma2_curr.shape != (N, N):
+                return jnp.array(-jnp.inf) # Invalid params
+            # Assuming diagonal, extract variances
+            obs_noise_variances = jnp.diag(sigma2_curr)
+            # Optional: Add check if it's truly diagonal? Might be slow inside JIT.
+        else:
+            return jnp.array(-jnp.inf) # Invalid params
+
         # Precompute Cholesky of Q_h for this parameter set
         try:
             chol_Q_h_local = jax.scipy.linalg.cholesky(params.Q_h, lower=True)
@@ -842,12 +835,12 @@ class DFSVParticleFilter(DFSVFilter):
             predicted_particles = jnp.vstack([factors_tp1, log_vols_tp1])
             # End Predict
 
-            # 2. Weight (using input params and precomputed obs_noise_cov)
+            # 2. Weight (using input params and precomputed obs_noise_variances)
             log_likelihood_terms = self_static.compute_log_likelihood_particle(
                 predicted_particles,
                 observation,
                 params.lambda_r,
-                obs_noise_cov, # Use precomputed R
+                obs_noise_variances, # Use precomputed variances
                 K,
                 N,
             )

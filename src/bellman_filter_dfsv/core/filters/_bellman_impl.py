@@ -128,13 +128,62 @@ def log_posterior_impl(
     pred_obs = lambda_r @ f
     innovation = observation - pred_obs
     exp_log_vols = jnp.exp(log_vols)
-    A = build_covariance_fn(lambda_r, exp_log_vols, sigma2)
 
-    L = jnp.linalg.cholesky(A)
-    alpha_vec = jax.scipy.linalg.solve_triangular(L, innovation, lower=True)
-    quad_form = jnp.sum(alpha_vec**2)
-    diag_L = jnp.diag(L)
-    logdet_A = 2.0 * jnp.sum(jnp.log(jnp.maximum(diag_L, 1e-10)))
+    # --- Use Woodbury Identity & Matrix Determinant Lemma ---
+    # A = D + U C U.T
+    # D = diag(sigma2) -> Dinv = diag(1/sigma2)
+    # U = lambda_r
+    # C = diag(exp(h)) -> Cinv = diag(1/exp(h))
+
+    # Ensure sigma2 is 1D for easy diagonal inversion
+    sigma2_1d = sigma2 if sigma2.ndim == 1 else jnp.diag(sigma2)
+    # Add small jitter for numerical stability before inversion
+    Dinv_diag = 1.0 / (sigma2_1d + 1e-8)
+    Cinv_diag = 1.0 / (exp_log_vols + 1e-8)
+
+    # Precompute Dinv @ U and Dinv @ innovation
+    Dinv_lambda_r = lambda_r * Dinv_diag[:, None] # Equivalent to diag(Dinv) @ lambda_r
+    Dinv_innovation = innovation * Dinv_diag
+
+    # Compute M = Cinv + U.T @ Dinv @ U (K x K matrix)
+    M = jnp.diag(Cinv_diag) + lambda_r.T @ Dinv_lambda_r
+
+    # Cholesky decomposition of M for stable inversion and logdet
+    try:
+        L_M = jax.scipy.linalg.cholesky(M, lower=True)
+    except jnp.linalg.LinAlgError:
+        # Fallback if M is not positive definite (should not happen in theory)
+        # Add jitter and retry
+        M_jittered = M + 1e-6 * jnp.eye(K)
+        L_M = jax.scipy.linalg.cholesky(M_jittered, lower=True)
+
+    # Calculate log determinant of A using Matrix Determinant Lemma
+    # logdet(A) = logdet(M) + logdet(C) + logdet(D)
+    # Note: logdet(M) = 2 * sum(log(diag(L_M)))
+    #       logdet(C) = sum(log(exp(h))) = sum(h)
+    #       logdet(D) = sum(log(sigma2))
+    logdet_M = 2.0 * jnp.sum(jnp.log(jnp.maximum(jnp.diag(L_M), 1e-10)))
+    logdet_C = jnp.sum(log_vols)
+    logdet_D = jnp.sum(jnp.log(jnp.maximum(sigma2_1d, 1e-10)))
+    logdet_A = logdet_M + logdet_C + logdet_D
+
+    # Calculate quadratic form: innovation.T @ Ainv @ innovation
+    # Ainv = Dinv - Dinv @ U @ Minv @ U.T @ Dinv
+    # quad_form = innovation.T @ Dinv @ innovation - (innovation.T @ Dinv @ U) @ Minv @ (U.T @ Dinv @ innovation)
+
+    # Term 1: innovation.T @ Dinv @ innovation
+    term1 = jnp.dot(innovation, Dinv_innovation)
+
+    # Term 2: (innovation.T @ Dinv @ U) @ Minv @ (U.T @ Dinv @ innovation)
+    # Let v = U.T @ Dinv @ innovation (K-dim vector)
+    v = lambda_r.T @ Dinv_innovation
+    # Solve M @ z = v for z using Cholesky: L_M L_M.T z = v
+    z = jax.scipy.linalg.cho_solve((L_M, True), v) # Solves M x = v -> z = Minv @ v
+    term2 = jnp.dot(v, z) # v.T @ Minv @ v
+
+    quad_form = term1 - term2
+
+    # Calculate log likelihood
     log_lik = -0.5 * (N * jnp.log(2.0 * jnp.pi) + logdet_A + quad_form)
 
     return log_lik
