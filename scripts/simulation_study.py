@@ -64,7 +64,7 @@ def create_sim_parameters(N, K, seed=None) -> DFSVParamsDataclass: # Update retu
 
     # Volatility covariance matrix (ensure positive definite)
     Q_h_raw = np.random.normal(0, 0.2, size=(K, K))
-    Q_h = 1.0 * (Q_h_raw @ Q_h_raw.T) + np.eye(K) * 1e-4 # Ensure positive definite (Increased scaling factor)
+    Q_h = 1.0 * (Q_h_raw @ Q_h_raw.T) + np.eye(K) * 1e-4 # Ensure positive definite (Increased scaling from 0.1)
 
     # Create parameter dataclass object using JAX arrays
     params = DFSVParamsDataclass(
@@ -104,36 +104,62 @@ def calculate_accuracy(true_values, estimated_values):
     return rmse, np.array(correlations)
 
 
-def run_single_simulation(N, K, T, num_particles, seed, filter_type='both'):
+def run_single_simulation(
+    N: int,
+    K: int,
+    T: int,
+    seed: int,
+    params: DFSVParamsDataclass,
+    returns: jnp.ndarray,
+    true_factors: jnp.ndarray,
+    true_log_vols: jnp.ndarray,
+    bf_instance: DFSVBellmanFilter | None = None,
+    pf_instance: DFSVParticleFilter | None = None,
+    num_particles: int | None = None # Still needed for metrics dict
+    ):
     """
-    Runs a single simulation instance for given parameters.
+    Runs filtering for a single simulation replicate using pre-initialized filters
+    and pre-generated data/parameters.
 
     Args:
         N (int): Number of assets.
         K (int): Number of factors.
         T (int): Time series length.
-        num_particles (int): Number of particles for the Particle Filter (only used if filter_type='pf').
-        seed (int): Random seed.
-        filter_type (str): Which filter to run ('bf', 'pf', or 'both').
+        seed (int): Random seed used for this replicate's data generation.
+        params (DFSVParamsDataclass): Parameters used for this replicate.
+        returns (jnp.ndarray): Simulated returns for this replicate.
+        true_factors (jnp.ndarray): True factors for this replicate.
+        true_log_vols (jnp.ndarray): True log-volatilities for this replicate.
+        bf_instance (DFSVBellmanFilter, optional): Pre-initialized Bellman Filter.
+        pf_instance (DFSVParticleFilter, optional): Pre-initialized Particle Filter.
+        num_particles (int, optional): Number of particles (for PF metrics).
 
     Returns:
         tuple: (metrics_dict, raw_data_dict)
-               metrics_dict contains configuration and scalar results.
-               raw_data_dict contains the raw time series arrays.
+               metrics_dict contains configuration and scalar results for this run.
+               raw_data_dict contains the raw time series arrays for this run.
     """
-    print(f"Running simulation: N={N}, K={K}, T={T}, Filter={filter_type}, Particles={num_particles if filter_type == 'pf' else 'N/A'}, Seed={seed}")
+    filter_type_str = "BF" if bf_instance else "PF" if pf_instance else "Unknown"
+    particles_info = f"Particles={num_particles}" if pf_instance else "Particles=N/A"
+    print(f"Running filtering: N={N}, K={K}, T={T}, Filter={filter_type_str}, {particles_info}, Seed={seed}")
+
     # Initialize return structures
     metrics = {
-        'N': N, 'K': K, 'T': T, 'num_particles': num_particles if filter_type == 'pf' else None, 'seed': seed,
+        'N': N, 'K': K, 'T': T, 'num_particles': num_particles, 'seed': seed,
         'bf_time': None, 'pf_time': None,
         'bf_rmse_f': None, 'bf_corr_f': None, 'bf_rmse_h': None, 'bf_corr_h': None,
         'pf_rmse_f': None, 'pf_corr_f': None, 'pf_rmse_h': None, 'pf_corr_h': None,
         'error': None
     }
-    raw_data = {
-        'returns': None, 'true_factors': None, 'true_log_vols': None,
-        'filtered_factors_bf': None, 'filtered_log_vols_bf': None,
-        'filtered_factors_pf': None, 'filtered_log_vols_pf': None
+    # Raw data is now passed in, but we add placeholders for filtered results
+    raw_data_out = {
+        'returns': returns, # Passed in
+        'true_factors': true_factors, # Passed in
+        'true_log_vols': true_log_vols, # Passed in
+        'filtered_factors_bf': None,
+        'filtered_log_vols_bf': None,
+        'filtered_factors_pf': None,
+        'filtered_log_vols_pf': None
     }
     # Initialize filtered data placeholders to None
     filtered_factors_bf = None
@@ -142,80 +168,70 @@ def run_single_simulation(N, K, T, num_particles, seed, filter_type='both'):
     filtered_log_vols_pf = None
 
     try:
-        # 1. Create parameters and simulate data
-        params = create_sim_parameters(N, K, seed=seed)
-        returns, true_factors, true_log_vols = simulate_DFSV(params=params, T=T, seed=seed+1)
-        raw_data['returns'] = returns
-        raw_data['true_factors'] = true_factors
-        raw_data['true_log_vols'] = true_log_vols
+        # Data generation is now done outside this function
 
-        # 2. Run Bellman Filter if needed
-        if filter_type in ['bf', 'both']:
-            bf = DFSVBellmanFilter(N, K)
+        # 2. Run Bellman Filter if instance provided
+        if bf_instance is not None:
             start_time_bf = time.time()
-            # Assuming filter_scan returns filtered state and cov, or filter object has methods
-            # Let's assume the filter object stores results internally for now
-            bf.filter_scan(params, returns)
+            # Use the provided instance and replicate-specific params/returns
+            bf_instance.filter_scan(params, returns)
             end_time_bf = time.time()
             metrics['bf_time'] = end_time_bf - start_time_bf
             # Check if methods exist before calling
-            if hasattr(bf, 'get_filtered_factors') and hasattr(bf, 'get_filtered_volatilities'):
-                filtered_factors_bf = bf.get_filtered_factors()
-                filtered_log_vols_bf = bf.get_filtered_volatilities()
-                raw_data['filtered_factors_bf'] = filtered_factors_bf
-                raw_data['filtered_log_vols_bf'] = filtered_log_vols_bf
+            if hasattr(bf_instance, 'get_filtered_factors') and hasattr(bf_instance, 'get_filtered_volatilities'):
+                filtered_factors_bf = bf_instance.get_filtered_factors()
+                filtered_log_vols_bf = bf_instance.get_filtered_volatilities()
+                raw_data_out['filtered_factors_bf'] = filtered_factors_bf
+                raw_data_out['filtered_log_vols_bf'] = filtered_log_vols_bf
                 metrics['bf_rmse_f'], metrics['bf_corr_f'] = calculate_accuracy(true_factors, filtered_factors_bf)
                 metrics['bf_rmse_h'], metrics['bf_corr_h'] = calculate_accuracy(true_log_vols, filtered_log_vols_bf)
             else:
                  print("Warning: Bellman filter object missing get_filtered_factors or get_filtered_volatilities method.")
 
 
-        # 3. Run Particle Filter if needed
-        if filter_type in ['pf', 'both']:
-            # Ensure num_particles is valid
+        # 3. Run Particle Filter if instance provided
+        if pf_instance is not None:
             if num_particles is None or num_particles <= 0:
-                 raise ValueError("num_particles must be a positive integer for Particle Filter.")
-            pf = DFSVParticleFilter(params, num_particles=num_particles)
+                 raise ValueError("num_particles must be provided and positive for Particle Filter.")
+            # Use the provided instance and replicate-specific params/returns
             start_time_pf = time.time()
-            # Assuming filter method returns results or stores them
-            # Let's assume filter method returns tuple: (filtered_states, filtered_covs, log_likelihood)
-            # And the object has methods to get factors/vols separately
-            _, _, _ = pf.filter(observations=returns) # Use observations keyword arg
+            # Call filter with external params
+            _, _, _ = pf_instance.filter(params=params, observations=returns)
             end_time_pf = time.time()
             metrics['pf_time'] = end_time_pf - start_time_pf
             # Check if methods exist before calling
-            if hasattr(pf, 'get_filtered_factors') and hasattr(pf, 'get_filtered_volatilities'):
-                filtered_factors_pf = pf.get_filtered_factors()
-                filtered_log_vols_pf = pf.get_filtered_volatilities()
-                raw_data['filtered_factors_pf'] = filtered_factors_pf
-                raw_data['filtered_log_vols_pf'] = filtered_log_vols_pf
+            if hasattr(pf_instance, 'get_filtered_factors') and hasattr(pf_instance, 'get_filtered_volatilities'):
+                filtered_factors_pf = pf_instance.get_filtered_factors()
+                filtered_log_vols_pf = pf_instance.get_filtered_volatilities()
+                raw_data_out['filtered_factors_pf'] = filtered_factors_pf
+                raw_data_out['filtered_log_vols_pf'] = filtered_log_vols_pf
                 metrics['pf_rmse_f'], metrics['pf_corr_f'] = calculate_accuracy(true_factors, filtered_factors_pf)
                 metrics['pf_rmse_h'], metrics['pf_corr_h'] = calculate_accuracy(true_log_vols, filtered_log_vols_pf)
             else:
                  print("Warning: Particle filter object missing get_filtered_factors or get_filtered_volatilities method.")
 
 
-        print(f"Finished simulation: N={N}, K={K}, Filter={filter_type}, Seed={seed}. "
+        print(f"Finished filtering: N={N}, K={K}, Filter={filter_type_str}, Seed={seed}. "
               f"{f'BF Time: {metrics["bf_time"]:.2f}s' if metrics["bf_time"] is not None else ''}"
               f"{f', PF Time: {metrics["pf_time"]:.2f}s' if metrics["pf_time"] is not None else ''}")
 
     except Exception as e:
-        print(f"Error during simulation N={N}, K={K}, Filter={filter_type}, Seed={seed}: {e}")
+        print(f"Error during filtering N={N}, K={K}, Filter={filter_type_str}, Seed={seed}: {e}")
         metrics['error'] = str(e)
 
-    # Return both metrics and raw data
-    return metrics, raw_data
+    # Return metrics and the raw data dict (which now includes filtered results)
+    return metrics, raw_data_out
 
 def main():
     """Main function to run the simulation study."""
 
     # --- Configuration ---
     SIMULATION_CONFIG = {
-        "N_values": [5, 10], # Reduced for faster testing initially
-        "K_values": [2, 3],   # Reduced for faster testing initially
-        "T": 500,             # Reduced for faster testing initially
-        "num_particles_values": [1000], # Reduced for faster testing initially
-        "num_reps": 2,        # Reduced for faster testing initially
+        "N_values": [5, 10, 20, 50, 100, 150], # Further expanded N range
+        "K_values": [2, 3, 5, 10, 15],       # Further expanded K range
+        "T": 1000,                           # Increased time series length
+        "num_particles_values": [1000, 5000, 10000, 20000], # Further expanded particle counts
+        "num_reps": 100,                     # Significantly increased number of replicates
         "base_results_dir": "simulation_results_raw",
         "save_format": "npz", # Options: "npz", "parquet" (requires pyarrow)
     }
@@ -238,6 +254,7 @@ def main():
     print(f"Saved configuration to {config_save_path}")
 
     # --- Simulation Loop ---
+    T = SIMULATION_CONFIG["T"] # Get T once
     total_sims = len(SIMULATION_CONFIG["N_values"]) * len(SIMULATION_CONFIG["K_values"]) * (1 + len(SIMULATION_CONFIG["num_particles_values"])) * SIMULATION_CONFIG["num_reps"]
     current_sim = 0
 
@@ -245,21 +262,44 @@ def main():
         for K in SIMULATION_CONFIG["K_values"]:
             if K > N: # Skip cases where K > N if not meaningful for the model
                 print(f"Skipping N={N}, K={K} as K > N")
-                total_sims -= (1 + len(SIMULATION_CONFIG["num_particles_values"])) * SIMULATION_CONFIG["num_reps"] # Adjust total count
+                # Adjust total count based on skipped PF runs as well
+                num_pf_configs = len(SIMULATION_CONFIG["num_particles_values"])
+                total_sims -= (1 + num_pf_configs) * SIMULATION_CONFIG["num_reps"]
                 continue
 
-            # Run Bellman Filter once for each N,K configuration
+            print(f"\n=== Processing Configuration N={N}, K={K} ===")
+
+            # --- Bellman Filter Runs ---
+            # Instantiate BF once for this N, K config
+            print(f"  Instantiating Bellman Filter (N={N}, K={K})...")
+            bf_instance = DFSVBellmanFilter(N, K)
+            print(f"  Running {SIMULATION_CONFIG['num_reps']} replicates for Bellman Filter...")
             for rep in range(SIMULATION_CONFIG["num_reps"]):
                 current_sim += 1
-                seed = N * 1000 + K * 100 + rep
+                seed = N * 1000 + K * 100 + rep # Unique seed per replicate
                 run_label = f"config_N{N}_K{K}_BF_rep{rep}"
                 run_path = study_path / run_label
                 run_path.mkdir(exist_ok=True)
 
-                print(f"\n--- Starting Bellman Filter Simulation {current_sim}/{total_sims} ({run_label}) ---")
-                metrics, raw_data = run_single_simulation(N, K, SIMULATION_CONFIG["T"], None, seed, filter_type='bf')
+                print(f"    --- Starting BF Replicate {rep+1}/{SIMULATION_CONFIG['num_reps']} (Sim {current_sim}/{total_sims}, {run_label}) ---")
 
-                # Save results for this run
+                # 1. Create parameters and simulate data for this replicate
+                params_rep = create_sim_parameters(N, K, seed=seed)
+                returns_rep, true_factors_rep, true_log_vols_rep = simulate_DFSV(params=params_rep, T=T, seed=seed+1)
+
+                # 2. Run filtering using the single BF instance
+                metrics, raw_data_out = run_single_simulation(
+                    N=N, K=K, T=T, seed=seed,
+                    params=params_rep,
+                    returns=returns_rep,
+                    true_factors=true_factors_rep,
+                    true_log_vols=true_log_vols_rep,
+                    bf_instance=bf_instance, # Pass the instance
+                    pf_instance=None,
+                    num_particles=None
+                )
+
+                # 3. Save results for this run
                 metrics_path = run_path / "metrics.json"
                 # Convert numpy arrays in metrics to lists for JSON serialization
                 serializable_metrics = {}
@@ -283,8 +323,8 @@ def main():
 
                 if SIMULATION_CONFIG["save_format"] == "npz":
                     raw_data_path = run_path / "raw_data.npz"
-                    # Filter out None values before saving
-                    data_to_save = {k: v for k, v in raw_data.items() if v is not None}
+                    # Filter out None values before saving (use raw_data_out)
+                    data_to_save = {k: v for k, v in raw_data_out.items() if v is not None}
                     np.savez_compressed(raw_data_path, **data_to_save)
                 # Add elif for parquet later if needed
                 # elif SIMULATION_CONFIG["save_format"] == "parquet":
@@ -300,19 +340,42 @@ def main():
                 print(f"Saved results for {run_label} to {run_path}")
 
 
-            # Run Particle Filter with different particle counts
+            # --- Particle Filter Runs ---
             for num_particles in SIMULATION_CONFIG["num_particles_values"]:
+                # Instantiate PF once for this N, K, num_particles config
+                # Use a base seed for PF initialization that's consistent across replicates
+                pf_base_seed = N * 100 + K * 10 + num_particles
+                print(f"  Instantiating Particle Filter (N={N}, K={K}, P={num_particles}, seed={pf_base_seed})...")
+                pf_instance = DFSVParticleFilter(N=N, K=K, num_particles=num_particles, seed=pf_base_seed)
+
+                print(f"  Running {SIMULATION_CONFIG['num_reps']} replicates for Particle Filter (P={num_particles})...")
                 for rep in range(SIMULATION_CONFIG["num_reps"]):
                     current_sim += 1
-                    seed = N * 1000 + K * 100 + num_particles + rep
+                    # Unique seed per replicate, distinct from BF seeds and PF base seed
+                    seed = N * 10000 + K * 1000 + num_particles * 10 + rep
                     run_label = f"config_N{N}_K{K}_PF{num_particles}_rep{rep}"
                     run_path = study_path / run_label
                     run_path.mkdir(exist_ok=True)
 
-                    print(f"\n--- Starting Particle Filter Simulation {current_sim}/{total_sims} ({run_label}) ---")
-                    metrics, raw_data = run_single_simulation(N, K, SIMULATION_CONFIG["T"], num_particles, seed, filter_type='pf')
+                    print(f"    --- Starting PF Replicate {rep+1}/{SIMULATION_CONFIG['num_reps']} (Sim {current_sim}/{total_sims}, {run_label}) ---")
 
-                    # Save results for this run
+                    # 1. Create parameters and simulate data for this replicate
+                    params_rep = create_sim_parameters(N, K, seed=seed)
+                    returns_rep, true_factors_rep, true_log_vols_rep = simulate_DFSV(params=params_rep, T=T, seed=seed+1)
+
+                    # 2. Run filtering using the single PF instance
+                    metrics, raw_data_out = run_single_simulation(
+                        N=N, K=K, T=T, seed=seed,
+                        params=params_rep,
+                        returns=returns_rep,
+                        true_factors=true_factors_rep,
+                        true_log_vols=true_log_vols_rep,
+                        bf_instance=None,
+                        pf_instance=pf_instance, # Pass the instance
+                        num_particles=num_particles # Pass num_particles for metrics
+                    )
+
+                    # 3. Save results for this run
                     metrics_path = run_path / "metrics.json"
                     # Convert numpy arrays in metrics to lists for JSON serialization
                     serializable_metrics = {}
@@ -336,8 +399,8 @@ def main():
 
                     if SIMULATION_CONFIG["save_format"] == "npz":
                         raw_data_path = run_path / "raw_data.npz"
-                        # Filter out None values before saving
-                        data_to_save = {k: v for k, v in raw_data.items() if v is not None}
+                        # Filter out None values before saving (use raw_data_out)
+                        data_to_save = {k: v for k, v in raw_data_out.items() if v is not None}
                         np.savez_compressed(raw_data_path, **data_to_save)
                     # Add elif for parquet later if needed
                     # elif SIMULATION_CONFIG["save_format"] == "parquet":

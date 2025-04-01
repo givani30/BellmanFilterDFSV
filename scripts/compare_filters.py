@@ -101,8 +101,8 @@ def create_visual_comparison(save_path=None):
 
     # Create and run particle filter
     print("Running particle filter...")
-    pf = DFSVParticleFilter(params, num_particles=8000)
-    pf_filtered_states, pf_filtered_covs, pf_log_likelihood = pf.filter(params, returns)
+    pf = DFSVParticleFilter(N=params.N, K=params.K, num_particles=8000) # Instantiate with N, K
+    pf_filtered_states, pf_filtered_covs, pf_log_likelihood = pf.filter(params=params, observations=returns) # Pass params to filter
 
     # Extract particle filter results
     pf_filtered_factors = pf.get_filtered_factors()

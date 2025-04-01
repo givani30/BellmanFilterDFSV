@@ -57,7 +57,7 @@ def run_bellman_debug(N, K, T, seed):
         # 2. Run Bellman Filter
         bf = DFSVBellmanFilter(N, K)
         start_time_bf = time.time()
-        bf.filter(params, returns) # Use non-scan version for debugging prints
+        bf.filter_scan(params, returns) # Use non-scan version for debugging prints
         end_time_bf = time.time()
         metrics['bf_time'] = end_time_bf - start_time_bf
 

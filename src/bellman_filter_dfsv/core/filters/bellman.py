@@ -177,14 +177,14 @@ class DFSVBellmanFilter(DFSVFilter):
 
         # Create JIT versions of core steps for scan
         # These assume inputs are correctly typed/shaped JAX arrays
-        self.predict_jax = jit(self._predict_jax)
-        self.update_jax = jit(self._update_jax)
+        self.predict_jax = jit(self.__predict_jax)
+        self.update_jax = jit(self.__update_jax)
         self.block_coordinate_update_impl_jit = jit(
             self._block_coordinate_update_impl,
             static_argnums=(6, 7),  # max_iters and h_solver are static
         )
 
-        # Try to precompile JIT functions
+        # Try to precompile JIT functions NOTE: Disabled for now
         try:
             self._precompile_jax_functions()
             print("JAX functions successfully precompiled")
@@ -291,10 +291,9 @@ class DFSVBellmanFilter(DFSVFilter):
                 build_covariance_fn=self.build_covariance_jit, # Pass JITted function
                 log_posterior_fn=self.log_posterior_jit,     # Pass JITted function
                 h_solver=h_solver,                           # Pass solver instance
-                inner_max_steps=15                           # Keep inner steps consistent
+                inner_max_steps=100                          # Increased inner steps
             )
             # Note: h_update_success is currently ignored, but could be used for diagnostics
-            jax.debug.print("h_update success: {}", h_update_success)
             # Consider adding jax.debug.print("h_update success: {}", h_update_success) if needed
             return (f_new, h_new)
 
@@ -328,6 +327,7 @@ class DFSVBellmanFilter(DFSVFilter):
 
     def _precompile_jax_functions(self):
         """Precompile JIT functions with dummy data"""
+        return # Disabled for now
         K = self.K
         N = self.N
         state_dim = self.state_dim
@@ -425,8 +425,85 @@ class DFSVBellmanFilter(DFSVFilter):
 
         return initial_state, initial_cov
 
+
+    def predict(
+        self, params: Union[Dict[str, Any], DFSVParamsDataclass], state: np.ndarray, cov: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Perform the Bellman prediction step (public API).
+
+        Handles parameter processing, calls the internal JAX implementation,
+        and returns results as NumPy arrays.
+
+        Args:
+            params: Model parameters (Dict or DFSVParamsDataclass).
+            state: Current state estimate (NumPy array, shape (state_dim,) or (state_dim, 1)).
+            cov: Current state covariance (NumPy array, shape (state_dim, state_dim)).
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: Predicted state (NumPy), predicted covariance (NumPy).
+        """
+        params_jax = self._process_params(params) # Ensure JAX arrays inside
+        state_jax = jnp.asarray(state, dtype=jnp.float64)
+        cov_jax = jnp.asarray(cov, dtype=jnp.float64)
+
+        # Ensure state has shape (state_dim, 1) for internal consistency if needed
+        if state_jax.ndim == 1:
+            state_jax = state_jax.reshape(-1, 1)
+        # Call the JIT-compiled JAX implementation
+        predicted_state_jax, predicted_cov_jax = self.predict_jax( # Call JIT version
+            params_jax, state_jax, cov_jax
+        )
+        print(f"DEBUG: predict_jax returned state: {predicted_state_jax}, cov: {predicted_cov_jax}") # Debug print
+        # Convert results back to NumPy
+        return np.asarray(predicted_state_jax), np.asarray(predicted_cov_jax)
+
+
+
+    def update(
+        self,
+        params: Union[Dict[str, Any], DFSVParamsDataclass],
+        predicted_state: np.ndarray,
+        predicted_cov: np.ndarray,
+        observation: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray, float]:
+        """
+        Perform the Bellman update step (public API).
+
+        Handles parameter processing, calls the internal JAX implementation,
+        and returns results as NumPy arrays/float.
+
+        Args:
+            params: Model parameters (Dict or DFSVParamsDataclass).
+            predicted_state: Predicted state (NumPy array, shape (state_dim,) or (state_dim, 1)).
+            predicted_cov: Predicted state covariance (NumPy array, shape (state_dim, state_dim)).
+            observation: Current observation (NumPy array, shape (N,) or (N, 1)).
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray, float]: Updated state (NumPy), updated covariance (NumPy), log-likelihood contribution (float).
+        """
+        params_jax = self._process_params(params) # Ensure JAX arrays inside
+        predicted_state_jax = jnp.asarray(predicted_state, dtype=jnp.float64)
+        predicted_cov_jax = jnp.asarray(predicted_cov, dtype=jnp.float64)
+        observation_jax = jnp.asarray(observation, dtype=jnp.float64)
+
+        # Ensure state has shape (state_dim, 1) for internal consistency if needed
+        if predicted_state_jax.ndim == 1:
+            predicted_state_jax = predicted_state_jax.reshape(-1, 1)
+        # Ensure observation has shape (N,) for internal consistency
+        if observation_jax.ndim > 1:
+             observation_jax = observation_jax.flatten()
+
+        # Call the JIT-compiled JAX implementation
+        updated_state_jax, updated_cov_jax, log_lik_jax = self.update_jax( # Call JIT version
+            params_jax, predicted_state_jax, predicted_cov_jax, observation_jax
+        )
+
+        # Convert results back to NumPy/float
+        return np.asarray(updated_state_jax), np.asarray(updated_cov_jax), float(log_lik_jax)
+
     # Internal JAX version of predict
-    def _predict_jax(
+    def __predict_jax(
         self,
         params: DFSVParamsDataclass, # Expect JAX arrays inside
         state: jnp.ndarray,          # Expect JAX array
@@ -473,7 +550,7 @@ class DFSVBellmanFilter(DFSVFilter):
         return predicted_state.reshape(-1, 1), predicted_cov
 
     # Internal JAX version of update
-    def _update_jax(
+    def __update_jax(
         self,
         params: DFSVParamsDataclass, # Expect JAX arrays inside
         predicted_state: jnp.ndarray, # Expect JAX array
@@ -587,9 +664,9 @@ class DFSVBellmanFilter(DFSVFilter):
         state_dim = self.state_dim
 
         # Initialize storage (NumPy)
-        filtered_states_np = np.zeros((T, state_dim, 1))
+        filtered_states_np = np.zeros((T, state_dim)) # Store as (T, state_dim)
         filtered_covs_np = np.zeros((T, state_dim, state_dim))
-        predicted_states_np = np.zeros((T, state_dim, 1))
+        predicted_states_np = np.zeros((T, state_dim, 1)) # Keep predicted as (T, state_dim, 1) for now if needed elsewhere
         predicted_covs_np = np.zeros((T, state_dim, state_dim))
         log_likelihoods_np = np.zeros(T)
 
@@ -618,7 +695,7 @@ class DFSVBellmanFilter(DFSVFilter):
             )
 
             # Convert results back to NumPy for storage
-            filtered_states_np[t] = np.asarray(updated_state_t_jax)
+            filtered_states_np[t] = np.asarray(updated_state_t_jax).flatten() # Flatten state before storing
             filtered_covs_np[t] = np.asarray(updated_cov_t_jax)
             log_likelihoods_np[t] = float(log_lik_t_jax) # Convert JAX scalar to float
 
@@ -696,11 +773,12 @@ class DFSVBellmanFilter(DFSVFilter):
         predicted_states_scan, predicted_covs_scan, filtered_states_scan, filtered_covs_scan, log_likelihoods_scan = scan_results
 
         # Convert final results back to NumPy AFTER the scan
-        self.predicted_states = np.asarray(predicted_states_scan)
-        self.predicted_covs = np.asarray(predicted_covs_scan)
-        self.filtered_states = np.asarray(filtered_states_scan)
-        self.filtered_covs = np.asarray(filtered_covs_scan)
-        self.log_likelihoods = np.asarray(log_likelihoods_scan)
+        self.predicted_states = np.asarray(predicted_states_scan) # Shape (T, state_dim, 1)
+        self.predicted_covs = np.asarray(predicted_covs_scan)   # Shape (T, state_dim, state_dim)
+        # Reshape filtered states from (T, state_dim, 1) to (T, state_dim) before storing
+        self.filtered_states = np.asarray(filtered_states_scan).reshape(T, self.state_dim)
+        self.filtered_covs = np.asarray(filtered_covs_scan)     # Shape (T, state_dim, state_dim)
+        self.log_likelihoods = np.asarray(log_likelihoods_scan) # Shape (T,)
         # Convert final log-likelihood sum from JAX scalar to Python float
         self.total_log_likelihood = float(final_carry[2])
 
@@ -801,7 +879,8 @@ class DFSVBellmanFilter(DFSVFilter):
         if states is not None:
             # Ensure states is NumPy before slicing if needed
             states_np = np.asarray(states)
-            return states_np[:, :self.K, 0] # Extract factors, remove last dim
+            # Adjusted slicing for 2D array (T, state_dim)
+            return states_np[:, :self.K]
         return None
 
     def get_filtered_volatilities(self) -> np.ndarray | None:
@@ -810,7 +889,8 @@ class DFSVBellmanFilter(DFSVFilter):
         if states is not None:
             # Ensure states is NumPy before slicing if needed
             states_np = np.asarray(states)
-            return states_np[:, self.K:, 0] # Extract log-vols, remove last dim
+            # Adjusted slicing for 2D array (T, state_dim)
+            return states_np[:, self.K:]
         return None
 
     def get_filtered_covariances(self) -> np.ndarray | None:

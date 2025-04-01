@@ -90,8 +90,8 @@ class TestParticleFilter(unittest.TestCase):
         returns, true_factors, true_log_vols = simulate_DFSV(params_dataclass, T=T, seed=42)
 
         # Create and run particle filter using the DATACLASS
-        pf = DFSVParticleFilter(params_dataclass, num_particles=500)
-        filtered_states, filtered_covs, log_likelihood = pf.filter(params_dataclass, returns)
+        pf = DFSVParticleFilter(N=params_dataclass.N, K=params_dataclass.K, num_particles=500) # Instantiate with N, K
+        filtered_states, filtered_covs, log_likelihood = pf.filter(params=params_dataclass, observations=returns) # Pass params to filter
 
         # Extract factor and volatility estimates
         filtered_factors = pf.get_filtered_factors()
@@ -143,8 +143,8 @@ class TestParticleFilter(unittest.TestCase):
         returns, true_factors, true_log_vols = simulate_DFSV(params_dataclass, T=T, seed=123)
 
         # Create and run particle filter with more particles for stability, using DATACLASS
-        pf = DFSVParticleFilter(params_dataclass, num_particles=1000)
-        filtered_states, filtered_covs, log_likelihood = pf.filter(params_dataclass,returns)
+        pf = DFSVParticleFilter(N=params_dataclass.N, K=params_dataclass.K, num_particles=1000) # Instantiate with N, K
+        filtered_states, filtered_covs, log_likelihood = pf.filter(params=params_dataclass, observations=returns) # Pass params to filter
 
         # Check that the filter completes without errors and returns valid estimates
         self.assertFalse(
@@ -172,8 +172,8 @@ class TestParticleFilter(unittest.TestCase):
         returns, _, _ = simulate_DFSV(params_dataclass, T=T, seed=789)
 
         # Create and run particle filter using DATACLASS
-        pf = DFSVParticleFilter(params_dataclass, num_particles=500)
-        _, _, log_likelihood = pf.filter(params_dataclass, returns)
+        pf = DFSVParticleFilter(N=params_dataclass.N, K=params_dataclass.K, num_particles=500) # Instantiate with N, K
+        _, _, log_likelihood = pf.filter(params=params_dataclass, observations=returns) # Pass params to filter
 
         # Test: Check that log-likelihood is a finite float
         self.assertIsInstance(
@@ -235,8 +235,8 @@ class TestParticleFilter(unittest.TestCase):
         returns, true_factors, true_log_vols = simulate_DFSV(params_dataclass, T=T, seed=456)
 
         # Create and run particle filter using DATACLASS
-        pf = DFSVParticleFilter(params_dataclass, num_particles=1000)
-        filtered_states, filtered_covs, log_likelihood = pf.filter(params_dataclass,returns)
+        pf = DFSVParticleFilter(N=params_dataclass.N, K=params_dataclass.K, num_particles=1000) # Instantiate with N, K
+        filtered_states, filtered_covs, log_likelihood = pf.filter(params=params_dataclass, observations=returns) # Pass params to filter
 
         # Extract filtered factors and volatilities first
         filtered_factors = pf.get_filtered_factors()
@@ -364,10 +364,11 @@ class TestParticleFilter(unittest.TestCase):
 
         # Create particle filter instance using DATACLASS
         # Use the same seed for the filter instance for consistency
-        pf = DFSVParticleFilter(params_dataclass, num_particles=500, seed=jax_key_seed)
+        pf = DFSVParticleFilter(N=params_dataclass.N, K=params_dataclass.K, num_particles=500, seed=jax_key_seed) # Instantiate with N, K
 
         # --- Test the log_likelihood_of_params method ---
-        log_likelihood_opt = pf.log_likelihood_of_params(params_dataclass, jax_returns)
+        # This method already accepts params externally, so call signature is correct
+        log_likelihood_opt = pf.log_likelihood_of_params(params=params_dataclass, observations=jax_returns)
 
         # Assertions for the optimization-focused method
         self.assertIsInstance(
@@ -382,8 +383,8 @@ class TestParticleFilter(unittest.TestCase):
 
         # --- Optional: Compare with standard filter log-likelihood ---
         # Re-create filter with the same seed to ensure same particle initialization
-        pf_filter = DFSVParticleFilter(params_dataclass, num_particles=500, seed=jax_key_seed)
-        _, _, log_likelihood_filter = pf_filter.filter(params_dataclass, returns) # Use original numpy returns
+        pf_filter = DFSVParticleFilter(N=params_dataclass.N, K=params_dataclass.K, num_particles=500, seed=jax_key_seed) # Instantiate with N, K
+        _, _, log_likelihood_filter = pf_filter.filter(params=params_dataclass, observations=returns) # Pass params to filter
 
         self.assertIsInstance(
             log_likelihood_filter, float,

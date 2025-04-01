@@ -87,7 +87,7 @@ def update_h_bfgs(
     build_covariance_fn: BuildCovarianceFn,
     log_posterior_fn: LogPosteriorFn,
     h_solver: optx.AbstractMinimiser, # Pass solver instance
-    inner_max_steps: int = 50, # Increased for debugging
+    inner_max_steps: int = 100, # Increased significantly
 ) -> Tuple[jnp.ndarray, bool]: # Updated return type hint
     """
     Minimize neg_log_post_h w.r.t. h using the provided BFGS solver.
