@@ -314,26 +314,18 @@ class DFSVParticleFilter(DFSVFilter):
         safe_variances = jnp.maximum(obs_noise_variances, 1e-10)
         log_det_R = jnp.sum(jnp.log(safe_variances)) # log|R| = sum(log(variances))
 
-        # Define function to compute log probability for a single particle's error
-        @partial(jit, static_argnums=(2,)) # N is static inside vmap
-        def _log_prob_single(error_p, variances_p, N_p):
-            # Quadratic form: error^T @ R^{-1} @ error = sum(error_i^2 / variance_i)
-            quad_form = jnp.sum((error_p ** 2) / variances_p)
-            # Log likelihood: -0.5 * (N*log(2pi) + log_det_R + quad_form)
-            # Ensure float32 constant
-            log2pi = jnp.log(jnp.array(2 * jnp.pi, dtype=jnp.float32))
-            log_prob = -0.5 * (N_p * log2pi + log_det_R + quad_form)
-            return log_prob.astype(jnp.float32) # Explicitly cast result
+        # --- Vectorized Calculation ---
+        # Quadratic form: sum_i (error_i^2 / variance_i) for each particle
+        # observation_error is (N, P), safe_variances is (N,)
+        # Use broadcasting: safe_variances[:, None] becomes (N, 1)
+        quad_form = jnp.sum((observation_error ** 2) / safe_variances[:, None], axis=0) # Sum over N -> shape (P,)
 
-        # Compute log probability density using vmap over the particle dimension (axis 1 of error)
-        # Broadcast variances and N
-        log_likelihoods = jax.vmap(
-            _log_prob_single,
-            in_axes=(1, None, None), # Map over axis 1 of error, broadcast variances and N
-            out_axes=0,
-        )(observation_error, safe_variances, N)  # Result shape (P,)
+        # Log likelihood: -0.5 * (N*log(2pi) + log_det_R + quad_form)
+        log2pi = jnp.log(jnp.array(2 * jnp.pi, dtype=jnp.float32))
+        log_likelihoods = -0.5 * (N * log2pi + log_det_R + quad_form)
 
-        return log_likelihoods
+        # Ensure correct dtype
+        return log_likelihoods.astype(jnp.float32)
 
     # Removed _compute_logprob_cholesky static method as it's replaced by direct calculation
 
@@ -552,10 +544,15 @@ class DFSVParticleFilter(DFSVFilter):
             filtered_mean = jnp.sum(particles_next * weights_linear, axis=1)
 
             # Weighted covariance estimate of state x_t
-            diff = particles_next - filtered_mean.reshape(-1, 1)
-            # einsum: weights(p) * diff(j,p) * diff(k,p) -> sum over p -> cov(j,k)
-            filtered_cov = jnp.einsum('p,jp,kp->jk', weights_linear, diff, diff)
-            # Ensure symmetry
+            diff = particles_next - filtered_mean.reshape(-1, 1) # Shape (state_dim, P)
+            # Alternative calculation using matrix multiplication:
+            # weighted_diff = diff * sqrt(weights_linear[None, :]) # Or just weights? Check derivation.
+            # Let's use the direct weighting: diff * weights
+            weighted_diff = diff * weights_linear[None, :] # Shape (state_dim, P)
+            # filtered_cov = weighted_diff @ diff.T # (state_dim, P) @ (P, state_dim) -> (state_dim, state_dim)
+            # This computes Sum_p [ w_p * diff_jp * diff_kp ] which is correct.
+            filtered_cov = weighted_diff @ diff.T
+            # Ensure symmetry (might still be needed due to precision)
             filtered_cov = (filtered_cov + filtered_cov.T) / 2.0
 
             # Prepare next state and outputs
