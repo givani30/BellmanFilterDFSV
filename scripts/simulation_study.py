@@ -237,7 +237,7 @@ def main():
 
     # --- Configuration ---
     SIMULATION_CONFIG = {
-        "N_values": [5, 10, 20,50,100,150], # Further expanded N range. Full set to be run is 5, 10, 20, 50, 100, 150
+        "N_values": [5, 10, 20], # Further expanded N range. Full set to be run is 5, 10, 20, 50, 100, 150
         "K_values": [2, 3, 5, 10, 15],       # Further expanded K range
         "T": 1500,                           # Increased time series length
         "num_particles_values": [1000,5000,10000,20000], # Further expanded particle counts. 1000, 5000, 10000, 20000
