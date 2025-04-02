@@ -1,0 +1,88 @@
+{
+  "taskGroups": [
+    {
+      "taskSpec": {
+        "runnables": [
+          {
+            "container": {
+              "imageUri": "europe-west4-docker.pkg.dev/dsfvbellmanfilter/sim-repo/dfsv-sim:v1.0",
+              "entrypoint": "",
+              "commands": [
+                "bash",
+                "-c",
+                "python3 scripts/run_config_batch.py --N \"$N\" --K \"$K\" --T \"$T\" --filter_type \"$FILTER_TYPE\" --num_particles \"$NUM_PARTICLES\" --num_reps \"$NUM_REPS\" --base_results_dir \"$BASE_RESULTS_DIR\" --study_name \"$STUDY_NAME\" --save_format \"$SAVE_FORMAT\""
+              ]
+            }
+          }
+        ],
+        "computeResource": {
+          "cpuMilli": 4000,
+          "memoryMib": 15360
+        },
+        "environment": {
+          "variables": {
+            "T": "1500",
+            "NUM_REPS": "100",
+            "BASE_RESULTS_DIR": "${BASE_RESULTS_DIR}",
+            "STUDY_NAME": "${STUDY_NAME}",
+            "SAVE_FORMAT": "npz"
+          }
+        },
+        "maxRetryCount": 1,
+        "maxRunDuration": "4800s"
+      },
+      "taskCount": "27",
+      "parallelism": 10,
+      "taskEnvironments": [
+        {"variables": {"N": "5", "K": "2", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "5", "K": "3", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "5", "K": "5", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "10", "K": "2", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "10", "K": "3", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "10", "K": "5", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "10", "K": "10", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "20", "K": "2", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "20", "K": "3", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "20", "K": "5", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "20", "K": "10", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "20", "K": "15", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "50", "K": "2", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "50", "K": "3", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "50", "K": "5", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "50", "K": "10", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "50", "K": "15", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "100", "K": "2", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "100", "K": "3", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "100", "K": "5", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "100", "K": "10", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "100", "K": "15", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "150", "K": "2", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "150", "K": "3", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "150", "K": "5", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "150", "K": "10", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "150", "K": "15", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}}
+      ]
+    }
+  ],
+  "allocationPolicy": {
+    "instances": [
+      {
+        "policy": {
+          "machineType": "c2-standard-4",
+          "provisioningModel": "STANDARD"
+        }
+      }
+    ],
+    "location": {
+      "allowedLocations": ["regions/europe-west4"]
+    }
+  },
+  "labels": {
+    "study": "dfsv-simulation",
+    "filter": "bf",
+    "env": "production"
+  },
+  "logsPolicy": {
+    "destination": "CLOUD_LOGGING"
+  }
+}

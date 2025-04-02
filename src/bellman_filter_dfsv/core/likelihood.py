@@ -10,14 +10,14 @@ import numpy as np
 import jax.numpy as jnp
 from jax import jit, lax
 from functools import partial
-from bellman_filter_dfsv.models.dfsv import DFSV_params, DFSVParamsDataclass
+from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Removed DFSV_params
 from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
 from bellman_filter_dfsv.utils.transformations import untransform_params
 from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter # Added for type hints
 
 
 def log_likelihood_observation(y_t: np.ndarray, f_t: np.ndarray, 
-                              params: DFSV_params) -> float:
+                              params: DFSVParamsDataclass) -> float:
     """
     Compute the log-likelihood of an observation given the factors.
     
@@ -57,7 +57,7 @@ def log_likelihood_observation(y_t: np.ndarray, f_t: np.ndarray,
 
 
 def log_likelihood_factor_transition(f_t: np.ndarray, f_prev: np.ndarray, 
-                                    h_t: np.ndarray, params: DFSV_params) -> float:
+                                    h_t: np.ndarray, params: DFSVParamsDataclass) -> float:
     """
     Compute the log-likelihood of factor transition with stochastic volatility.
     
@@ -113,7 +113,7 @@ def log_likelihood_factor_transition(f_t: np.ndarray, f_prev: np.ndarray,
 
 
 def log_likelihood_volatility_transition(h_t: np.ndarray, h_prev: np.ndarray, 
-                                       params: DFSV_params) -> float:
+                                       params: DFSVParamsDataclass) -> float:
     """
     Compute the log-likelihood of log-volatility transition.
     
@@ -153,7 +153,7 @@ def log_likelihood_volatility_transition(h_t: np.ndarray, h_prev: np.ndarray,
 
 
 def compute_joint_log_likelihood(y: np.ndarray, f: np.ndarray, h: np.ndarray, 
-                              params: DFSV_params) -> float:
+                              params: DFSVParamsDataclass) -> float:
     """
     Compute the joint log-likelihood of observations, factors, and log-volatilities.
     
@@ -200,7 +200,7 @@ def compute_joint_log_likelihood(y: np.ndarray, f: np.ndarray, h: np.ndarray,
     return ll_total
 
 
-def kalman_filter_log_likelihood(y: np.ndarray, params: DFSV_params) -> float:
+def kalman_filter_log_likelihood(y: np.ndarray, params: DFSVParamsDataclass) -> float:
     """
     Compute the marginal log-likelihood of observations using the Kalman filter.
     

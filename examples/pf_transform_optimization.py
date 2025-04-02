@@ -19,19 +19,18 @@ import numpy as np
 from jax import grad, jit
 import jaxopt
 from jaxtyping import Array, Bool, Int, PyTree, Scalar
-# Add the parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 # Import parameter classes and PF
 import optax
 from jaxopt import OptaxSolver
-from functions.filters import DFSVParticleFilter # Import Particle Filter
-from models.dfsv import DFSV_params, DFSVParamsDataclass
-from functions.transformations import transform_params, untransform_params
+from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter # Import Particle Filter
+from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Removed DFSV_params
+from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params
 # Import PF specific objectives
-from functions.likelihood_functions import pf_objective, transformed_pf_objective 
+from bellman_filter_dfsv.core.likelihood import pf_objective, transformed_pf_objective
 # from utils.plotting import plot_variance_comparison # Commented out plotting import
-from functions.simulation import simulate_DFSV
+from bellman_filter_dfsv.core.simulation import simulate_DFSV
 
 # Enable 64-bit precision for better numerical stability
 jax.config.update("jax_enable_x64", True)
@@ -63,8 +62,8 @@ def create_simple_model():
     # Log-volatility noise covariance
     Q_h = np.array([[0.1]])
 
-    # Create parameter object
-    params = DFSV_params(
+    # Create parameter object using the standard dataclass
+    params = DFSVParamsDataclass(
         N=N,
         K=K,
         lambda_r=lambda_r,
@@ -89,7 +88,7 @@ def optimize_with_transformations_pf(params, returns, filter_instance, T=1000, m
     
     Parameters:
     -----------
-    params : DFSV_params
+    params : DFSVParamsDataclass
         True model parameters (only used for dimensionality reference)
     returns : np.ndarray
         Observed data
@@ -105,8 +104,7 @@ def optimize_with_transformations_pf(params, returns, filter_instance, T=1000, m
     tuple
         (optimized_params_standard, optimized_params_transformed, final_loss_standard, final_loss_transformed)
     """
-    # Convert to JAX parameter class for reference dimensions
-    jax_params = DFSVParamsDataclass.from_dfsv_params(params)
+    # params is already the correct JAX dataclass type
     
     # Create uninformed initial parameters
     key = jax.random.PRNGKey(42)
@@ -162,8 +160,9 @@ def optimize_with_transformations_pf(params, returns, filter_instance, T=1000, m
     result_standard = optx.minimise(fn=objective, solver=solver, y0=uninformed_params, max_steps=maxiter, throw=False)
     standard_time = time.time() - start_time
     print(f"Standard PF optimization took {standard_time:.2f} seconds")
-    optimized_params_standard = result_standard.value # Assuming optimizer returns correct Pytree type
-    final_loss_standard = result_standard.state.best_f # Get final loss from state
+    optimized_params_standard = result_standard.value # Correct based on docs
+    # Re-evaluate objective at the final parameters to get the loss
+    final_loss_standard = objective(optimized_params_standard)
     
     # --- Transformed Optimization --- #
     print("\nStarting transformed optimization with Particle Filter...")
@@ -174,9 +173,10 @@ def optimize_with_transformations_pf(params, returns, filter_instance, T=1000, m
     
     # Transform parameters back to original space
     optimized_params_transformed = untransform_params(result_transformed_raw.value)
-    final_loss_transformed = result_transformed_raw.state.best_f # Get final loss from state
+    # Re-evaluate objective at the final transformed parameters to get the loss
+    final_loss_transformed = objective_transformed(result_transformed_raw.value)
     
-    return (optimized_params_standard, optimized_params_transformed, 
+    return (optimized_params_standard, optimized_params_transformed,
             final_loss_standard, final_loss_transformed)
 
 def main():
@@ -190,12 +190,13 @@ def main():
     T = 200 # Reduced T for faster PF optimization during testing
     returns, factors, log_vols = create_training_data(params, T=T)
     
+    returns = jnp.asarray(returns) # Convert to JAX array for filter compatibility
     # Create a Particle Filter object
     num_particles = 1000 # Increased particles for stability
     filter_pf = DFSVParticleFilter(N=params.N, K=params.K, num_particles=num_particles) # Instantiate with N, K
 
-    # Convert true params to JAX parameter class for reference
-    jax_params_true = DFSVParamsDataclass.from_dfsv_params(params)
+    # True params are already the correct JAX dataclass type
+    jax_params_true = params
     
     # Run optimization
     # Note: PF optimization can be very slow. maxiter might need adjustment.
@@ -341,6 +342,5 @@ def main():
     # except Exception as e:
     #     print(f"Could not generate variance comparison plot: {e}")
 
-
 if __name__ == "__main__":
-    main() 
+    main()

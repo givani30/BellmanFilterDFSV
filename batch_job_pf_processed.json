@@ -1,0 +1,166 @@
+{
+  "taskGroups": [
+    {
+      "taskSpec": {
+        "runnables": [
+          {
+            "container": {
+              "imageUri": "europe-west4-docker.pkg.dev/dsfvbellmanfilter/sim-repo/dfsv-sim:v1.0",
+              "entrypoint": "",
+              "commands": [
+                "bash",
+                "-c",
+                "python3 scripts/run_config_batch.py --N \"$N\" --K \"$K\" --T \"$T\" --filter_type \"$FILTER_TYPE\" --num_particles \"$NUM_PARTICLES\" --num_reps \"$NUM_REPS\" --base_results_dir \"gs://dsfv-simulation-results-bucket/batch_study_main_20250402_054143\" --study_name \"batch_study_main_20250402_054143\" --save_format \"$SAVE_FORMAT\""
+              ]
+            }
+          }
+        ],
+        "computeResource": {
+          "cpuMilli": 4000,
+          "memoryMib": 15360
+        },
+        "environment": {
+          "variables": {
+            "T": "1500",
+            "NUM_REPS": "100",
+            "BASE_RESULTS_DIR": "gs://dsfv-simulation-results-bucket/batch_study_main_20250402_054143",
+            "STUDY_NAME": "batch_study_main_20250402_054143",
+            "SAVE_FORMAT": "npz"
+          }
+        },
+        "maxRetryCount": 1,
+        "maxRunDuration": "7200s"
+      },
+      "taskCount": "108",
+      "parallelism": 20,
+      "taskEnvironments": [
+        {"variables": {"N": "5", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "5", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "5", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "5", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "5", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "5", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "5", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "5", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "5", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "5", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "5", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "5", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "10", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "10", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "10", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "10", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "10", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "10", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "10", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "10", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "10", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "10", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "10", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "10", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "10", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "10", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "10", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "10", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "20", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "20", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "20", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "20", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "20", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "20", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "20", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "20", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "20", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "20", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "20", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "20", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "20", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "20", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "20", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "20", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "20", "K": "15", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "20", "K": "15", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "20", "K": "15", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "20", "K": "15", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "50", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "50", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "50", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "50", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "50", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "50", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "50", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "50", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "50", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "50", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "50", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "50", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "50", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "50", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "50", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "50", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "50", "K": "15", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "50", "K": "15", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "50", "K": "15", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "50", "K": "15", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "100", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "100", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "100", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "100", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "100", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "100", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "100", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "100", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "100", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "100", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "100", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "100", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "100", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "100", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "100", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "100", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "100", "K": "15", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "100", "K": "15", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "100", "K": "15", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "100", "K": "15", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "150", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "150", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "150", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "150", "K": "2", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "150", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "150", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "150", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "150", "K": "3", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "150", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "150", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "150", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "150", "K": "5", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "150", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "150", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "150", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "150", "K": "10", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}},
+        {"variables": {"N": "150", "K": "15", "FILTER_TYPE": "PF", "NUM_PARTICLES": "1000"}},
+        {"variables": {"N": "150", "K": "15", "FILTER_TYPE": "PF", "NUM_PARTICLES": "5000"}},
+        {"variables": {"N": "150", "K": "15", "FILTER_TYPE": "PF", "NUM_PARTICLES": "10000"}},
+        {"variables": {"N": "150", "K": "15", "FILTER_TYPE": "PF", "NUM_PARTICLES": "20000"}}
+      ]
+    }
+  ],
+  "allocationPolicy": {
+    "instances": [
+      {
+        "policy": {
+          "machineType": "e2-standard-4",
+          "provisioningModel": "STANDARD"
+        }
+      }
+    ]
+  },
+  "labels": {
+    "study": "dfsv-simulation",
+    "filter": "pf",
+    "env": "production"
+  },
+  "logsPolicy": {
+    "destination": "CLOUD_LOGGING"
+  }
+}
