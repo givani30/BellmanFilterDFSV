@@ -22,26 +22,25 @@ import numpy as np
 from jax import grad, jit
 import jaxopt
 from jaxtyping import Array, Bool, Int, PyTree, Scalar
-# Add the parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 # Import parameter classes
 import optax
 from jaxopt import OptaxSolver
 
-from functions.bellman_filter import DFSVBellmanFilter
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
 # Update imports to use models.dfsv directly
-from models.dfsv import DFSV_params, DFSVParamsDataclass
-from functions.transformations import transform_params, untransform_params
-from functions.likelihood_functions import bellman_objective, transformed_bellman_objective
-from utils.plotting import plot_variance_comparison
-from functions.simulation import simulate_DFSV
+from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Removed DFSV_params
+from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params
+from bellman_filter_dfsv.core.likelihood import bellman_objective, transformed_bellman_objective
+# from utils.plotting import plot_variance_comparison # Module seems missing, commented out
+from bellman_filter_dfsv.core.simulation import simulate_DFSV
 
 # Enable 64-bit precision for better numerical stability
 jax.config.update("jax_enable_x64", True)
-jax.config.update("jax_debug_nans", True)
-PRIOR_MU_MEAN = -1.0
-PRIOR_MU_STD_DEV = 0.5 # Tune this value! Start with something moderate.
+# jax.config.update("jax_debug_nans", True)
+PRIOR_MU_MEAN = 0
+PRIOR_MU_STD_DEV = 0 # Tune this value! Start with something moderate.
 
 def create_simple_model():
     """Create a simple DFSV model with one factor."""
@@ -67,8 +66,8 @@ def create_simple_model():
     # Log-volatility noise covariance
     Q_h = np.array([[0.1]])
 
-    # Create parameter object
-    params = DFSV_params(
+    # Create parameter object using the standard dataclass
+    params = DFSVParamsDataclass(
         N=N,
         K=K,
         lambda_r=lambda_r,
@@ -169,7 +168,7 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
     
     Parameters:
     -----------
-    params : DFSV_params
+    params : DFSVParamsDataclass
         True model parameters (only used for dimensionality reference)
     returns : np.ndarray
         Observed data
@@ -185,8 +184,7 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
     tuple
         (original_params, optimized_params, original_loss, transformed_loss)
     """
-    # Convert to JAX parameter class for reference dimensions
-    jax_params = DFSVParamsDataclass.from_dfsv_params(params)
+    # params is already the correct JAX dataclass type
     
     # Create uninformed initial parameters
     key = jax.random.PRNGKey(42)
@@ -208,13 +206,14 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
         Phi_f=0.8 * jnp.eye(K),  # Moderate persistence
         Phi_h=0.8 * jnp.eye(K),  # Moderate persistence
         mu=jnp.zeros(K),  # Zero mean for log volatility
-        sigma2=jnp.diag(0.5 * data_variance),  # Moderate portion of data variance
+        sigma2=0.5 * data_variance,  # Provide as 1D array (variances)
         Q_h=0.2 * jnp.eye(K)  # Moderate volatility of volatility
     )
     
     # Create optimizer configurations
-    learning_rate = 0.01
-    opt = optax.adam(learning_rate=learning_rate)
+    learning_rate = 1e-2
+    # opt = optax.adam(learning_rate=learning_rate)
+    opt=optax.adamw(learning_rate=learning_rate)
     
     # Define objective function for standard optimization - use imported function
     # Pass prior info explicitly
@@ -252,7 +251,7 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
             self.verbose = verbose
         
     # Transform parameters for transformed optimization
-    solver = optx.OptaxMinimiser(optim=opt, rtol=1e-3, atol=1e-3, norm=optx.rms_norm, 
+    solver = optx.OptaxMinimiser(optim=opt, rtol=1e-3, atol=1e-3, norm=optx.max_norm, 
                                 verbose=frozenset({"step", "loss"}))
     # solver=optx.BFGS(rtol=1e-3, atol=1e-3, norm=optx.max_norm,verbose=frozenset({"step_size", "loss"}))
     # solver=CustomBFGS(rtol=1e-5, atol=1e-5, norm=optx.max_norm, verbose=frozenset({"step_size", "loss"}))
@@ -261,7 +260,7 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
     # Run standard optimization
     print("\nStarting standard optimization with uninformed parameters...")
     start_time = time.time()
-    result_standard = optx.minimise(fn=objective, solver=solver, y0=uninformed_params, max_steps=maxiter, throw=False)
+    result_standard = optx.minimise(fn=objective, solver=solver, y0=uninformed_params, max_steps=maxiter, throw=True)
     standard_time = time.time() - start_time
     print(f"Standard optimization took {standard_time:.2f} seconds")
     
@@ -296,17 +295,18 @@ def main():
     returns, factors, log_vols = create_training_data(params, T=T)
     
     # Create a Bellman filter object
+    returns = jnp.asarray(returns) # Convert to JAX array for filter/objective compatibility
     filter = DFSVBellmanFilter(params.N, params.K)
     
-    # Convert to JAX parameter class
-    jax_params = DFSVParamsDataclass.from_dfsv_params(params)
+    # True params are already the correct JAX dataclass type
+    jax_params = params
     
     # Compare gradients
     # compare_gradients(jax_params, returns, filter)
     
     # Run optimization with both methods
     standard_params, transformed_params, standard_loss, transformed_loss = \
-        optimize_with_transformations(params, returns, filter, T=T, maxiter=30)
+        optimize_with_transformations(params, returns, filter, T=T, maxiter=100)
     
     print("\nOptimization results:")
     print(f"Standard optimization final loss:      {standard_loss:.4f}")
@@ -424,15 +424,16 @@ def main():
         print(f"mean={float(std_sigma.mean()):.4f} ", end="")
         print(f"mean={float(trans_sigma.mean()):.4f}")
     
-    # Plot predicted vs real return variance comparison
-    print("\nPlotting predicted vs realized return variance comparison...")
-    true_var, standard_var, transformed_var = plot_variance_comparison(
-        jax_params, standard_params, transformed_params, 
-        log_vols, standard_log_vols, transformed_log_vols, 
-        returns, save_path="/home/givanib/Documents/QF_Thesis/variance_comparison.png"
-    )
-    
-    print("Saved variance comparison plot to /home/givanib/Documents/QF_Thesis/variance_comparison.png")
+    # # Plot predicted vs real return variance comparison (Commented out due to missing module)
+    # print("\nPlotting predicted vs realized return variance comparison...")
+    # save_path_var = "outputs/bf_variance_comparison.png" # Save to outputs directory
+    # true_var, standard_var, transformed_var = plot_variance_comparison(
+    #     jax_params, standard_params, transformed_params,
+    #     log_vols, standard_log_vols, transformed_log_vols,
+    #     returns, save_path=save_path_var
+    # )
+    #
+    # print(f"Saved variance comparison plot to {save_path_var}")
 
 
 if __name__ == "__main__":

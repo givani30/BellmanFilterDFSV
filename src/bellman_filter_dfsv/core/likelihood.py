@@ -256,10 +256,12 @@ def bellman_objective(params: DFSVParamsDataclass, y: jnp.ndarray, filter: DFSVB
         Negative log-likelihood value + prior penalty
     """
     # Original negative log-likelihood
-    neg_ll = -filter.jit_log_likelihood_of_params(filter, params, y)
+    # Get the JITted function and call it with (params, y)
+    jit_ll_func = filter.jit_log_likelihood_of_params()
+    neg_ll = -jit_ll_func(params, y)
     safe_neg_ll = jnp.nan_to_num(neg_ll, nan=1e10, posinf=1e10, neginf=1e10)
     
-    # Define functions for the conditional penalty calculation 
+    # Define functions for the conditional penalty calculation
     # TODO: extend regularization framework to handle larger models
     def calculate_penalty(operands):
         p, mean, std_dev = operands
