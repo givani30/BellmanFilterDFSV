@@ -455,7 +455,7 @@ class DFSVBellmanFilter(DFSVFilter):
         predicted_state_jax, predicted_cov_jax = self.predict_jax( # Call JIT version
             params_jax, state_jax, cov_jax
         )
-        print(f"DEBUG: predict_jax returned state: {predicted_state_jax}, cov: {predicted_cov_jax}") # Debug print
+        # print(f"DEBUG: predict_jax returned state: {predicted_state_jax}, cov: {predicted_cov_jax}") # Debug print removed
         # Convert results back to NumPy
         return np.asarray(predicted_state_jax), np.asarray(predicted_cov_jax)
 
@@ -585,7 +585,10 @@ class DFSVBellmanFilter(DFSVFilter):
         except jnp.linalg.LinAlgError:
             # Fallback to pseudo-inverse if Cholesky fails
             I_pred = jnp.linalg.pinv(jax_predicted_cov)
+        # Removed debug prints
+
         I_pred = (I_pred + I_pred.T) / 2
+        # Removed debug prints
 
         # Initial guess for optimization
         alpha_init = predicted_state.flatten()
@@ -610,10 +613,12 @@ class DFSVBellmanFilter(DFSVFilter):
             # Fallback to pseudo-inverse if Cholesky fails
             updated_cov = jnp.linalg.pinv(I_updated)
         updated_cov = (updated_cov + updated_cov.T) / 2
-
+        
+        #Calculate log-likelihood contribution
+        log_lik_contrib = self.log_posterior_jit(lambda_r, sigma2, alpha_updated, jax_observation)
         # Calculate KL divergence penalty
         kl_div = self.kl_penalty_jit(predicted_state.flatten(), alpha_updated, I_pred, I_updated)
-        log_lik_contrib = kl_div # Using KL div as proxy for likelihood contribution here
+        log_lik_contrib += kl_div
 
         # Return results as JAX arrays (reshaped state), keep log_lik as JAX scalar
         return alpha_updated.reshape(-1, 1), updated_cov, log_lik_contrib
@@ -902,8 +907,7 @@ class DFSVBellmanFilter(DFSVFilter):
 
         total_log_lik = final_carry[2] # JAX scalar
 
-        # Replace NaN/Inf with -inf for optimization stability
-        return jnp.where(jnp.isnan(total_log_lik) | jnp.isinf(total_log_lik), -jnp.inf, total_log_lik)
+        return total_log_lik
 
 
     # Method to get a JIT-compiled version of the log-likelihood function

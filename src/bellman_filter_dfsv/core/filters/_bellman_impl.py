@@ -52,7 +52,7 @@ def fisher_information_impl(
     build_covariance_fn: BuildCovarianceFn # Pass build_covariance dependency
 ) -> jnp.ndarray:
     """
-    Static implementation of fisher_information.
+    Static implementation of fisher_information. (Note: This calculates an approximation, not the full Observed FIM)
 
     Args:
         lambda_r (jnp.ndarray): Factor loading matrix (N, K).
@@ -128,6 +128,86 @@ def fisher_information_impl(
     return I_fisher
 
 
+
+def observed_fim_impl(
+    lambda_r: jnp.ndarray,
+    sigma2: jnp.ndarray,
+    alpha: jnp.ndarray,
+    observation: jnp.ndarray,
+    K: int, # Pass K explicitly
+) -> jnp.ndarray:
+    """
+    Static implementation of the Observed Fisher Information (Negative Hessian).
+
+    Computes J = - d^2(log_lik) / d(alpha) d(alpha)^T using efficient Woodbury identity approach.
+
+    Args:
+        lambda_r (jnp.ndarray): Factor loading matrix (N, K).
+        sigma2 (jnp.ndarray): Idiosyncratic variances (N, N) or (N,).
+        alpha (jnp.ndarray): State vector [f, h] (2K,).
+        observation (jnp.ndarray): Observation vector (N,).
+        K (int): Number of factors.
+
+    Returns:
+        jnp.ndarray: Observed Fisher Information matrix (Negative Hessian) (2K, 2K).
+    """
+    N = lambda_r.shape[0]
+
+    alpha = alpha.flatten()
+    observation = observation.flatten()
+
+    f = alpha[:K]
+    h = alpha[K:]
+    exp_h = jnp.exp(h)
+
+    r = observation - lambda_r @ f
+
+
+    sigma2_1d = sigma2 if sigma2.ndim == 1 else jnp.diag(sigma2)
+    jitter = 1e-8
+    Dinv_diag = 1.0 / (sigma2_1d + jitter)
+    Cinv_diag = 1.0 / (exp_h + jitter)
+
+    Dinv_lambda_r = lambda_r * Dinv_diag[:, None]
+    Dinv_r = r * Dinv_diag
+
+    M = jnp.diag(Cinv_diag) + lambda_r.T @ Dinv_lambda_r
+
+    try:
+        L_M = jax.scipy.linalg.cholesky(M, lower=True)
+    except jnp.linalg.LinAlgError:
+        M_jittered = M + 1e-6 * jnp.eye(K)
+        L_M = jax.scipy.linalg.cholesky(M_jittered, lower=True)
+
+    V = M - jnp.diag(Cinv_diag)
+    Z = jax.scipy.linalg.cho_solve((L_M, True), V)
+    I_ff = V - V @ Z
+
+
+    v = lambda_r.T @ Dinv_r
+    z_p = jax.scipy.linalg.cho_solve((L_M, True), v)
+    Ainv_r = Dinv_r - Dinv_lambda_r @ z_p
+    P = lambda_r.T @ Ainv_r
+
+
+    J_ff = I_ff
+    J_fh = exp_h[:, None] * I_ff * P[None, :]
+
+
+    exp_h_outer = jnp.outer(exp_h, exp_h)
+    P_outer = jnp.outer(P, P)
+    term1_diag = 0.5 * exp_h * (jnp.diag(I_ff) - P**2)
+    term2 = -0.5 * exp_h_outer * I_ff * (I_ff - 2 * P_outer)
+    J_hh = jnp.diag(term1_diag)
+    J_hh += jnp.where(jnp.eye(K, dtype=bool), 0.0, term2)
+
+    J = jnp.block([[J_ff, J_fh], [J_fh.T, J_hh]])
+    J = 0.5 * (J + J.T)
+
+
+    return J
+
+
 def log_posterior_impl(
     lambda_r: jnp.ndarray,
     sigma2: jnp.ndarray,
@@ -137,7 +217,7 @@ def log_posterior_impl(
     build_covariance_fn: BuildCovarianceFn # Pass build_covariance dependency
 ) -> float:
     """
-    Static implementation of log_posterior.
+    Static implementation of log_posterior. This is the likelihood of the observation given the state.
 
     Args:
         lambda_r (jnp.ndarray): Factor loading matrix (N, K).
@@ -214,9 +294,10 @@ def log_posterior_impl(
     term2 = jnp.dot(v, z) # v.T @ Minv @ v
 
     quad_form = term1 - term2
-
+    #Calculate constant term (commented out because it's not needed for parameter optimization)
+    # constant= -0.5 * N * jnp.log(2.0 * jnp.pi) 
     # Calculate log likelihood
-    log_lik = -0.5 * (N * jnp.log(2.0 * jnp.pi) + logdet_A + quad_form)
+    log_lik = -0.5 * ( logdet_A + quad_form)
 
     return log_lik
 

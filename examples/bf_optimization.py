@@ -212,8 +212,8 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
     
     # Create optimizer configurations
     learning_rate = 1e-2
-    # opt = optax.adam(learning_rate=learning_rate)
-    opt=optax.adamw(learning_rate=learning_rate)
+    opt = optax.adam(learning_rate=learning_rate)
+    # opt=optax.adamw(learning_rate=learning_rate)
     
     # Define objective function for standard optimization - use imported function
     # Pass prior info explicitly
@@ -251,10 +251,10 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
             self.verbose = verbose
         
     # Transform parameters for transformed optimization
-    solver = optx.OptaxMinimiser(optim=opt, rtol=1e-3, atol=1e-3, norm=optx.max_norm, 
-                                verbose=frozenset({"step", "loss"}))
-    # solver=optx.BFGS(rtol=1e-3, atol=1e-3, norm=optx.max_norm,verbose=frozenset({"step_size", "loss"}))
-    # solver=CustomBFGS(rtol=1e-5, atol=1e-5, norm=optx.max_norm, verbose=frozenset({"step_size", "loss"}))
+    # solver = optx.OptaxMinimiser(optim=opt, rtol=1e-3, atol=1e-3, norm=optx.max_norm, 
+    #                             verbose=frozenset({"step", "loss"}))
+    # # solver=optx.BFGS(rtol=1e-3, atol=1e-3, norm=optx.max_norm,verbose=frozenset({"step_size", "loss"}))
+    solver=CustomBFGS(rtol=1e-5, atol=1e-5, norm=optx.max_norm, verbose=frozenset({"step_size", "loss"}))
     transformed_params = transform_params(uninformed_params)
     
     # Run standard optimization

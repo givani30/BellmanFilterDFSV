@@ -241,4 +241,5 @@ def update_factors(
     # return jnp.linalg.pinv(lhs_mat) @ rhs_vec
     return jnp.linalg.solve(lhs_mat, rhs_vec)
 
+
 # Removed duplicated code block from obj_and_grad_fn
