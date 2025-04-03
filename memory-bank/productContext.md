@@ -6,16 +6,17 @@ This file provides a high-level overview of the project and the expected product
 
 ## Project Goal
 
-*   Implement and evaluate the Bellman filter for Dynamic Factor Stochastic Volatility (DFSV) models, comparing its performance against standard Particle Filters.
-*   Estimate model hyperparameters by maximizing the filter-implied pseudo log-likelihood.
+*   Implement and evaluate the Bellman filter (Lange, 2024) for the specific Dynamic Factor Stochastic Volatility (DFSV) model with VAR(1) factor/volatility dynamics outlined in the thesis proposal (Boekestijn, 2025).
+*   Compare the Bellman filter's performance (accuracy, speed, stability) against a standard Particle Filter implementation.
+*   Estimate model hyperparameters (Λ, Φ_f, Φ_h, μ, Q_h) by maximizing the filter-implied pseudo log-likelihood derived from the Bellman filter.
 
 ## Key Features
 
-*   Implementation of the DFSV model.
-*   Implementation of the Bellman filter (Lange, 2024).
-*   Implementation of a Particle Filter (Bootstrap/SISR).
-*   Simulation capabilities for model testing.
-*   Hyperparameter estimation framework.
+*   Implementation of the DFSV model with VAR(1) factor and log-volatility dynamics.
+*   Implementation of the Bellman filter based on Lange (2024).
+*   Implementation of a Particle Filter (Bootstrap/SISR) for benchmarking.
+*   Simulation capabilities for model testing and evaluation.
+*   Hyperparameter estimation framework using the Bellman filter's pseudo log-likelihood.
 
 ## Overall Architecture
 
@@ -29,34 +30,37 @@ This file provides a high-level overview of the project and the expected product
     *   `utils/`: Contains utility functions (e.g., `transformations.py`).
 *   **Parameterization:** Uses `DFSVParamsDataclass` (a JAX Pytree) for consistent parameter handling across JAX-based components.
 
-### DFSV Model Specification
-
-Based on the simulation code (`core/simulation.py`) and thesis proposal:
+### DFSV Model Specification (Boekestijn, 2025, Ch. 3)
 
 **State Variables:**
 *   `f_t`: Latent factors (K-dimensional vector)
-*   `h_t`: Log-volatilities (K-dimensional vector)
-*   State Vector: `α_t = [f_t', h_t']'`
+*   `h_t`: Latent log-volatilities of factors (K-dimensional vector)
+*   State Vector: `α_t = [f_t', h_t']'` (2K-dimensional vector)
 
 **State Transition Equations:**
-1.  **Log-Volatility:** `h_{t+1} = μ + Φ_h (h_t - μ) + η_{t+1}`, where `η_{t+1} ~ N(0, Q_h)`
-    *   `μ`: Long-run mean vector (K x 1)
-    *   `Φ_h`: Transition matrix (K x K)
-    *   `Q_h`: Process noise covariance (K x K)
-2.  **Factor:** `f_{t+1} = Φ_f f_t + ν_{t+1}`
-    *   `Φ_f`: Transition matrix (K x K)
-    *   Factor Innovation Covariance: State-dependent: `ν_{t+1} ∼ N(0, diag(e^{h_{1,t+1}}, ..., e^{h_{K,t+1}}))`. Depends on `h` at time `t+1`. (Note: Simulation code uses `diag(exp(h_t / 2)) * ε_t` where `ε_t ~ N(0, I_K)`, implying covariance depends on `h_t`, check consistency).
+1.  **Factor Evolution (VAR(1)):**
+    `f_{t+1} = Φ_f f_t + ν_{t+1}`
+    `ν_{t+1} ∼ N(0, diag(e^{h_{1,t+1}}, ..., e^{h_{K,t+1}}))` (Eq. 3.5)
+    *   `Φ_f`: Factor transition matrix (K x K)
+    *   Factor innovations `ν_{t+1}` have time-varying covariance dependent on *next period's* log-volatilities `h_{t+1}`.
+2.  **Log-Volatility Evolution (VAR(1)):**
+    `h_{t+1} = μ + Φ_h (h_t - μ) + η_{t+1}`
+    `η_{t+1} ∼ N(0, Q_h)` (Eq. 3.6)
+    *   `μ`: Long-run mean vector of log-volatilities (K x 1)
+    *   `Φ_h`: Log-volatility transition matrix (K x K)
+    *   `Q_h`: Log-volatility process noise covariance (K x K, positive-definite)
 
 **Observation Equation:**
-*   `r_t = Λ f_t + ε_t`
+*   `r_t = Λ f_t + ε_t` (Eq. 3.1)
+*   `ε_t ∼ N(0, Σ_ε)` where `Σ_ε = diag(e^{h^{(id)}_{1,t}}, ..., e^{h^{(id)}_{N,t}})` (Eq. 3.2, 3.4)
     *   `r_t`: Observations (N-dimensional vector)
-    *   `Λ`: Factor loadings (N x K, `lambda_r` in code)
-    *   `ε_t`: Idiosyncratic errors with `Var(ε_{i,t}) = exp(h^{(id)}_{i,t})`. Baseline assumes constant `h^{(id)}` (often diagonal `diag(sigma2)` in code, represented by `Σ`).
+    *   `Λ`: Factor loadings (N x K)
+    *   `ε_t`: Idiosyncratic errors. Baseline assumes fixed idiosyncratic log-volatilities `h^{(id)}_{i,t} = h^{(id)}_{i}` over time.
 
 ### Estimation Approach
 
-*   **Filter:** Bellman filter (Lange, 2024) used for state estimation (`α_t`). Based on dynamic programming, approximates posterior mode.
-*   **Hyperparameter Estimation:** Maximize filter-implied pseudo log-likelihood (Eq. 40 in Lange, 2024) using gradient-based optimization (potentially via AD).
+*   **State Estimation:** Use the Bellman filter (Lange, 2024) to recursively estimate the posterior mode of the state vector `α_t`.
+*   **Hyperparameter Estimation:** Maximize the filter-implied pseudo log-likelihood (Eq. 40 in Lange, 2024 / Eq. 3.11 in Boekestijn, 2025) with respect to static hyperparameters Θ = {Λ, Φ_f, Φ_h, μ, Q_h, Σ_ε}. Optimization via gradient-based methods (e.g., BFGS), potentially using Automatic Differentiation for gradients. The pseudo-likelihood involves a fit term `ln p(r_t | α̂_{t|t})` penalized by a KL-divergence-like term based on predicted and filtered state estimates and their precisions.
 
 ---
 **Update Log:**

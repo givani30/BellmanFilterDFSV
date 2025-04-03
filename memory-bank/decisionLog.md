@@ -88,29 +88,92 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 *   [2025-04-01 21:58:53] - Restructured file, merged duplicate sections, consolidated related decisions (e.g., Bellman filter debugging/optimization, `Q_h` changes), and enforced Decision/Rationale/Implementation format during Memory Bank cleanup.
 
 ---
-
 **Decision [2025-04-02 00:17:00]:** Switch Bellman filter implementation in `scripts/simulation_study.py` from `filter_scan` (using `jax.lax.scan`) to `filter` (using Python loop).
 
-**Rationale:** Debugging revealed a significant memory leak (RAM growth over replicates) when using `filter_scan`. Profiling (`memory_profiler`, JAX device profiler via `pprof`) indicated memory accumulation during the `lax.scan` execution, likely due to JAX/XLA retaining intermediate arrays from the complex update step across iterations. Explicit GC and `jax.remat` did not resolve the issue. Switching to the Python-loop based `filter` method was confirmed to prevent this memory leak, although it might be computationally slower.
+**Rationale:** Debugging revealed a significant memory leak (RAM growth over replicates) when using `filter_scan`. Profiling (`memory_profiler`, JAX device profiler via `pprof`) indicated memory accumulation during the `lax.scan` execution, likely due to JAX/XLA retaining intermediate arrays from the complex update step across iterations. Explicit GC and `jax.remat` did not resolve the issue. Switching to the Python-loop based `filter` method was confirmed to prevent this memory leak, although it might be computationally slower. Modified `scripts/simulation_study.py` (line ~175) to call `bf_instance.filter(params, returns)`.
 
+---
 
+**Decision [2025-04-02 01:50:00]:** Use Google Cloud Batch for running the simulation study.
 
-## Decision
-
-[2025-04-02 01:50:00] - Decided to use Google Cloud Batch for running the simulation study.
-
-## Rationale
-
+**Rationale:**
 *   The study involves a large number (13,500) of independent replicates, making it suitable for parallel execution.
 *   Cloud Batch allows for efficient scaling and management of compute resources.
 *   Cost analysis suggests Batch is cost-effective (~$10-$20 compute estimate) compared to sequential execution, especially when amortizing JAX JIT compilation.
 *   Allows using different hardware (CPU for BF, GPU for PF) for different task types, optimizing performance and cost.
+*   **Implementation:** A new script `scripts/run_config_batch.py` was created. Each Batch task will execute this script for one full configuration (N, K, Filter, Particles), running all 100 replicates within that task to amortize JIT compilation. The application will be containerized using Docker and pushed to Google Artifact Registry. Input configuration and output results will be stored in Google Cloud Storage (GCS). The script `run_config_batch.py` needs modification to handle GCS paths. A Batch job definition file (JSON/YAML) will be created to define tasks, hardware, container image, and arguments.
 
-## Implementation Details
+---
 
-*   A new script `scripts/run_config_batch.py` was created. Each Batch task will execute this script for one full configuration (N, K, Filter, Particles), running all 100 replicates within that task to amortize JIT compilation.
-*   The application will be containerized using Docker and pushed to Google Artifact Registry.
-*   Input configuration and output results will be stored in Google Cloud Storage (GCS).
-*   The script `run_config_batch.py` needs modification to handle GCS paths.
-*   A Batch job definition file (JSON/YAML) will be created to define tasks, hardware, container image, and arguments.
-**Implementation Details:** Modified `scripts/simulation_study.py` (line ~175) to call `bf_instance.filter(params, returns)` instead of `bf_instance.filter_scan(params, returns)`.
+**Decision [2025-04-02 19:13:00]:** Refine debugging strategy for NaN errors in Bellman filter update step based on detailed feedback.
+
+**Rationale:** Tests failed with NaNs after implementing the Observed FIM (`J_observed`). Debug prints indicated NaN propagation starting from `I_pred`, likely due to unstable inversion of `I_updated = I_pred + J_observed` in the previous step. User feedback provided a comprehensive list of potential numerical instability sources within the Woodbury/Hessian calculations.
+**Implementation Details:** The refined plan focuses on adding checks within `observed_fim_impl` and `__update_jax`:
+1. Check inputs (`sigma2`, `h`) for extreme values that could cause division issues or `exp(h)` blowup.
+2. Check the condition number of the intermediate matrix `M` used in Woodbury.
+3. Check the magnitude of intermediate vector `P`.
+4. Add `isnan`/`isinf` checks after key calculations.
+5. Consider clamping extreme values or increasing/adapting jitter if necessary.
+6. Postpone exploring a full Information Filter formulation (propagating `I` instead of `P`) until current stabilization attempts are exhausted.
+
+---
+
+**Decision [2025-04-02 19:57:00]:** Stop debugging the current covariance-based Bellman filter implementation (`bellman.py`, `_bellman_impl.py`) for the NaN issue observed in `bf_optimization.py`.
+
+**Rationale:** Despite implementing the mathematically correct Observed Fisher Information (negative Hessian), persistent NaN propagation indicates deep numerical instability in the precision matrix update (`I_updated = I_pred + J`) and inversion (`updated_cov = I_updated^-1`) cycle. Further stabilization within the current framework seems unlikely to succeed robustly.
+
+**Next Step:** Explore the implementation of a Bellman Information Filter, which directly propagates precision matrices and might be numerically more stable for this problem.
+
+---
+
+**Decision [2025-04-02 20:26:00]:** Proceed with implementing a Bellman Information Filter (BIF) as specified in `bif_implementation_plan.md`.
+
+**Rationale:** The existing covariance-based Bellman filter (`DFSVBellmanFilter`) exhibits numerical instability (NaN propagation) during optimization runs, particularly in the precision matrix update/inversion cycle. The BIF formulation, which directly propagates information matrices, is expected to be more numerically robust. The BIF will be implemented in `src/bellman_filter_dfsv/core/filters/bellman_information.py`, inheriting from `DFSVFilter` and reusing components like `observed_fim_impl`, `log_posterior_impl`, and optimization helpers where possible. It will propagate the information state (`alpha`, `Omega`) and store filtered information matrices.
+
+---
+
+**Decision [2025-04-02 20:35:00]:** Formally adopt the Bellman filter methodology described in Lange (2024) as the core approach for state estimation and hyperparameter estimation for the specific DFSV model defined in the thesis proposal (Boekestijn, 2025).
+
+**Rationale:** This project aims to implement and evaluate the Bellman filter for a specific DFSV model. Explicitly referencing both the source methodology (Lange, 2024) and the target model specification (Boekestijn, 2025) provides clear context and aligns the project's implementation with its stated goals. Memory Bank files (`productContext.md`, `systemPatterns.md`) were updated to reflect the specific model equations and estimation approach based on both documents. Future development should adhere to this chosen methodology.
+
+---
+
+**Decision [2025-04-02 20:26:00]:** Implement a specific KL-type penalty term for the BIF based on Eq. (40) from Lange (2024) paper image provided, instead of reusing the standard KL divergence function (`kl_penalty_impl`).
+
+
+
+---
+
+**Decision [2025-04-02 23:26:45]:** Use Joseph form / Woodbury identity for BIF prediction step (`__predict_jax_info`).
+
+**Rationale:** Standard KF information prediction requires inverting the posterior information matrix, which can be unstable. The Joseph form avoids this inversion, improving numerical stability, although it requires inverting the process noise `Q_t` and an intermediate matrix `M`.
+
+**Implementation Details:** Implemented in `src/bellman_filter_dfsv/core/filters/bellman_information.py::__predict_jax_info` using stable Cholesky-based inversions with `pinv` fallback for `Q_h` and `M`.
+
+
+---
+
+**Decision [2025-04-02 23:26:45]:** Remove `try/except` blocks around JAX operations (`vmap`, `_invert_info_matrix`) in BIF getter methods.
+
+**Rationale:** Catching generic exceptions around JAX operations can mask underlying errors and is generally discouraged. Stable inversion logic is handled within `_invert_info_matrix`. Let JAX handle propagation of errors from `vmap` or inversion failures.
+
+**Implementation Details:** Removed `try/except` blocks from `get_predicted_covariances` and `_invert_info_matrix` in `src/bellman_filter_dfsv/core/filters/bellman_information.py`.
+
+
+---
+
+**Decision [2025-04-02 23:26:45]:** Modify BIF comparison test (`test_bif_vs_bf_comparison`) to exclude log-likelihood comparison.
+
+**Rationale:** The BIF uses a specific pseudo log-likelihood (Lange Eq. 40) involving a KL-type penalty, which differs from the likelihood calculation in the original BF implementation. Comparing them directly is invalid. The test should focus on comparing state estimates under stable conditions.
+
+**Implementation Details:** Removed log-likelihood assertion from `test_bif_vs_bf_comparison` in `tests/test_bellman_information.py`.
+
+
+---
+
+**Decision [2025-04-02 23:26:45]:** Correct argument passing and status checking in BIF stability test (`test_bif_stability_during_optimization`).
+
+**Rationale:** Initial test versions had `TypeError` due to incorrect keyword arguments (`prior_mu_mean` vs `prior_mean`, `returns` vs `y`) passed to the objective function via `partial`/`optimistix`, and `AttributeError` accessing `result.status` instead of `result.result`. Also, the expected success status needed to include `nonlinear_max_steps_reached` for short test runs.
+
+**Implementation Details:** Switched from `partial` to a wrapper function for the objective. Corrected keyword arguments. Changed status check to use `result.result` and included `optx.RESULTS.nonlinear_max_steps_reached` in the assertion in `tests/test_bellman_information.py`.
+**Rationale:** Eq. (40) represents the specific penalty used in the augmented likelihood for parameter estimation within the Bellman filter context. While it uses information matrices as input, its formula differs from the standard KL divergence (lacking trace and dimension terms). Using the correct formula is crucial for consistency with the paper's methodology. A new function, `_kl_penalty_pseudo_lik_impl`, will be created to compute `0.5 * (log_det(Omega_post) - log_det(Omega_pred) + (a_updated - a_pred).T @ Omega_pred @ (a_updated - a_pred))`. This will be called within the BIF's update step.

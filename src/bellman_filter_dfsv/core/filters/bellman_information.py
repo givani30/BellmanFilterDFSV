@@ -2,6 +2,7 @@
 from functools import partial
 from typing import Tuple, Union, Dict, Any
 
+from jax.experimental import checkify
 import optimistix as optx
 import jax
 import jax.numpy as jnp
@@ -13,15 +14,20 @@ from .base import DFSVFilter # Import base class
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Import parameter dataclass
 
 # Import reusable components (adjust paths/names as needed based on actual implementation)
-# Assuming observed_fim_impl is fisher_information_impl for now
-from ._bellman_impl import build_covariance_impl, fisher_information_impl, log_posterior_impl # Reusable from covariance filter impl
+# Import reusable components from _bellman_impl
+from ._bellman_impl import (
+    build_covariance_impl,
+    # fisher_information_impl, # This was commented out in _bellman_impl.py
+    log_posterior_impl,
+    bif_likelihood_penalty_impl,
+    observed_fim_impl # Use this for Fisher Information calculation
+)
 from ._bellman_optim import update_factors, update_h_bfgs # Reusable optimization helpers
 
 # Placeholder for potential new helper functions if needed
 # from ._bellman_info_impl import _kl_penalty_pseudo_lik_impl, stable_log_det, stable_inverse
 
 # TODO: Define helper functions like stable_log_det, stable_inverse if not using jax built-ins directly
-# TODO: Define _kl_penalty_pseudo_lik_impl
 
 class DFSVBellmanInformationFilter(DFSVFilter):
     """
@@ -52,7 +58,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         build_covariance_jit (callable): JITted function for building Sigma_t.
         fisher_information_jit (callable): JITted function for calculating Fisher Information J_observed.
         log_posterior_jit (callable): JITted function for calculating log p(y_t|alpha_t).
-        kl_penalty_pseudo_lik_jit (callable): JITted function for calculating the KL-type penalty.
+        bif_penalty_jit (callable): JITted function for calculating the BIF likelihood penalty. # <-- Renamed attribute
         block_coordinate_update_impl_jit (callable): JITted implementation of the state update optimization.
         predict_jax_info_jit (callable): JITted BIF prediction step.
         update_jax_info_jit (callable): JITted BIF update step.
@@ -188,22 +194,19 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         # JIT build_covariance_impl directly
         self.build_covariance_jit = jit(build_covariance_impl)
 
-        # JIT fisher_information_impl, partially applying K and the JITted build_covariance
-        self.fisher_information_jit = jit(
-            partial(fisher_information_impl, K=self.K, build_covariance_fn=self.build_covariance_jit)
-        )
+        # JIT the observed_fim_impl (renamed to fisher_information_impl)
+        self.fisher_information_jit = jit(partial(observed_fim_impl,K=self.K))
 
         # JIT log_posterior_impl, partially applying K and the JITted build_covariance
         self.log_posterior_jit = jit(
             partial(log_posterior_impl, K=self.K, build_covariance_fn=self.build_covariance_jit)
         )
 
-        # JIT the new KL penalty function
-        self.kl_penalty_pseudo_lik_jit = jit(self._kl_penalty_pseudo_lik_impl)
+        # JIT the BIF likelihood penalty function (using imported function)
+        self.bif_penalty_jit = jit(bif_likelihood_penalty_impl)
 
         # --- Instantiate Optimistix Solver ---
-        # Used within the block coordinate update for the 'h' step
-        self.h_solver = optx.BFGS(rtol=1e-4, atol=1e-6) # Same settings as bellman.py
+        self.h_solver = optx.BFGS(rtol=1e-4, atol=1e-6)
 
         # --- JIT Core BIF Steps & Block Coordinate Update ---
         # JIT the block coordinate update implementation
@@ -230,17 +233,14 @@ class DFSVBellmanInformationFilter(DFSVFilter):
                 block_coord_update_fn=self.block_coordinate_update_impl_jit,
                 fisher_info_fn=self.fisher_information_jit,
                 log_posterior_fn=self.log_posterior_jit,
-                kl_penalty_fn=self.kl_penalty_pseudo_lik_jit
+                kl_penalty_fn=self.bif_penalty_jit
             )
         )
 
-        # Optional: Add precompilation logic similar to bellman.py if needed later
-        # try:
-        #     self._precompile_jax_info_functions() # Need to define this
-        #     print("BIF JAX functions successfully precompiled")
-        # except Exception as e:
-        #     print(f"Warning: BIF JAX precompilation failed: {e}")
-        #     print("Functions will be compiled during first filter run")
+        # Checkify the matrix inversion helper (but don't JIT it here)
+        # We will call the checkified version inside the getter methods
+        self._invert_info_matrix_checked = checkify.checkify(self._invert_info_matrix, errors=checkify.float_checks)
+
 
     def initialize_state_info(
         self, params: Union[Dict[str, Any], DFSVParamsDataclass]
@@ -341,6 +341,8 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         K = self.K
         state_dim = self.state_dim
         jitter = 1e-8 # Small jitter for numerical stability
+        # --- Add Parameter Checks ---
+        checkify.check(jnp.all(jnp.linalg.eigvalsh(params.Q_h) >= -1e-8), "Q_h must be positive semi-definite, eigenvalues: {evals}", evals=jnp.linalg.eigvalsh(params.Q_h))
 
         # --- State Prediction ---
         F_t = self._get_transition_matrix(params) # Returns JAX array
@@ -357,14 +359,18 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
         # 1. Calculate Q_t_inv (Inverse of Process Noise Covariance)
         # Q_f = diag(exp(predicted_log_vols)) -> Q_f_inv = diag(exp(-predicted_log_vols))
+        ## jax.debug.print("predict: predicted_log_vols for Q_f_inv: {x}", x=predicted_log_vols)
         Q_f_inv = jnp.diag(jnp.exp(-predicted_log_vols))
+        ## jax.debug.print("predict: Q_f_inv diagonal after exp: {x}", x=jnp.diag(Q_f_inv))
         Q_f_inv = Q_f_inv + jitter * jnp.eye(K, dtype=jnp.float64) # Add jitter
 
         # Q_h_inv = params.Q_h^-1
         Q_h_jittered = params.Q_h + jitter * jnp.eye(K, dtype=jnp.float64)
         try:
+            ## jax.debug.print("predict: Q_h_jittered for Cholesky: {x}", x=Q_h_jittered)
             chol_Qh = jax.scipy.linalg.cholesky(Q_h_jittered, lower=True)
             Q_h_inv = jax.scipy.linalg.cho_solve((chol_Qh, True), jnp.eye(K, dtype=jnp.float64))
+            ## jax.debug.print("predict: Q_h_inv after cho_solve: {x}", x=Q_h_inv)
         except jnp.linalg.LinAlgError:
             print("Warning: Cholesky failed for Q_h inversion in predict. Falling back to pinv.")
             Q_h_inv = jnp.linalg.pinv(Q_h_jittered)
@@ -379,12 +385,19 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
         # 2. Calculate M = info_post + F_t.T @ Q_t_inv @ F_t
         M = info_post + F_t.T @ Q_t_inv @ F_t
+        M = info_post + F_t.T @ Q_t_inv @ F_t
+        # --- Add Condition Number Check ---
+        # cond_M = jnp.linalg.cond(M) # Commented out debug print
+        ## jax.debug.print("predict: M condition number: {cond}", cond=cond_M) # Commented out debug print
+        # --- End Condition Number Check ---
         M_jittered = M + jitter * jnp.eye(state_dim, dtype=jnp.float64)
 
         # 3. Invert M stably
         try:
+            ## jax.debug.print("predict: M_jittered for Cholesky: {x}", x=M_jittered)
             chol_M = jax.scipy.linalg.cholesky(M_jittered, lower=True)
             M_inv = jax.scipy.linalg.cho_solve((chol_M, True), jnp.eye(state_dim, dtype=jnp.float64))
+            ## jax.debug.print("predict: M_inv after cho_solve: {x}", x=M_inv)
         except jnp.linalg.LinAlgError:
             print("Warning: Cholesky failed for M inversion in predict. Falling back to pinv.")
             M_inv = jnp.linalg.pinv(M_jittered)
@@ -394,6 +407,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         term = Q_t_inv @ F_t @ M_inv @ F_t.T @ Q_t_inv
         predicted_info = Q_t_inv - term
         predicted_info = (predicted_info + predicted_info.T) / 2 # Ensure symmetry
+        ## jax.debug.print("predict: predicted_info final: {x}", x=predicted_info)
 
         return predicted_state.reshape(-1, 1), predicted_info
 
@@ -503,6 +517,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         return jnp.concatenate([f_final, h_final])
 
     # Internal JAX version of update for Information Filter
+    # Decorator removed, checkify applied in _setup_jax_functions
     def __update_jax_info(
         self,
         params: DFSVParamsDataclass, # Expect JAX arrays inside
@@ -547,6 +562,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
                 updated information Omega_{t|t} (JAX array, shape (state_dim, state_dim)),
                 log-likelihood contribution log p(y_t|F_{t-1}) (JAX scalar).
         """
+        ## jax.debug.print("update: START - predicted_state: {ps}, predicted_info: {pi}, observation: {o}", ps=predicted_state, pi=predicted_info, o=observation)
         K = self.K
         N = self.N
         state_dim = self.state_dim
@@ -554,6 +570,8 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         sigma2 = params.sigma2 # Assumed 1D JAX array
         jitter = 1e-6 # Jitter for information update
 
+        # --- Add Parameter Checks ---
+        checkify.check(jnp.all(sigma2 > 0), "sigma2 must be positive, got {s2}", s2=sigma2)
         jax_observation = observation.flatten()
 
         # --- State Update ---
@@ -576,11 +594,13 @@ class DFSVBellmanInformationFilter(DFSVFilter):
             # h_solver, build_covariance_fn, log_posterior_fn are assumed bound
         )
 
+        ## jax.debug.print("update: alpha_updated after block_coord: {x}", x=alpha_updated)
         # --- Information Update ---
         # Calculate Observed Fisher Information J_observed = -Hessian(log p(y_t|alpha_t))
         # Reuse the fisher_information_impl function (passed as fisher_info_fn)
         # Note: fisher_info_fn needs build_covariance_fn bound to it.
-        J_observed = fisher_info_fn(lambda_r, sigma2, alpha_updated)
+        J_observed = fisher_info_fn(lambda_r, sigma2, alpha_updated, observation)
+        ## jax.debug.print("update: J_observed after fisher_info_fn: {x}", x=J_observed)
 
         # Compute updated information matrix Omega_{t|t} = Omega_{t|t-1} + J_observed
         updated_info = predicted_info + J_observed + jitter * jnp.eye(state_dim, dtype=jnp.float64)
@@ -589,8 +609,8 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         # --- Log-Likelihood Contribution ---
         # Calculate fit term log p(y_t | alpha_{t|t})
         # Reuse log_posterior_impl (passed as log_posterior_fn)
-        # Note: log_posterior_fn needs build_covariance_fn bound to it.
         log_lik_fit = log_posterior_fn(lambda_r, sigma2, alpha_updated, jax_observation)
+        ## jax.debug.print("update: log_lik_fit after log_posterior_fn: {x}", x=log_lik_fit)
 
         # Calculate KL-type penalty term (using the passed JITted function)
         kl_penalty = kl_penalty_fn(
@@ -599,65 +619,14 @@ class DFSVBellmanInformationFilter(DFSVFilter):
             Omega_pred=predicted_info,
             Omega_post=updated_info
         )
+        ## jax.debug.print("update: kl_penalty after kl_penalty_fn: {x}", x=kl_penalty)
 
-        # Combine: log p(y_t|F_{t-1}) ≈ log p(y_t|alpha_{t|t}) + KL_penalty
-        log_lik_contrib = log_lik_fit + kl_penalty
+        # Combine: log p(y_t|F_{t-1}) ≈ log p(y_t|alpha_{t|t}) - KL_penalty
+        log_lik_contrib = log_lik_fit - kl_penalty
+        ## jax.debug.print("update: log_lik_contrib final: {x}", x=log_lik_contrib)
 
         # Return results as JAX arrays (reshaped state), keep log_lik as JAX scalar
         return alpha_updated.reshape(-1, 1), updated_info, log_lik_contrib
-
-    # Internal JAX implementation for KL-type pseudo-likelihood penalty (Eq. 40, Lange 2024)
-    def _kl_penalty_pseudo_lik_impl(
-        self,
-        a_pred: jnp.ndarray,      # Predicted state alpha_{t|t-1} (flattened)
-        a_updated: jnp.ndarray,   # Updated state alpha_{t|t} (flattened)
-        Omega_pred: jnp.ndarray,  # Predicted information Omega_{t|t-1}
-        Omega_post: jnp.ndarray   # Updated information Omega_{t|t}
-    ) -> jnp.ndarray: # Return JAX scalar
-        """
-        Internal JAX implementation for KL-type pseudo-likelihood penalty.
-
-        Calculates the penalty term used in the augmented log-likelihood calculation
-        for parameter estimation, as defined in Lange (2024, Eq. 40). This term
-        approximates the KL divergence between the posterior and prior predictive
-        distributions at time t.
-
-        Formula:
-        penalty = 0.5 * (log_det(Omega_post) - log_det(Omega_pred) + diff^T @ Omega_pred @ diff)
-        where diff = a_updated - a_pred.
-
-        Args:
-            a_pred: Predicted state alpha_{t|t-1} (flattened JAX array).
-            a_updated: Updated state alpha_{t|t} (flattened JAX array).
-            Omega_pred: Predicted information matrix Omega_{t|t-1} (JAX array).
-            Omega_post: Updated information matrix Omega_{t|t} (JAX array).
-
-        Returns:
-            jnp.ndarray: The calculated penalty term (JAX scalar).
-        """
-        # Ensure inputs are flattened states
-        a_pred_flat = a_pred.flatten()
-        a_updated_flat = a_updated.flatten()
-
-        # Calculate log-determinants using stable method (slogdet)
-        # slogdet returns (sign, logabsdet). We need the logabsdet (index 1).
-        sign_pred, log_det_Omega_pred = jnp.linalg.slogdet(Omega_pred)
-        sign_post, log_det_Omega_post = jnp.linalg.slogdet(Omega_post)
-
-        # Handle potential issues if matrices are not positive definite (sign != 1)
-        # For SPD matrices, sign should be 1. If not, logdet might be problematic.
-        # We might return -inf or handle based on sign if needed, but assume SPD for now.
-        # jax.debug.print("slogdet signs: pred={s_pred}, post={s_post}", s_pred=sign_pred, s_post=sign_post)
-
-        # Calculate quadratic term: diff^T @ Omega_pred @ diff
-        diff = a_updated_flat - a_pred_flat
-        quad_term = diff.T @ Omega_pred @ diff
-
-        # Compute penalty
-        penalty = 0.5 * (log_det_Omega_post - log_det_Omega_pred + quad_term)
-
-        # Ensure the result is a scalar
-        return jnp.asarray(penalty, dtype=jnp.float64)
 
     # --- Filtering Methods (Adapted for Information Filter) ---
     def filter(
@@ -894,8 +863,10 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         state_dim = self.state_dim
         info_jittered = info_matrix + jitter * jnp.eye(state_dim, dtype=jnp.float64)
         # Perform Cholesky-based inversion - let errors propagate if Cholesky fails
+        ## jax.debug.print("_invert_info_matrix: input info_jittered: {x}", x=info_jittered)
         chol_info = jax.scipy.linalg.cholesky(info_jittered, lower=True)
         cov_matrix = jax.scipy.linalg.cho_solve((chol_info, True), jnp.eye(state_dim, dtype=jnp.float64))
+        ## jax.debug.print("_invert_info_matrix: output cov_matrix: {x}", x=cov_matrix)
         # Ensure symmetry
         return (cov_matrix + cov_matrix.T) / 2
 

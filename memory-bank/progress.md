@@ -22,24 +22,30 @@ This file tracks the project's progress using a task list format.
 
 ## Current Tasks
 
-*   [2025-04-01 21:59:14] - Analyze results from the expanded simulation study (Launched [2025-04-01 04:21:00], Plan: `simulation_analysis_plan.md`).
-*   [2025-04-02 00:17:00] - **Completed:** Investigate potential memory leak identified during simulation runs (Plan: `memory_leak_investigation_plan.md`).
-    *   [2025-04-01 22:15:39] - Used `memory_profiler` - confirmed leak originates within Bellman filter `jax.lax.scan`.
-    *   [2025-04-01 22:43:36] - Tested disabling history accumulation in `lax.scan` - did not resolve leak.
-    *   [2025-04-01 22:46:35] - Tested adding `jax.block_until_ready` in `lax.scan` - did not resolve leak.
-    *   [2025-04-01 23:58:29] - Used JAX device profiler (`save_device_memory_profile`) and `pprof --diff-base` - confirmed leak is not persistent device memory growth between replicates, but likely host RAM accumulation/fragmentation during `lax.scan` execution.
-    *   [2025-04-02 00:14:24] - Confirmed switching Bellman filter from `filter_scan` to `filter` (Python loop) resolves the observed RAM growth.
-    *   [2025-04-02 00:17:00] - Implemented fix by changing `simulation_study.py` to use `bf_instance.filter()`.
+*   [2025-04-02 20:37:16] - Implement the Bellman Information Filter (`DFSVBellmanInformationFilter`) in `src/bellman_filter_dfsv/core/filters/bellman_information.py` according to the specification in `bif_implementation_plan.md`.
 
 ## Next Steps
 
-*   (Addressed) Address memory leak if confirmed by investigation.
-*   Complete simulation analysis according to the plan.
-*   Consider implementing hyperparameter estimation framework.
-*   Potentially revisit Bellman filter `Q_h` sensitivity if required by real data characteristics.
+*   Test the BIF implementation thoroughly.
+*   Re-run optimization examples (`examples/bf_optimization.py`) using BIF to confirm stability.
+*   Update simulation study (`scripts/simulation_study.py`) to use BIF.
+*   Re-evaluate the need for Cloud Batch simulation runs based on BIF performance.
+*   Analyze simulation results (Plan: `simulation_analysis_plan.md`).
+*   Implement hyperparameter estimation framework using BIF pseudo-likelihood.
 
 ---
 **Update Log:**
 
 *   [2025-04-01 01:06:39] - Initial log entry.
 *   [2025-04-01 21:59:14] - Merged duplicate sections, updated task statuses based on cross-file review, and removed simple log entries during Memory Bank cleanup.
+*   [2025-04-02 00:17:00] - Updated status: Memory leak investigation completed and resolved by switching from `filter_scan` to `filter`.
+*   [2025-04-02 19:57:00] - Updated status: Debugging of original Bellman filter stopped due to numerical instability.
+*   [2025-04-02 20:27:00] - Updated status: Planning for Bellman Information Filter (BIF) completed.
+
+*   [2025-04-02 23:26:45] - Completed implementation of `DFSVBellmanInformationFilter` in `src/bellman_filter_dfsv/core/filters/bellman_information.py` (Plan Steps 1-10).
+
+*   [2025-04-02 23:26:45] - Added helper methods `get_predicted_covariances`, `get_predicted_variances`, `get_filtered_covariances`, `get_filtered_variances` to `DFSVBellmanInformationFilter`.
+
+*   [2025-04-02 23:26:45] - Created and passed initial unit tests (10 tests) for `DFSVBellmanInformationFilter` in `tests/test_bellman_information.py` (Plan Step 11).
+*   [2025-04-02 20:35:28] - Updated status: Memory Bank updated with context from Lange (2024) and Boekestijn (2025).
+*   [2025-04-02 20:37:16] - Updated Current Tasks and Next Steps to reflect focus on BIF implementation. Removed redundant/outdated task/step entries.

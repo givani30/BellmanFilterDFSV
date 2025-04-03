@@ -14,7 +14,7 @@ from .base import DFSVFilter # Import base class from sibling module
 # Update imports to use models.dfsv instead
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 # Remove redundant jax_params import
-from ._bellman_impl import build_covariance_impl, fisher_information_impl, log_posterior_impl, kl_penalty_impl
+from ._bellman_impl import build_covariance_impl, fisher_information_impl, log_posterior_impl, kl_penalty_impl,bif_likelihood_penalty_impl,observed_fim_impl
 from ._bellman_optim import update_factors, update_h_bfgs # Import optimization helpers
 
 
@@ -166,12 +166,14 @@ class DFSVBellmanFilter(DFSVFilter):
         # JIT the imported implementation functions
         self.build_covariance_jit = jit(build_covariance_impl)
         self.fisher_information_jit = jit(
-            partial(fisher_information_impl, K=self.K, build_covariance_fn=self.build_covariance_jit)
+            partial(fisher_information_impl, K=self.K)
         )
         self.log_posterior_jit = jit(
             partial(log_posterior_impl, K=self.K, build_covariance_fn=self.build_covariance_jit)
         )
-        self.kl_penalty_jit = jit(kl_penalty_impl)
+        # self.kl_penalty_jit = jit(kl_penalty_impl)
+        #try bif penalty instead
+        self.kl_penalty_jit = jit(bif_likelihood_penalty_impl)
 
         # Instantiate the BFGS solver for the h update step once
         self.h_solver = optx.BFGS(rtol=1e-4, atol=1e-6)
@@ -601,7 +603,7 @@ class DFSVBellmanFilter(DFSVFilter):
         )
 
         # Compute updated information matrix I_updated = I_pred + Fisher
-        I_fisher = self.fisher_information_jit(lambda_r, sigma2, alpha_updated)
+        I_fisher = self.fisher_information_jit(lambda_r, sigma2, alpha_updated,jax_observation)
         I_updated = I_pred + I_fisher + 1e-6 * jnp.eye(self.state_dim, dtype=jnp.float64) # Increased jitter
         I_updated = (I_updated + I_updated.T) / 2
 
@@ -618,7 +620,7 @@ class DFSVBellmanFilter(DFSVFilter):
         log_lik_contrib = self.log_posterior_jit(lambda_r, sigma2, alpha_updated, jax_observation)
         # Calculate KL divergence penalty
         kl_div = self.kl_penalty_jit(predicted_state.flatten(), alpha_updated, I_pred, I_updated)
-        log_lik_contrib += kl_div
+        log_lik_contrib -= kl_div
 
         # Return results as JAX arrays (reshaped state), keep log_lik as JAX scalar
         return alpha_updated.reshape(-1, 1), updated_cov, log_lik_contrib
@@ -852,19 +854,15 @@ class DFSVBellmanFilter(DFSVFilter):
         Returns:
             jnp.ndarray: Total log-likelihood (JAX scalar).
         """
-        try:
-            # Convert dict to dataclass, ensuring N and K are correct
-            params_jax = self._process_params(params_dict)
-            _, _, total_log_lik = self.filter_scan(params_jax, observations)
-            # Handle potential NaN/Inf values from filtering (using JAX functions)
-            # Note: np.isnan/isinf would cause ConcretizationTypeError under jax.grad
-            # Return the JAX scalar directly
-            return jnp.where(jnp.isnan(total_log_lik) | jnp.isinf(total_log_lik), -jnp.inf, total_log_lik)
-        except (ValueError, TypeError, np.linalg.LinAlgError) as e: # Use np.linalg.LinAlgError
-            # Handle errors during parameter processing or filtering
-            print(f"Warning: Error calculating likelihood: {e}")
-            # Return JAX representation of -inf
-            return jnp.array(-jnp.inf, dtype=jnp.float64)
+        # Convert dict to dataclass, ensuring N and K are correct
+        params_jax = self._process_params(params_dict)
+        _, _, total_log_lik = self.filter_scan(params_jax, observations)
+        # Handle potential NaN/Inf values from filtering (using JAX functions)
+        # Note: np.isnan/isinf would cause ConcretizationTypeError under jax.grad
+        # Return the JAX scalar directly
+        # Errors during parameter processing or filtering will now propagate.
+        # NaN/Inf results from the filter itself are still handled.
+        return total_log_lik
 
 
     def _log_likelihood_of_params_impl(

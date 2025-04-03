@@ -29,6 +29,7 @@ import optax
 from jaxopt import OptaxSolver
 
 from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.core.filters.bellman_information import DFSVBellmanInformationFilter
 # Update imports to use models.dfsv directly
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Removed DFSV_params
 from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params
@@ -40,7 +41,7 @@ from bellman_filter_dfsv.core.simulation import simulate_DFSV
 jax.config.update("jax_enable_x64", True)
 # jax.config.update("jax_debug_nans", True)
 PRIOR_MU_MEAN = 0
-PRIOR_MU_STD_DEV = 0 # Tune this value! Start with something moderate.
+PRIOR_MU_STD_DEV = 1 # Tune this value! Start with something moderate.
 
 def create_simple_model():
     """Create a simple DFSV model with one factor."""
@@ -211,7 +212,7 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
     )
     
     # Create optimizer configurations
-    learning_rate = 1e-2
+    learning_rate = 1e-4
     opt = optax.adam(learning_rate=learning_rate)
     # opt=optax.adamw(learning_rate=learning_rate)
     
@@ -251,16 +252,16 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
             self.verbose = verbose
         
     # Transform parameters for transformed optimization
-    # solver = optx.OptaxMinimiser(optim=opt, rtol=1e-3, atol=1e-3, norm=optx.max_norm, 
-    #                             verbose=frozenset({"step", "loss"}))
+    solver = optx.OptaxMinimiser(optim=opt, rtol=1e-6, atol=1e-6, norm=optx.max_norm, 
+                                verbose=frozenset({"step", "loss"}))
     # # solver=optx.BFGS(rtol=1e-3, atol=1e-3, norm=optx.max_norm,verbose=frozenset({"step_size", "loss"}))
-    solver=CustomBFGS(rtol=1e-5, atol=1e-5, norm=optx.max_norm, verbose=frozenset({"step_size", "loss"}))
+    # solver=CustomBFGS(rtol=1e-5, atol=1e-5, norm=optx.max_norm, verbose=frozenset({"step_size", "loss"}))
     transformed_params = transform_params(uninformed_params)
     
     # Run standard optimization
     print("\nStarting standard optimization with uninformed parameters...")
     start_time = time.time()
-    result_standard = optx.minimise(fn=objective, solver=solver, y0=uninformed_params, max_steps=maxiter, throw=True)
+    result_standard = optx.minimise(fn=objective, solver=solver, y0=uninformed_params, max_steps=maxiter, throw=False)
     standard_time = time.time() - start_time
     print(f"Standard optimization took {standard_time:.2f} seconds")
     
@@ -296,7 +297,8 @@ def main():
     
     # Create a Bellman filter object
     returns = jnp.asarray(returns) # Convert to JAX array for filter/objective compatibility
-    filter = DFSVBellmanFilter(params.N, params.K)
+    # filter = DFSVBellmanFilter(params.N, params.K)
+    filter = DFSVBellmanInformationFilter(params.N, params.K)
     
     # True params are already the correct JAX dataclass type
     jax_params = params
@@ -306,7 +308,7 @@ def main():
     
     # Run optimization with both methods
     standard_params, transformed_params, standard_loss, transformed_loss = \
-        optimize_with_transformations(params, returns, filter, T=T, maxiter=100)
+        optimize_with_transformations(params, returns, filter, T=T, maxiter=1000)
     
     print("\nOptimization results:")
     print(f"Standard optimization final loss:      {standard_loss:.4f}")

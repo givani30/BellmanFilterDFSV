@@ -5,6 +5,7 @@ This module provides functions to compute the log-likelihood for DFSV models,
 with special attention to proper expansion of expressions containing logarithms
 of exponential terms. Also includes objective functions for optimization.
 """
+import jax # <-- Add import
 
 import numpy as np
 import jax.numpy as jnp
@@ -319,6 +320,13 @@ def transformed_bellman_objective(transformed_params: DFSVParamsDataclass, y: jn
     """
     # Transform parameters back to original space
     original_params = untransform_params(transformed_params)
+    # --- Add Debug Print for Untransformed Params ---
+    jax.debug.print("objective: untransformed params: {p}", p=original_params)
+    # Check finiteness of all leaves in the original_params pytree
+    leaves = jax.tree_util.tree_leaves(original_params)
+    is_params_finite = jnp.all(jnp.array([jnp.all(jnp.isfinite(leaf)) for leaf in leaves]))
+    jax.debug.print("objective: untransformed params finite: {finite}", finite=is_params_finite)
+    # --- End Debug Print ---
     
     # Run the bellman filter with original parameters
     return bellman_objective(original_params, y, filter, prior_mean, prior_std_dev)
