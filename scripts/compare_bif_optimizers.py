@@ -55,7 +55,7 @@ def create_training_data(params, T=1000, seed=42):
 
 # --- Objective Functions ---
 
-@partial(jax.jit, static_argnames=["filter_instance"])
+# @partial(jax.jit, static_argnames=["filter_instance"])
 def bif_objective(params: DFSVParamsDataclass, returns: jnp.ndarray, filter_instance: DFSVBellmanInformationFilter) -> jnp.ndarray:
     """
     Compute the negative pseudo log-likelihood using the Bellman Information Filter.
@@ -185,9 +185,11 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
                     jax.debug.print("objective_wrapper: Input params finite: {finite}", finite=is_params_finite)
                     # Removed conditional print: if not is_params_finite: jax.debug.print(...)
                     # --- END DEBUG ---
-                    loss = bif_objective(params, obs, filt)
+                    # loss = bif_objective(params, obs, filt)
+                    #checkify the function
                     errors=checkify.float_checks | checkify.user_checks
-                    err,loss=checkify.checkify(bif_objective, errors=errors)(params, obs, filt)
+                    bif_checkified = checkify.checkify(bif_objective, errors=errors)
+                    err,loss=bif_checkified(params, obs, filt)
                     # --- DEBUG ---
                     is_loss_finite = jnp.isfinite(loss)
                     jax.debug.print("objective_wrapper: Output loss: {loss}, finite: {finite}", loss=loss, finite=is_loss_finite)
@@ -213,7 +215,7 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
             try:
                 print("Calculating initial objective (checkified)...")
                 # Checkify the objective function to check initial parameters
-                err,initial_loss = checkify.checkify(fn_to_minimize, errors=checkify.float_checks | checkify.user_checks)(initial_y, static_args)
+                initial_loss,err = fn_to_minimize(initial_y, static_args)
                 err.throw() # Throw if initial params/objective fail checks
                 print(f"Initial Objective Loss: {initial_loss:.4f}")
 
