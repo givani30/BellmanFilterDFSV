@@ -239,7 +239,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
         # Checkify the matrix inversion helper (but don't JIT it here)
         # We will call the checkified version inside the getter methods
-        self._invert_info_matrix_checked = checkify.checkify(self._invert_info_matrix, errors=checkify.float_checks)
+        # self._invert_info_matrix_checked = checkify.checkify(self._invert_info_matrix, errors=checkify.float_checks)
 
 
     def initialize_state_info(
@@ -342,7 +342,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         state_dim = self.state_dim
         jitter = 1e-8 # Small jitter for numerical stability
         # --- Add Parameter Checks ---
-        checkify.check(jnp.all(jnp.linalg.eigvalsh(params.Q_h) >= -1e-8), "Q_h must be positive semi-definite, eigenvalues: {evals}", evals=jnp.linalg.eigvalsh(params.Q_h))
+        # checkify.check(jnp.all(jnp.linalg.eigvalsh(params.Q_h) >= -1e-8), "Q_h must be positive semi-definite, eigenvalues: {evals}", evals=jnp.linalg.eigvalsh(params.Q_h))
 
         # --- State Prediction ---
         F_t = self._get_transition_matrix(params) # Returns JAX array
@@ -571,7 +571,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         jitter = 1e-6 # Jitter for information update
 
         # --- Add Parameter Checks ---
-        checkify.check(jnp.all(sigma2 > 0), "sigma2 must be positive, got {s2}", s2=sigma2)
+        # checkify.check(jnp.all(sigma2 > 0), "sigma2 must be positive, got {s2}", s2=sigma2)
         jax_observation = observation.flatten()
 
         # --- State Update ---

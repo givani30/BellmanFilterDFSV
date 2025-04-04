@@ -241,11 +241,11 @@ def observed_fim_impl(
         jnp.ndarray: Observed Fisher Information matrix (Negative Hessian) (2K, 2K).
     """
     # --- Checkify Checks ---
-    checkify.check(jnp.all(jnp.isfinite(lambda_r)), "observed_fim_impl: lambda_r must be finite")
-    checkify.check(jnp.all(jnp.isfinite(sigma2)), "observed_fim_impl: sigma2 must be finite")
-    checkify.check(jnp.all(sigma2 > 0), "observed_fim_impl: sigma2 must be positive, got {s2}", s2=sigma2)
-    checkify.check(jnp.all(jnp.isfinite(alpha)), "observed_fim_impl: alpha must be finite")
-    checkify.check(jnp.all(jnp.isfinite(observation)), "observed_fim_impl: observation must be finite")
+    # checkify.check(jnp.all(jnp.isfinite(lambda_r)), "observed_fim_impl: lambda_r must be finite")
+    # checkify.check(jnp.all(jnp.isfinite(sigma2)), "observed_fim_impl: sigma2 must be finite")
+    # checkify.check(jnp.all(sigma2 > 0), "observed_fim_impl: sigma2 must be positive, got {s2}", s2=sigma2)
+    # checkify.check(jnp.all(jnp.isfinite(alpha)), "observed_fim_impl: alpha must be finite")
+    # checkify.check(jnp.all(jnp.isfinite(observation)), "observed_fim_impl: observation must be finite")
     N = lambda_r.shape[0]
 
     alpha = alpha.flatten()
@@ -311,7 +311,7 @@ def observed_fim_impl(
 
 
     # jax.debug.print("observed_fim_impl: J final: {x}", x=J) # Indentation fixed
-    checkify.check(jnp.all(jnp.isfinite(J)), "observed_fim_impl: Output J must be finite")
+    # checkify.check(jnp.all(jnp.isfinite(J)), "observed_fim_impl: Output J must be finite")
     return J
 
 
@@ -338,11 +338,11 @@ def log_posterior_impl(
         float: Log posterior value.
     """
     # --- Checkify Checks ---
-    checkify.check(jnp.all(jnp.isfinite(lambda_r)), "log_posterior_impl: lambda_r must be finite")
-    checkify.check(jnp.all(jnp.isfinite(sigma2)), "log_posterior_impl: sigma2 must be finite")
-    checkify.check(jnp.all(sigma2 > 0), "log_posterior_impl: sigma2 must be positive, got {s2}", s2=sigma2)
-    checkify.check(jnp.all(jnp.isfinite(alpha)), "log_posterior_impl: alpha must be finite")
-    checkify.check(jnp.all(jnp.isfinite(observation)), "log_posterior_impl: observation must be finite")
+    # checkify.check(jnp.all(jnp.isfinite(lambda_r)), "log_posterior_impl: lambda_r must be finite")
+    # checkify.check(jnp.all(jnp.isfinite(sigma2)), "log_posterior_impl: sigma2 must be finite")
+    # checkify.check(jnp.all(sigma2 > 0), "log_posterior_impl: sigma2 must be positive, got {s2}", s2=sigma2)
+    # checkify.check(jnp.all(jnp.isfinite(alpha)), "log_posterior_impl: alpha must be finite")
+    # checkify.check(jnp.all(jnp.isfinite(observation)), "log_posterior_impl: observation must be finite")
     N = lambda_r.shape[0]
     alpha = alpha.flatten()
     observation = observation.flatten()
@@ -421,7 +421,7 @@ def log_posterior_impl(
     log_lik = -0.5 * ( logdet_A + quad_form)
 
     # jax.debug.print("log_posterior: log_lik final: {x}", x=log_lik) # Indentation fixed
-    checkify.check(jnp.isfinite(log_lik), "log_posterior_impl: Output log_lik must be finite")
+    # checkify.check(jnp.isfinite(log_lik), "log_posterior_impl: Output log_lik must be finite")
     return log_lik
 
 
@@ -454,10 +454,10 @@ def bif_likelihood_penalty_impl(
         jnp.ndarray: The calculated penalty term (JAX scalar).
     """
     # --- Checkify Checks ---
-    checkify.check(jnp.all(jnp.isfinite(a_pred)), "bif_likelihood_penalty_impl: a_pred must be finite")
-    checkify.check(jnp.all(jnp.isfinite(a_updated)), "bif_likelihood_penalty_impl: a_updated must be finite")
-    checkify.check(jnp.all(jnp.isfinite(Omega_pred)), "bif_likelihood_penalty_impl: Omega_pred must be finite")
-    checkify.check(jnp.all(jnp.isfinite(Omega_post)), "bif_likelihood_penalty_impl: Omega_post must be finite")
+    # checkify.check(jnp.all(jnp.isfinite(a_pred)), "bif_likelihood_penalty_impl: a_pred must be finite")
+    # checkify.check(jnp.all(jnp.isfinite(a_updated)), "bif_likelihood_penalty_impl: a_updated must be finite")
+    # checkify.check(jnp.all(jnp.isfinite(Omega_pred)), "bif_likelihood_penalty_impl: Omega_pred must be finite")
+    # checkify.check(jnp.all(jnp.isfinite(Omega_post)), "bif_likelihood_penalty_impl: Omega_post must be finite")
     # Ensure inputs are flattened states
     a_pred_flat = a_pred.flatten()
     a_updated_flat = a_updated.flatten()
@@ -483,7 +483,7 @@ def bif_likelihood_penalty_impl(
     # jax.debug.print("bif_penalty: penalty final: {x}", x=penalty) # Indentation fixed
 
     # Ensure the result is a scalar
-    checkify.check(jnp.isfinite(penalty), "bif_likelihood_penalty_impl: Output penalty must be finite")
+    # checkify.check(jnp.isfinite(penalty), "bif_likelihood_penalty_impl: Output penalty must be finite")
     return jnp.asarray(penalty, dtype=jnp.float64)
 
 

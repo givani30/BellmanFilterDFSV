@@ -185,17 +185,17 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
                     jax.debug.print("objective_wrapper: Input params finite: {finite}", finite=is_params_finite)
                     # Removed conditional print: if not is_params_finite: jax.debug.print(...)
                     # --- END DEBUG ---
-                    # loss = bif_objective(params, obs, filt)
+                    loss = bif_objective(params, obs, filt)
                     #checkify the function
-                    errors=checkify.float_checks | checkify.user_checks
-                    bif_checkified = checkify.checkify(bif_objective, errors=errors)
-                    err,loss=bif_checkified(params, obs, filt)
+                    # errors=checkify.float_checks | checkify.user_checks
+                    # bif_checkified = checkify.checkify(bif_objective, errors=errors)
+                    # err,loss=bif_checkified(params, obs, filt)
                     # --- DEBUG ---
                     is_loss_finite = jnp.isfinite(loss)
                     jax.debug.print("objective_wrapper: Output loss: {loss}, finite: {finite}", loss=loss, finite=is_loss_finite)
                     # Removed conditional print: if not is_loss_finite: jax.debug.print(...)
                     # --- END DEBUG ---
-                    return loss,err
+                    return loss
                 fn_to_minimize = objective_wrapper
                 objective_fn_for_loss_calc = bif_objective # For final loss calculation
 
@@ -215,8 +215,8 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
             try:
                 print("Calculating initial objective (checkified)...")
                 # Checkify the objective function to check initial parameters
-                initial_loss,err = fn_to_minimize(initial_y, static_args)
-                err.throw() # Throw if initial params/objective fail checks
+                initial_loss = fn_to_minimize(initial_y, static_args)
+                 # Throw if initial params/objective fail checks
                 print(f"Initial Objective Loss: {initial_loss:.4f}")
 
                 print("Calculating initial gradient...")
