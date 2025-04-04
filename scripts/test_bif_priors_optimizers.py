@@ -9,6 +9,10 @@ DFSVBellmanInformationFilter.
 """
 
 import time
+import csv
+import cloudpickle
+
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -34,6 +38,7 @@ jax.config.update("jax_enable_x64", True)
 def create_simple_model(N=3, K=1):
     """Create a simple DFSV model."""
     # Factor loadings
+    np.random.seed(42)
     lambda_r = np.array([[0.9], [0.6], [0.3]]) if K == 1 else np.random.randn(N, K) * 0.5 + 0.5
     # Factor persistence
     Phi_f = np.array([[0.95]]) if K == 1 else np.diag(np.random.uniform(0.8, 0.98, K))
@@ -68,7 +73,8 @@ OptimizerResult = namedtuple("OptimizerResult", [
     "final_loss",
     "steps",
     "time_taken",
-    "error_message"
+    "error_message",
+    "final_params" # Added field for estimated parameters
 ])
 
 def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_steps: int = 100):
@@ -93,11 +99,11 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
     learning_rate = 1e-2 # Example LR for Optax optimizers
 
     optimizers_to_test = {
-        "BFGS": optx.BFGS(rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
-        "NonlinearCG": optx.NonlinearCG(rtol=rtol, atol=atol),
-        "SGD": optx.OptaxMinimiser(optax.sgd(learning_rate=learning_rate), rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
-        "Adam": optx.OptaxMinimiser(optax.adam(learning_rate=learning_rate), rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
-        "AdamW": optx.OptaxMinimiser(optax.adamw(learning_rate=learning_rate), rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
+        # "BFGS": optx.BFGS(rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
+        # "NonlinearCG": optx.NonlinearCG(rtol=rtol, atol=atol),
+        # "SGD": optx.OptaxMinimiser(optax.sgd(learning_rate=learning_rate), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
+        "Adam": optx.OptaxMinimiser(optax.adam(learning_rate=learning_rate), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
+        "AdamW": optx.OptaxMinimiser(optax.adamw(learning_rate=learning_rate), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
     }
 
     # Define Prior Configurations to Test
@@ -105,10 +111,18 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
     # Format matches the arguments of log_prior_density in likelihood.py
     prior_configurations = {
         "No Priors": None,
-        "InvGamma_sigma2": {
-            "prior_sigma2_alpha": 3.0,
-            "prior_sigma2_beta": 0.1
-        },
+        
+        #Not used for now
+        # "Sigma2_Qh_Priors": {
+        #     "prior_sigma2_alpha": 3.0,
+        #     "prior_sigma2_beta": 0.1,
+        #     "prior_q_h_alpha": 3.0,
+        #     "prior_q_h_beta": 0.05,
+        # },
+        # "InvGamma_sigma2": {
+        #     "prior_sigma2_alpha": 3.0,
+        #     "prior_sigma2_beta": 0.1
+        # },
         "Full_Priors": {
             # Mu Prior (Normal)
             "prior_mu_mean": jnp.zeros(K), # Use K here
@@ -119,10 +133,17 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
             "prior_phi_h_diag_mean": 0.9, # Mean for diagonals
             "prior_phi_h_mean": 0.0,      # Mean for off-diagonals (default in log_prior_density)
             "prior_phi_h_var": 0.1**2,    # Variance (stddev^2)
+            # Phi_f Prior (Normal - Diagonal only for simplicity here)
+            "prior_phi_f_diag_mean": 0.9, # Mean for diagonals
+            "prior_phi_f_mean": 0.0,      # Mean for off-diagonals (default in log_prior_density)
+            "prior_phi_f_var": 0.1**2,    # Variance (stddev^2)
             # Sigma2 Prior (Inverse Gamma)
             "prior_sigma2_alpha": 3.0,
-            "prior_sigma2_beta": 0.1
-            # Note: Priors for lambda_r, Phi_f, Q_h could be added here following the
+            "prior_sigma2_beta": 0.1,
+            # Q_h Prior (Inverse Gamma - Diagonal)
+            "prior_q_h_alpha": 3.0,
+            "prior_q_h_beta": 0.05,
+            # Note: Priors for lambda_r, Phi_f, could be added here following the
             # naming convention: prior_<param_name>_<hyperparam_name>
         }
     }
@@ -144,7 +165,7 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
     # Loop through priors, optimizers, and transformation settings
     for prior_name, priors_dict in prior_configurations.items():
         for name, solver in optimizers_to_test.items():
-            for use_transform in [False, True]:
+            for use_transform in [True]: # Only run transformed version
                 print(f"\n--- Running: Prior='{prior_name}' | Optimizer='{name}' | Transform={'Yes' if use_transform else 'No'} ---")
 
                 if use_transform:
@@ -230,40 +251,46 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
                     # Check solver success first
                     solver_success = (sol.result == optx.RESULTS.successful)
 
-                    # --- Final Loss Calculation ---
+                    # --- Final Loss Calculation (Attempt even if solver failed) ---
                     final_loss_recalculated = jnp.inf
                     final_params_untransformed = None
                     validation_exception = None
-                    if solver_success: # Only attempt validation if solver thinks it succeeded
-                        try:
-                            # Get final parameters (untransformed)
-                            final_params_untransformed = untransform_params(sol.value) if use_transform else sol.value
-                            # Recalculate loss using the appropriate objective function
-                            final_loss_recalculated = objective_fn_for_loss_calc(final_params_untransformed, returns, filter_instance, priors_dict)
-                        except Exception as val_e:
-                            validation_exception = val_e
-                            final_loss_recalculated = jnp.inf # Loss is invalid if validation failed
-                            print(f"Exception during final loss calculation: {validation_exception}")
+                    try:
+                        # Get final parameters (untransformed) - use sol.value which holds the final state
+                        final_params_untransformed = untransform_params(sol.value) if use_transform else sol.value
+                        # Recalculate loss using the non-transformed objective function
+                        final_loss_recalculated = objective_fn_for_loss_calc(final_params_untransformed, returns, filter_instance, priors_dict)
+                        if not jnp.isfinite(final_loss_recalculated):
+                             # Raise an exception if the calculated loss is not finite
+                             raise ValueError(f"Recalculated loss is non-finite: {final_loss_recalculated}")
+                    except Exception as val_e:
+                        validation_exception = val_e
+                        final_loss_recalculated = jnp.inf # Ensure loss is Inf if calculation failed
+                        print(f"Exception during final loss calculation: {validation_exception}")
                     # --- End Final Loss Calculation ---
 
-                    # Determine overall success
-                    success = solver_success and (validation_exception is None) and jnp.isfinite(final_loss_recalculated)
-                    final_loss = final_loss_recalculated if success else jnp.inf # Use recalculated loss only if successful
+                    # Determine success based *only* on solver status
+                    success = solver_success # Overall success is just solver success
 
-                    # Determine error message
+                    # Assign final loss based on recalculation result
+                    if validation_exception is None and jnp.isfinite(final_loss_recalculated):
+                         final_loss = final_loss_recalculated # Use recalculated loss if valid
+                    else:
+                         final_loss = jnp.inf # Otherwise, report Inf
+
+                    # Determine error message based on solver status and validation status
                     if success:
                         error_msg = "N/A"
                         print(f"Success! Final Loss: {final_loss:.4f}, Steps: {num_steps}, Time: {time_taken:.2f}s")
                     else:
-                        if not solver_success:
-                            error_msg = f"Solver failed: {sol.result}"
-                        elif validation_exception is not None:
-                            error_msg = f"Exception in final calc: {validation_exception}"
+                        # Solver failed, report solver error
+                        error_msg = f"Solver failed: {sol.result}"
+                        # Add note if final loss calculation also failed
+                        if validation_exception is not None:
+                            error_msg += f"; Final loss calc failed: {validation_exception}"
                         elif not jnp.isfinite(final_loss_recalculated):
-                             error_msg = f"Final loss non-finite: {final_loss_recalculated}"
-                        else: # Should only happen if solver failed and we didn't run the final check
-                            error_msg = f"Solver failed ({sol.result}) - final calc skipped"
-                        print(f"Failed! Status: {error_msg}, Final Loss: {final_loss_recalculated}, Steps: {num_steps}, Time: {time_taken:.2f}s")
+                             error_msg += f"; Final loss non-finite: {final_loss_recalculated}"
+                        print(f"Failed! Status: {error_msg}, Final Loss: {final_loss:.4f}, Steps: {num_steps}, Time: {time_taken:.2f}s") # Print final_loss (potentially Inf)
 
                 except Exception as e: # Catch exceptions during the main optx.minimise call
                     end_time = time.time()
@@ -282,7 +309,8 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
                     final_loss=float(final_loss), # Convert JAX scalar to float
                     steps=int(num_steps),
                     time_taken=time_taken,
-                    error_message=error_msg
+                    error_message=error_msg,
+                    final_params=final_params_untransformed # Store the final params Pytree (or None)
                 ))
 
     return results
@@ -304,6 +332,31 @@ def print_results_table(results: list[OptimizerResult]):
     print("-" * 115) # Adjusted width
 
 
+def save_results_to_csv(results: list[OptimizerResult], filename: str = "bif_prior_optimizer_results_rms.csv"):
+    """Saves the comparison results to a CSV file."""
+    if not results:
+        print("No results to save.")
+        return
+
+    # Get headers from the namedtuple fields
+    headers = OptimizerResult._fields
+
+    try:
+        with open(filename, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            # Write header
+            writer.writerow(headers)
+            # Write data rows
+            for result in results:
+                # Convert JAX arrays/scalars if necessary (though they should be float/int by now)
+                row = [float(item) if isinstance(item, (jnp.ndarray, jnp.generic)) else item for item in result]
+                writer.writerow(row)
+        print(f"Results successfully saved to {filename}")
+    except IOError as e:
+        print(f"Error saving results to CSV: {e}")
+
+
+
 def main():
     """Run the optimizer and prior comparison study."""
     print("Starting BIF Optimizer and Prior Comparison Study...")
@@ -319,12 +372,15 @@ def main():
     print("Simulation data generated.")
 
     # 3. Run Comparison
-    max_opt_steps = 50 # Keep max steps relatively low for comparison speed
+    max_opt_steps = 500 # Keep max steps relatively low for comparison speed
     print(f"Running optimizer comparison (max_steps={max_opt_steps})...")
     results = run_comparison(true_params, returns, max_steps=max_opt_steps)
 
     # 4. Print Results
     print_results_table(results)
+
+    # 5. Save Results to CSV
+    save_results_to_csv(results)
 
     print("\nOptimizer and prior comparison study finished.")
 
