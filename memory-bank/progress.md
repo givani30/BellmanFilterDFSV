@@ -19,14 +19,18 @@ This file tracks the project's progress using a task list format.
 *   [2025-04-01 12:05:00] - Optimized Bellman filter performance using Woodbury Identity and Rank-1 FIM reformulation. Verified with profiling and tests.
 *   [2025-04-01 12:22:00] - Profiled particle filter performance and tested minor optimizations (vectorized likelihood, covariance calculation).
 *   [2025-04-01 21:59:14] - Cleaned up and consolidated all Memory Bank files (`productContext.md`, `activeContext.md`, `systemPatterns.md`, `decisionLog.md`, `progress.md`).
+*   [2025-04-02 23:26:45] - Implemented and tested `DFSVBellmanInformationFilter` (BIF) in `src/bellman_filter_dfsv/core/filters/bellman_information.py` and `tests/test_bellman_information.py`. Added covariance/variance getter methods.
+*   [2025-04-04 16:59:00] - Investigated BIF optimization stability (`scripts/bif_optimizer_stability.py`). Identified state explosion (`h`) issue and the stabilizing effect of priors (esp. `sigma2`).
+*   [2025-04-04 17:55:28] - Completed implementation of prior framework in `src/bellman_filter_dfsv/core/likelihood.py` (updated `log_prior_density` and objective functions).
 
 ## Current Tasks
 
-*   [2025-04-02 20:37:16] - Implement the Bellman Information Filter (`DFSVBellmanInformationFilter`) in `src/bellman_filter_dfsv/core/filters/bellman_information.py` according to the specification in `bif_implementation_plan.md`.
+*   [2025-04-04 17:55:28] - Test the newly implemented prior framework in `src/bellman_filter_dfsv/core/likelihood.py`.
 
 ## Next Steps
 
-*   Test the BIF implementation thoroughly.
+*   [2025-04-04 17:55:28] - Test the newly implemented prior framework (e.g., re-run stability scripts, create dedicated tests).
+*   Test the BIF implementation thoroughly (if not covered by prior testing).
 *   Re-run optimization examples (`examples/bf_optimization.py`) using BIF to confirm stability.
 *   Update simulation study (`scripts/simulation_study.py`) to use BIF.
 *   Re-evaluate the need for Cloud Batch simulation runs based on BIF performance.

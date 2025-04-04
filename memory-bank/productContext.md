@@ -62,6 +62,29 @@ This file provides a high-level overview of the project and the expected product
 *   **State Estimation:** Use the Bellman filter (Lange, 2024) to recursively estimate the posterior mode of the state vector `α_t`.
 *   **Hyperparameter Estimation:** Maximize the filter-implied pseudo log-likelihood (Eq. 40 in Lange, 2024 / Eq. 3.11 in Boekestijn, 2025) with respect to static hyperparameters Θ = {Λ, Φ_f, Φ_h, μ, Q_h, Σ_ε}. Optimization via gradient-based methods (e.g., BFGS), potentially using Automatic Differentiation for gradients. The pseudo-likelihood involves a fit term `ln p(r_t | α̂_{t|t})` penalized by a KL-divergence-like term based on predicted and filtered state estimates and their precisions.
 
+### Likelihood Surface Details (Bellman Filter Pseudo Log-Likelihood)
+
+The optimization process targets the pseudo log-likelihood derived from the Bellman filter (Lange, 2024, Eq. 40; Boekestijn, 2025, Eq. 3.11). Key characteristics include:
+
+*   **Nature:** This is an *approximation* of the true marginal log-likelihood `p(y | Θ)`. It's based on the filter's recursive estimation of the posterior mode (`α̂_{t|t}`) and precision of the latent state vector `α_t`.
+*   **Components:** It implicitly combines:
+    *   A measure of observation fit given the estimated state mode (`ln p(r_t | α̂_{t|t})`).
+    *   A penalty term, analogous to a KL divergence, comparing the predicted state distribution (`p(α_t | y_{1:t-1})`) with the filtered state distribution (`p(α_t | y_{1:t})`).
+*   **Optimization Strategy:**
+    *   The objective is to find hyperparameters Θ = {Λ, Φ_f, Φ_h, μ, Q_h, Σ_ε} that maximize this pseudo-likelihood (or minimize its negative).
+    *   Gradient-based optimization (e.g., BFGS) is employed, utilizing JAX for automatic differentiation (`jax.grad`, `jax.value_and_grad`).
+    *   Optimization often occurs in an *unconstrained* parameter space (using `transformed_bellman_objective`). The `untransform_params` function maps these values back to the constrained model space (e.g., ensuring positive variances, valid correlation matrices) before calculating the objective. This transformation aims to improve optimization geometry.
+*   **Implementation:**
+    *   The objective function logic resides in `src/bellman_filter_dfsv/core/likelihood.py` (`bellman_objective`, `transformed_bellman_objective`).
+    *   The core likelihood calculation is delegated to the `DFSVBellmanFilter` class (`jit_log_likelihood_of_params`).
+    *   JAX (`@eqx.filter_jit`) is used for performance via JIT compilation.
+*   **Regularization:** Prior beliefs can be incorporated by adding log-prior density terms to the objective function (e.g., using `log_prior_density` for `sigma2` or custom penalties as seen for `mu` in `bellman_objective`). This modifies the surface to favor certain parameter regions.
+*   **Potential Characteristics:** As with many complex latent variable models, the surface may exhibit:
+    *   Multi-modality (multiple local optima).
+    *   Flat regions or sharp ridges, potentially hindering optimizer convergence.
+    *   Numerical stability issues, addressed through techniques like `jnp.nan_to_num` and parameter transformations.
+
+
 ---
 **Update Log:**
 

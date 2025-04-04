@@ -176,4 +176,31 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 **Rationale:** Initial test versions had `TypeError` due to incorrect keyword arguments (`prior_mu_mean` vs `prior_mean`, `returns` vs `y`) passed to the objective function via `partial`/`optimistix`, and `AttributeError` accessing `result.status` instead of `result.result`. Also, the expected success status needed to include `nonlinear_max_steps_reached` for short test runs.
 
 **Implementation Details:** Switched from `partial` to a wrapper function for the objective. Corrected keyword arguments. Changed status check to use `result.result` and included `optx.RESULTS.nonlinear_max_steps_reached` in the assertion in `tests/test_bellman_information.py`.
+
+
+---
+
+**Decision [2025-04-04 15:25:00]:** Pause parameter transformation experiments and investigate the BIF state update logic, specifically `update_h_bfgs`, as the root cause of optimization instability.
+
+**Rationale:** Debugging `scripts/bif_optimizer_stability.py` using `EQX_ON_ERROR=breakpoint` and `eqx.error_if` checks revealed that the optimization fails due to `jnp.exp(h)` overflowing to `inf`. This occurs because the log-volatility state vector `h` reaches extremely large positive values (e.g., > 3000) during the optimization process (likely within the gradient calculation's intermediate steps or the optimizer update). This points to an issue within the state update mechanism rather than the parameter transformations themselves.
+
+**Implementation Details:** Focus shifts to analyzing `src/bellman_filter_dfsv/core/filters/_bellman_optim.py::update_h_bfgs`. Investigate potential numerical issues in the BFGS optimization objective or its gradients, solver settings (tolerances, max iterations), or interactions with the factor update step. Consider adding state clipping or regularization as a potential mitigation if direct fixes are not found.
+
+
+---
+
+**Decision [2025-04-04 16:59:00]:** Conclude initial BIF optimization stability debugging phase. Adopt strategy of using priors to guide optimization.
+
+**Rationale:** Investigation revealed optimization instability (NaN/Inf errors) stemmed from the optimizer exploring regions with unrealistically large `sigma2` values. This destabilized the BIF state update, causing the log-volatility state `h` to explode and `exp(h)` to overflow. Adding an Inverse-Gamma prior on `sigma2` prevented the Adam optimizer from crashing by penalizing large `sigma2` values, although convergence to a meaningful optimum was not confirmed (terminated in 2 steps). BFGS still failed during gradient calculation, suggesting further numerical sensitivity potentially related to second-order information. Parameter transformations alone were insufficient. Adding priors is deemed essential for stabilizing the BIF pseudo-MLE approach.
+
+**Next Steps (Recommendation):** Further stabilize BIF pseudo-MLE by refining/adding priors (e.g., for persistence parameters), tuning optimizer settings (learning rate, gradient clipping), or explore alternative methods like EM with Bellman smoother if direct maximization remains problematic.
+
+
+---
+
+**Decision [2025-04-04 17:43:01]:** Implement a comprehensive prior regularization framework in `src/bellman_filter_dfsv/core/likelihood.py`.
+
+**Rationale:** To improve numerical stability during optimization (especially for BIF) by penalizing unrealistic parameter values. This centralizes prior management and allows for flexible configuration.
+
+**Implementation Details:** Refactor `log_prior_density` to include priors for `mu` (Normal), `sigma2` (Inverse Gamma), `Q_h` (Inverse Gamma - diagonal), `lambda_r` (Normal). Implement interim Normal priors for `Phi_f` and `Phi_h` elements, acknowledging the lack of stationarity enforcement until matrix transformations are updated. Integrate `log_prior_density` into all objective functions (`bellman_objective`, `transformed_bellman_objective`, `pf_objective`, `transformed_pf_objective`), replacing existing ad-hoc penalties. Detailed plan saved in `prior_implementation_plan.md`.
 **Rationale:** Eq. (40) represents the specific penalty used in the augmented likelihood for parameter estimation within the Bellman filter context. While it uses information matrices as input, its formula differs from the standard KL divergence (lacking trace and dimension terms). Using the correct formula is crucial for consistency with the paper's methodology. A new function, `_kl_penalty_pseudo_lik_impl`, will be created to compute `0.5 * (log_det(Omega_post) - log_det(Omega_pred) + (a_updated - a_pred).T @ Omega_pred @ (a_updated - a_pred))`. This will be called within the BIF's update step.

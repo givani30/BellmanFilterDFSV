@@ -61,6 +61,8 @@ This file documents recurring patterns and standards used in the project.
 *   **Filter Comparison:** Tests often compare outputs of different filter implementations or optimized vs. non-optimized versions (e.g., `tests/test_bellman_unified.py`).
 *   **Profiling Scripts:** Dedicated scripts (`scripts/profile_*.py`, `scripts/benchmark_*.py`) used to measure performance and identify bottlenecks.
 
+*   **Runtime Error Debugging:** Use `equinox.error_if` to add runtime checks for conditions like NaN/Inf within JIT-compiled functions. Running the code with the environment variable `EQX_ON_ERROR=breakpoint` will then trigger the debugger precisely where the check fails, aiding in pinpointing errors that occur during gradient calculations or within JITted filter steps (Identified [2025-04-04 15:25:00]).
+
 ---
 **Update Log:**
 

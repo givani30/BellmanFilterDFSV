@@ -112,5 +112,31 @@ This file tracks the project's current status, including recent changes, current
 *   [2025-04-02 23:26:45] - Added covariance/variance getter methods to BIF.
 
 *   [2025-04-02 23:26:45] - BIF implementation complete. Next steps involve using it in optimization examples and simulation study.
+
+*   [2025-04-04 15:25:00] - Debugged BIF optimization failures in `scripts/bif_optimizer_stability.py`. Transformation experiments (Log variance, Atanh persistence) failed with `EquinoxRuntimeError` (NaN/Inf input to linear solver). Used `EQX_ON_ERROR=breakpoint` and `eqx.error_if` checks to trace the error to `NaN/Inf in J_observed` within `__update_jax_info`. Further debugging revealed the root cause as `jnp.exp(h)` overflowing due to extremely large positive values in the log-volatility state vector `h` during optimization steps.
+
+
+## Current Focus
+
+*   [2025-04-04 15:25:00] - Investigate the `update_h_bfgs` function in `src/bellman_filter_dfsv/core/filters/_bellman_optim.py` for potential numerical instability or solver settings issues causing the `h` state explosion during BIF optimization.
+
+
+## Open Questions/Issues
+
+*   [2025-04-04 15:25:00] - Log-volatility state `h` explodes to large positive values during BIF optimization (`scripts/bif_optimizer_stability.py`), causing `jnp.exp(h)` to overflow and subsequent calculations (e.g., `J_observed`) to fail with NaN/Inf. Root cause within state update logic needs identification.
+
+*   [2025-04-04 16:24:00] - Added Inverse-Gamma prior for `sigma2` to BIF objective. Re-ran stability script: Adam optimizer no longer crashed due to NaNs but terminated quickly (2 steps), likely hitting tolerance in a stable region influenced by the prior, not necessarily converging to a meaningful optimum. BFGS still failed early during gradient calculation (`NaN/Inf in exp_h`).
+*   [2025-04-04 17:55:04] - Completed implementation of prior framework in `src/bellman_filter_dfsv/core/likelihood.py`. Updated `log_prior_density` and objective functions (`bellman_objective`, `pf_objective`, etc.) to handle Normal and Inverse-Gamma priors for hyperparameters (`mu`, `lambda_r`, `Phi_f`, `Phi_h`, `sigma2`, `Q_h`).
+
+
+## Current Focus
+
+*   [2025-04-04 16:59:00] - Concluded initial BIF optimization stability investigation phase. Key finding: Priors (esp. on `sigma2`) are crucial to prevent optimizer exploring unrealistic parameter regions (large `sigma2`) that destabilize the `h` state update. Further work needed for robust convergence (e.g., more priors, optimizer tuning, EM).
+*   [2025-04-04 17:55:04] - Test the newly implemented prior framework, potentially by re-running stability scripts (`scripts/bif_optimizer_stability.py`) or creating dedicated tests.
+
+
+## Open Questions/Issues
+
+*   [2025-04-04 16:59:00] - While `sigma2` prior prevents Adam crash, convergence is not guaranteed (terminated in 2 steps). BFGS still fails during gradient calculation, indicating remaining numerical sensitivity.
 *   [2025-04-01 01:06:35] - Initial log entry.
 *   [2025-04-01 21:58:18] - Consolidated sections, updated status, and summarized recent activities during Memory Bank cleanup.

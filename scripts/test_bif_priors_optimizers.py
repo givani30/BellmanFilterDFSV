@@ -23,7 +23,8 @@ from bellman_filter_dfsv.core.filters.bellman_information import DFSVBellmanInfo
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params
 from bellman_filter_dfsv.core.simulation import simulate_DFSV
-from bellman_filter_dfsv.core.likelihood import log_prior_density # Import for prior definitions if needed directly
+# Import the objective functions from likelihood.py
+from bellman_filter_dfsv.core.likelihood import bellman_objective, transformed_bellman_objective
 
 # Enable 64-bit precision for better numerical stability
 jax.config.update("jax_enable_x64", True)
@@ -55,60 +56,7 @@ def create_training_data(params, T=1000, seed=42):
     returns, _, _ = simulate_DFSV(params, T=T, seed=seed)
     return jnp.asarray(returns) # Return as JAX array
 
-# --- Objective Functions ---
-
-# @partial(jax.jit, static_argnames=["filter_instance"]) # JIT removed for easier debugging if needed
-def bif_objective(
-    params: DFSVParamsDataclass,
-    returns: jnp.ndarray,
-    filter_instance: DFSVBellmanInformationFilter,
-    priors: Optional[Dict[str, Any]] = None
-) -> jnp.ndarray:
-    """
-    Compute the negative pseudo log-likelihood using the Bellman Information Filter,
-    optionally including a prior term.
-
-    Args:
-        params: Model parameters (DFSVParamsDataclass with JAX arrays).
-        returns: Observed data (T, N) as JAX array.
-        filter_instance: An instance of DFSVBellmanInformationFilter.
-        priors: Optional dictionary defining priors for parameters.
-
-    Returns:
-        Negative pseudo log-likelihood + negative log prior density (JAX scalar).
-        Returns Inf if errors occur.
-    """
-    # Calculate pseudo log-likelihood from the filter
-    total_log_lik = filter_instance.jit_log_likelihood_of_params(priors=priors)(params, returns)
-
-    # Return negative log-likelihood, replacing NaN/Inf with Inf for minimization
-    neg_ll = -total_log_lik
-    safe_neg_ll = jnp.where(jnp.isnan(neg_ll) | jnp.isinf(neg_ll) , jnp.inf, neg_ll)
-    return safe_neg_ll
-
-@partial(jax.jit, static_argnames=["filter_instance"])
-def transformed_bif_objective(
-    transformed_params: DFSVParamsDataclass,
-    returns: jnp.ndarray,
-    filter_instance: DFSVBellmanInformationFilter,
-    priors: Optional[Dict[str, Any]] = None
-) -> jnp.ndarray:
-    """
-    Compute the BIF objective function with transformed parameters, optionally including priors.
-
-    Args:
-        transformed_params: Model parameters in transformed (unconstrained) space.
-        returns: Observed data (T, N) as JAX array.
-        filter_instance: An instance of DFSVBellmanInformationFilter.
-        priors: Optional dictionary defining priors for parameters.
-
-    Returns:
-        Negative pseudo log-likelihood + negative log prior density (JAX scalar).
-    """
-    # Transform parameters back to original space
-    original_params = untransform_params(transformed_params)
-    # Call the standard objective function, passing priors through
-    return bif_objective(original_params, returns, filter_instance, priors)
+# --- Objective Functions (Now imported from core.likelihood) ---
 
 # --- Main Comparison Logic ---
 
@@ -154,16 +102,28 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
 
     # Define Prior Configurations to Test
     # Defined inside run_comparison to access K
+    # Format matches the arguments of log_prior_density in likelihood.py
     prior_configurations = {
         "No Priors": None,
         "InvGamma_sigma2": {
-            "sigma2": {"dist": "InverseGamma", "a": 3.0, "b": 0.1} # Weakly informative prior on variance
+            "prior_sigma2_alpha": 3.0,
+            "prior_sigma2_beta": 0.1
         },
         "Full_Priors": {
-            "mu": {"dist": "Normal", "mean": jnp.zeros(K), "stddev": jnp.ones(K)}, # Prior towards zero mean log-vol
-            "Phi_h": {"dist": "Normal", "mean": 0.9 * jnp.eye(K), "stddev": 0.1 * jnp.eye(K)}, # Prior towards high persistence (diagonal elements)
-            "sigma2": {"dist": "InverseGamma", "a": 3.0, "b": 0.1} # Weakly informative prior on variance
-            # Note: Priors for lambda_r, Phi_f, Q_h could be added here if needed
+            # Mu Prior (Normal)
+            "prior_mu_mean": jnp.zeros(K), # Use K here
+            "prior_mu_var": jnp.ones(K),   # Variance, not stddev
+            # Phi_h Prior (Normal - Diagonal only for simplicity here)
+            # Note: log_prior_density expects means/vars for all elements.
+            # This simplified prior only sets diagonal elements implicitly via log_prior_density logic.
+            "prior_phi_h_diag_mean": 0.9, # Mean for diagonals
+            "prior_phi_h_mean": 0.0,      # Mean for off-diagonals (default in log_prior_density)
+            "prior_phi_h_var": 0.1**2,    # Variance (stddev^2)
+            # Sigma2 Prior (Inverse Gamma)
+            "prior_sigma2_alpha": 3.0,
+            "prior_sigma2_beta": 0.1
+            # Note: Priors for lambda_r, Phi_f, Q_h could be added here following the
+            # naming convention: prior_<param_name>_<hyperparam_name>
         }
     }
 
@@ -192,19 +152,23 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
                     # Define wrapper for transformed objective
                     def transformed_objective_wrapper(t_params, args_tuple):
                         obs, filt, priors = args_tuple # Unpack static args including priors
-                        loss = transformed_bif_objective(t_params, obs, filt, priors)
+                        # Use imported function name
+                        loss = transformed_bellman_objective(t_params, obs, filt, priors)
                         return loss
                     fn_to_minimize = transformed_objective_wrapper
-                    objective_fn_for_loss_calc = bif_objective # Use non-transformed for final loss
+                    # Use imported function name for final loss calculation
+                    objective_fn_for_loss_calc = bellman_objective
                 else:
                     initial_y = uninformed_params
                     # Define wrapper for non-transformed objective
                     def objective_wrapper(params, args_tuple):
                         obs, filt, priors = args_tuple # Unpack static args including priors
-                        loss = bif_objective(params, obs, filt, priors)
+                        # Use imported function name
+                        loss = bellman_objective(params, obs, filt, priors)
                         return loss
                     fn_to_minimize = objective_wrapper
-                    objective_fn_for_loss_calc = bif_objective # For final loss calculation
+                    # Use imported function name for final loss calculation
+                    objective_fn_for_loss_calc = bellman_objective
 
                 # Package static arguments, now including priors
                 static_args = (returns, filter_instance, priors_dict)

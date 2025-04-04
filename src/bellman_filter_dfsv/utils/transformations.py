@@ -55,6 +55,9 @@ def transform_params(params: DFSVParamsDataclass) -> DFSVParamsDataclass:
     # Apply logit transform to persistence parameters (bounded in 0,1)
     # logit(p) = log(p/(1-p))
 
+    # Apply logit transform to persistence parameters (bounded in 0,1)
+    # logit(p) = log(p/(1-p))
+
     # Transform Phi_f (factor persistence) - Assuming diagonal for now
     diag_phi_f = jnp.diag(params.Phi_f)
     phi_f_bounded = jnp.clip(diag_phi_f, EPS, 1 - EPS)
