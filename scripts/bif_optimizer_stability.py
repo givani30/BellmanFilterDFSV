@@ -17,12 +17,15 @@ import optimistix as optx
 import optax
 from functools import partial
 from collections import namedtuple
+import equinox as eqx
 
 # Project specific imports
 from bellman_filter_dfsv.core.filters.bellman_information import DFSVBellmanInformationFilter
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params
 from bellman_filter_dfsv.core.simulation import simulate_DFSV
+# Import the new prior function
+from bellman_filter_dfsv.core.likelihood import log_prior_density
 
 # Enable 64-bit precision for better numerical stability
 jax.config.update("jax_enable_x64", True)
@@ -31,6 +34,8 @@ jax.config.update("jax_enable_x64", True)
 
 def create_simple_model(N=3, K=1):
     """Create a simple DFSV model."""
+    #set numpy seed
+    np.random.seed(42)
     # Factor loadings
     lambda_r = np.array([[0.9], [0.6], [0.3]]) if K == 1 else np.random.randn(N, K) * 0.5 + 0.5
     # Factor persistence
@@ -56,10 +61,10 @@ def create_training_data(params, T=1000, seed=42):
 
 # --- Objective Functions ---
 
-# @partial(jax.jit, static_argnames=["filter_instance"])
+# @partial(jax.jit, static_argnames=["filter_instance"]) # Keep JIT off for now if debugging internals
 def bif_objective(params: DFSVParamsDataclass, returns: jnp.ndarray, filter_instance: DFSVBellmanInformationFilter) -> jnp.ndarray:
     """
-    Compute the negative pseudo log-likelihood using the Bellman Information Filter.
+    Compute the negative pseudo log-posterior (likelihood + prior) using the BIF.
 
     Args:
         params: Model parameters (DFSVParamsDataclass with JAX arrays).
@@ -67,22 +72,30 @@ def bif_objective(params: DFSVParamsDataclass, returns: jnp.ndarray, filter_inst
         filter_instance: An instance of DFSVBellmanInformationFilter.
 
     Returns:
-        Negative pseudo log-likelihood (JAX scalar). Returns Inf if errors occur.
+        Negative pseudo log-posterior (JAX scalar). Returns Inf if errors occur.
     """
 
-    total_log_lik = filter_instance.jit_log_likelihood_of_params()(params, returns)
+    # Calculate pseudo log-likelihood from filter
+    # Use the non-JITted version if debugging internals, otherwise use JITted
+    # total_log_lik = filter_instance.log_likelihood_of_params(params, returns) # Non-JIT version
+    total_log_lik = filter_instance.jit_log_likelihood_of_params()(params, returns) # JIT version
 
-    # Error handling is now done via the is_not_ok check below
+    # Calculate log prior density (using default hyperparameters for now)
+    # TODO: Pass prior hyperparameters if needed
+    log_prior = log_prior_density(params)
 
-    # Return negative log-likelihood, replacing NaN/Inf with Inf for minimization
-    neg_ll = -total_log_lik
-    safe_neg_ll = jnp.where(jnp.isnan(neg_ll) | jnp.isinf(neg_ll) , jnp.inf, neg_ll) # Corrected: Use instance property
-    return safe_neg_ll
+    # Combine likelihood and prior
+    log_posterior = total_log_lik + log_prior
 
-@partial(jax.jit, static_argnames=["filter_instance"])
+    # Return negative log-posterior, replacing NaN/Inf with Inf for minimization
+    neg_log_post = -log_posterior
+    safe_neg_log_post = jnp.where(jnp.isnan(neg_log_post) | jnp.isinf(neg_log_post) , jnp.inf, neg_log_post)
+    return safe_neg_log_post
+
+@eqx.filter_jit
 def transformed_bif_objective(transformed_params: DFSVParamsDataclass, returns: jnp.ndarray, filter_instance: DFSVBellmanInformationFilter) -> jnp.ndarray:
     """
-    Compute the BIF objective function with transformed parameters.
+    Compute the BIF objective function (Negative Log Posterior) with transformed parameters.
 
     Args:
         transformed_params: Model parameters in transformed (unconstrained) space.
@@ -90,11 +103,13 @@ def transformed_bif_objective(transformed_params: DFSVParamsDataclass, returns: 
         filter_instance: An instance of DFSVBellmanInformationFilter.
 
     Returns:
-        Negative pseudo log-likelihood (JAX scalar).
+        Negative pseudo log-posterior (JAX scalar).
     """
     # Transform parameters back to original space
     original_params = untransform_params(transformed_params)
-    # Call the standard objective function
+    #print params
+    # jax.debug.print("transformed_bif_objective: original_params: {p}", p=original_params)
+    # Call the standard objective function (which now includes priors)
     return bif_objective(original_params, returns, filter_instance)
 
 # --- Main Comparison Logic ---
@@ -119,15 +134,15 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
 
     # Define Optimizers to Compare
     # Set common tolerances
-    rtol = 1e-3
+    rtol = 1e-5
     atol = 1e-5
-    learning_rate = 1e-2 # Example LR for Optax optimizers
+    learning_rate = 1e-4 # Example LR for Optax optimizers
 
     optimizers_to_test = {
-        # "BFGS": optx.BFGS(rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
+        "BFGS": optx.BFGS(rtol=rtol, atol=atol,norm=optx.rms_norm, verbose=frozenset({"loss"})), #, verbose=frozenset({"loss"})),
         # "NonlinearCG": optx.NonlinearCG(rtol=rtol, atol=atol),
-        "SGD": optx.OptaxMinimiser(optax.sgd(learning_rate=learning_rate), rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
-        # "Adam": optx.OptaxMinimiser(optax.adam(learning_rate=learning_rate), rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
+        # "SGD": optx.OptaxMinimiser(optax.sgd(learning_rate=learning_rate), rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
+        "Adam": optx.OptaxMinimiser(optax.adam(learning_rate=learning_rate), rtol=rtol, atol=atol,norm=optx.rms_norm, verbose=frozenset({"loss"})),
         # "AdamW": optx.OptaxMinimiser(optax.adamw(learning_rate=learning_rate), rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
     }
 
@@ -150,24 +165,27 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
 
         initial_y = transform_params(uninformed_params)
         # Define wrapper for transformed objective
+        # This wrapper is needed because the objective now returns only the loss
         def transformed_objective_wrapper(t_params, args_tuple):
             obs, filt = args_tuple # Unpack static args
-            # --- Log Parameters ---
-            jax.debug.print("[SGD Transform] t_Params: {p}", p=t_params)
+            # --- Log Transformed Parameters ---
+            # jax.debug.print("[Optimizer Step] Transformed Params: {p}", p=t_params) # Keep commented for now
             # --- End Log ---
             # --- DEBUG ---
             leaves_in = jax.tree_util.tree_leaves(t_params)
             is_params_finite = jnp.all(jnp.array([jnp.all(jnp.isfinite(leaf)) for leaf in leaves_in]))
-            jax.debug.print("transformed_objective_wrapper: Input t_params finite: {finite}", finite=is_params_finite)
-            # Removed conditional print: if not is_params_finite: jax.debug.print(...)
+            # jax.debug.print("transformed_objective_wrapper: Input t_params finite: {finite}", finite=is_params_finite) # Keep commented
             # --- END DEBUG ---
+
+            # Call the objective function (which handles untransform and prior)
             loss = transformed_bif_objective(t_params, obs, filt)
+
             # --- DEBUG ---
             is_loss_finite = jnp.isfinite(loss)
-            jax.debug.print("transformed_objective_wrapper: Output loss: {loss}, finite: {finite}", loss=loss, finite=is_loss_finite)
-            # Removed conditional print: if not is_loss_finite: jax.debug.print(...)
+            # jax.debug.print("transformed_objective_wrapper: Output loss: {loss}, finite: {finite}", loss=loss, finite=is_loss_finite) # Keep commented
             # --- END DEBUG ---
-            return loss
+            return loss # Return only the loss to the optimizer
+
         fn_to_minimize = transformed_objective_wrapper
         objective_fn_for_loss_calc = bif_objective # Use non-transformed for final loss calculation
 
@@ -182,18 +200,16 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
         final_params_untransformed = None
 
         # --- Calculate Initial Objective and Gradient ---
-        initial_error = None
         initial_grad = None
         try:
-            print("Calculating initial objective (checkified)...")
-            # Checkify the objective function to check initial parameters
+            print("Calculating initial objective...")
+            # Calculate initial loss using the wrapper
             initial_loss = fn_to_minimize(initial_y, static_args)
-             # Throw if initial params/objective fail checks
-            print(f"Initial Objective Loss: {initial_loss:.4f}")
+            print(f"Initial Objective Loss (Neg Log Posterior): {initial_loss:.4f}")
 
             print("Calculating initial gradient...")
-            # Differentiate the *original* objective function
-            grad_fn = jax.grad(fn_to_minimize, argnums=0)
+            # Differentiate the wrapper function
+            grad_fn = eqx.filter_grad(fn_to_minimize)
             initial_grad = grad_fn(initial_y, static_args)
 
             # Check if gradient is finite
@@ -207,9 +223,6 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
         except Exception as init_e:
             print(f"ERROR during initial objective/gradient calculation: {init_e}")
             error_msg = f"Initial obj/grad failed: {init_e}"
-            if initial_error and initial_error.is_not_ok: # Prioritize checkify error message
-                error_msg = f"Initial obj/grad failed: Checkify error: {initial_error.get()}"
-
             results.append(OptimizerResult(
                 optimizer_name=name, success=False,
                 final_loss=jnp.inf, steps=-1, time_taken=0, error_message=error_msg
@@ -217,73 +230,66 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
             continue # Skip to the next optimizer
         # --- End Initial Calculation ---
 
-        try:
-            # Run the minimization
-            sol = optx.minimise(
-                fn=fn_to_minimize,
-                solver=solver,
-                y0=initial_y,
-                args=static_args, # Pass static args here
-                max_steps=max_steps,
-                throw=False # Don't raise errors, check sol.result
-            )
+        # try:
+        # Run the minimization
+        sol = optx.minimise(
+            fn=fn_to_minimize,
+            solver=solver,
+            y0=initial_y,
+            args=static_args, # Pass static args here
+            max_steps=max_steps,
+            throw=False # Raise errors immediately
+        )
 
-            end_time = time.time()
-            time_taken = end_time - start_time
-            num_steps = sol.stats.get('num_steps', -1) # Get steps if available
+        end_time = time.time()
+        time_taken = end_time - start_time
+        num_steps = sol.stats.get('num_steps', -1) # Get steps if available
 
-            # Check solver success first
-            solver_success = (sol.result == optx.RESULTS.successful)
+        # Check solver success first
+        solver_success = (sol.result == optx.RESULTS.successful)
 
-            # --- Final Checkify Validation ---
-            final_error = None # Holds the checkify.Error object from the final check
-            check_exception = None # Holds any Python exception during the final check
-            final_loss_recalculated = jnp.inf
-            final_params_untransformed = None
-            if solver_success: # Only attempt validation if solver thinks it succeeded
-                try:
-                    # Get final parameters (untransformed) - this might fail if sol.value is bad
-                    final_params_untransformed = untransform_params(sol.value) # Always untransform
-                    # Checkify the objective function (use the one appropriate for loss calc)
-                    checkified_objective = checkify.checkify(objective_fn_for_loss_calc, errors=checkify.float_checks | checkify.user_checks)
-                    # Call it to get the final error state and loss
-                    final_error, final_loss_recalculated = checkified_objective(final_params_untransformed, returns, filter_instance)
-                except Exception as check_e:
-                    # Catch Python exceptions during untransform or checkified call
-                    check_exception = check_e
-                    final_loss_recalculated = jnp.inf # Loss is invalid if check failed
-                    print(f"Exception during final validation: {check_exception}")
-            # --- End Final Checkify Validation ---
+        # --- Final Validation ---
+        check_exception = None
+        final_loss_recalculated = jnp.inf
+        final_params_untransformed = None
+        if solver_success:
+            try:
+                # Get final parameters (untransformed)
+                final_params_untransformed = untransform_params(sol.value)
+                # Recalculate final loss using the original objective (includes prior)
+                final_loss_recalculated = objective_fn_for_loss_calc(final_params_untransformed, returns, filter_instance)
+            except Exception as check_e:
+                check_exception = check_e
+                final_loss_recalculated = jnp.inf
+                print(f"Exception during final loss recalculation: {check_exception}")
+        # --- End Final Validation ---
 
-            # Determine overall success
-            # Success requires: solver succeeded AND no Python exception during final check AND (if check was run) checkify reported OK
-            success = solver_success and (check_exception is None)
-            # Use loss from checkified call if available and successful, otherwise keep Inf
-            final_loss = final_loss_recalculated if final_error is not None else jnp.inf
+        # Determine overall success
+        success = solver_success and (check_exception is None) and jnp.isfinite(final_loss_recalculated)
+        final_loss = final_loss_recalculated if success else jnp.inf # Use recalculated loss if successful
 
-            # Determine error message
-            if success:
-                error_msg = "N/A"
-                print(f"Success! Final Loss: {final_loss:.4f}, Steps: {num_steps}, Time: {time_taken:.2f}s")
-            else:
-                if not solver_success:
-                    error_msg = f"Solver failed: {sol.result}"
-                elif check_exception is not None:
-                    error_msg = f"Exception in final check: {check_exception}"
-                elif final_error is not None and final_error.is_not_ok:
-                    # Make sure to get the message *from the instance*
-                    error_msg = f"Checkify error: {final_error.get()}"
-                else: # Should only happen if solver failed and we didn't run the final check
-                    error_msg = f"Solver failed ({sol.result}) - final check skipped"
-                print(f"Failed! Status: {error_msg}, Final Loss: {final_loss}, Steps: {num_steps}, Time: {time_taken:.2f}s")
+        # Determine error message
+        if success:
+            error_msg = "N/A"
+            print(f"Success! Final Loss: {final_loss:.4f}, Steps: {num_steps}, Time: {time_taken:.2f}s")
+        else:
+            if not solver_success:
+                error_msg = f"Solver failed: {sol.result}"
+            elif check_exception is not None:
+                error_msg = f"Exception in final recalc: {check_exception}"
+            elif not jnp.isfinite(final_loss_recalculated):
+                    error_msg = "Final loss calculation resulted in NaN/Inf"
+            else: # Should only happen if solver failed but recalc worked
+                error_msg = f"Solver failed ({sol.result}) - final recalc skipped or OK"
+            print(f"Failed! Status: {error_msg}, Final Loss: {final_loss}, Steps: {num_steps}, Time: {time_taken:.2f}s")
 
-        except Exception as e: # Catch exceptions during the main optx.minimise call
-            end_time = time.time()
-            time_taken = end_time - start_time
-            success = False
-            error_msg = f"Exception during minimize: {str(e)}"
-            final_loss = jnp.inf # Assign Inf on exception
-            print(f"Exception! Error: {e}, Time: {time_taken:.2f}s")
+        # except Exception as e: # Catch exceptions during the main optx.minimise call
+        #     end_time = time.time()
+        #     time_taken = end_time - start_time
+        #     success = False
+        #     error_msg = f"Exception during minimize: {str(e)}"
+        #     final_loss = jnp.inf # Assign Inf on exception
+        #     print(f"Exception! Error: {e}, Time: {time_taken:.2f}s")
 
         # Store results
         results.append(OptimizerResult(
@@ -302,7 +308,7 @@ def print_results_table(results: list[OptimizerResult]):
     print("\n\n--- Optimizer Comparison Results (Using Transformations) ---")
     # Header
     print(f"{'Optimizer':<15} | {'Success':<8} | {'Final Loss':<15} | {'Steps':<8} | {'Time (s)':<10} | {'Error Message'}")
-    print("-" * 75) # Adjusted width
+    print("-" * 90) # Adjusted width
     # Rows
     for res in sorted(results, key=lambda x: x.optimizer_name): # Simplified sort key
         success_str = "Yes" if res.success else "No"
@@ -311,7 +317,7 @@ def print_results_table(results: list[OptimizerResult]):
         time_str = f"{res.time_taken:.2f}"
         error_str = res.error_message if not res.success else "N/A"
         print(f"{res.optimizer_name:<15} | {success_str:<8} | {loss_str:<15} | {steps_str:<8} | {time_str:<10} | {error_str}")
-    print("-" * 75) # Adjusted width
+    print("-" * 90) # Adjusted width
 
 
 def main():
@@ -323,13 +329,13 @@ def main():
     print(f"Using model N={true_params.N}, K={true_params.K}")
 
     # 2. Generate Simulation Data
-    T = 500 # Shorter time series for faster testing
+    T = 2000 # Shorter time series for faster testing
     print(f"Generating {T} time steps of simulation data...")
     returns = create_training_data(true_params, T=T, seed=123)
     print("Simulation data generated.")
 
     # 3. Run Comparison
-    max_opt_steps = 50 # Increased max steps again
+    max_opt_steps = 500 # Increased max steps again
     print(f"Running optimizer comparison (max_steps={max_opt_steps})...")
     results = run_comparison(true_params, returns, max_steps=max_opt_steps)
 

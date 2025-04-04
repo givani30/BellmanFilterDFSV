@@ -5,7 +5,7 @@ Static JAX implementations of core Bellman filter calculations.
 from functools import partial
 from typing import Callable
 from jax.experimental import checkify
-
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.scipy.linalg
@@ -240,12 +240,12 @@ def observed_fim_impl(
     Returns:
         jnp.ndarray: Observed Fisher Information matrix (Negative Hessian) (2K, 2K).
     """
+    # --- Add Input Checks ---
+    # lambda_r = eqx.error_if(lambda_r, jnp.any(~jnp.isfinite(lambda_r)), "NaN/Inf in lambda_r input to observed_fim")
+    # sigma2 = eqx.error_if(sigma2, jnp.any(~jnp.isfinite(sigma2)), "NaN/Inf in sigma2 input to observed_fim")
+    # alpha = eqx.error_if(alpha, jnp.any(~jnp.isfinite(alpha)), "NaN/Inf in alpha input to observed_fim")
+    # observation = eqx.error_if(observation, jnp.any(~jnp.isfinite(observation)), "NaN/Inf in observation input to observed_fim")
     # --- Checkify Checks ---
-    # checkify.check(jnp.all(jnp.isfinite(lambda_r)), "observed_fim_impl: lambda_r must be finite")
-    # checkify.check(jnp.all(jnp.isfinite(sigma2)), "observed_fim_impl: sigma2 must be finite")
-    # checkify.check(jnp.all(sigma2 > 0), "observed_fim_impl: sigma2 must be positive, got {s2}", s2=sigma2)
-    # checkify.check(jnp.all(jnp.isfinite(alpha)), "observed_fim_impl: alpha must be finite")
-    # checkify.check(jnp.all(jnp.isfinite(observation)), "observed_fim_impl: observation must be finite")
     N = lambda_r.shape[0]
 
     alpha = alpha.flatten()
@@ -254,60 +254,81 @@ def observed_fim_impl(
     f = alpha[:K]
     h = alpha[K:]
     exp_h = jnp.exp(h)
+    # exp_h = eqx.error_if(exp_h, jnp.any(~jnp.isfinite(exp_h)), "NaN/Inf in exp_h")
 
     r = observation - lambda_r @ f
+    # r = eqx.error_if(r, jnp.any(~jnp.isfinite(r)), "NaN/Inf in residual r")
 
 
     sigma2_1d = sigma2 if sigma2.ndim == 1 else jnp.diag(sigma2)
     jitter = 1e-8
     Dinv_diag = 1.0 / (sigma2_1d + jitter)
+    # Dinv_diag = eqx.error_if(Dinv_diag, jnp.any(~jnp.isfinite(Dinv_diag)), "NaN/Inf in Dinv_diag")
     Cinv_diag = 1.0 / (exp_h + jitter)
+    # Cinv_diag = eqx.error_if(Cinv_diag, jnp.any(~jnp.isfinite(Cinv_diag)), "NaN/Inf in Cinv_diag")
 
     Dinv_lambda_r = lambda_r * Dinv_diag[:, None]
     Dinv_r = r * Dinv_diag
 
     M = jnp.diag(Cinv_diag) + lambda_r.T @ Dinv_lambda_r
+    # M = eqx.error_if(M, jnp.any(~jnp.isfinite(M)), "NaN/Inf in M before Cholesky")
 
     # jax.debug.print("observed_fim_impl: M for Cholesky: {x}", x=M) # Indentation fixed
     try:
         L_M = jax.scipy.linalg.cholesky(M, lower=True)
     except jnp.linalg.LinAlgError:
+        # Fallback if M is not positive definite (should not happen in theory)
+        # Add jitter and retry
         M_jittered = M + 1e-6 * jnp.eye(K)
         L_M = jax.scipy.linalg.cholesky(M_jittered, lower=True)
+        # L_M = eqx.error_if(L_M, jnp.any(~jnp.isfinite(L_M)), "NaN/Inf in L_M after fallback Cholesky")
+        # L_M = eqx.error_if(L_M, jnp.any(~jnp.isfinite(L_M)), "NaN/Inf in L_M after Cholesky")
     # jax.debug.print("observed_fim_impl: L_M after Cholesky: {x}", x=L_M) # Indentation fixed
 
     V = M - jnp.diag(Cinv_diag)
     Z = jax.scipy.linalg.cho_solve((L_M, True), V)
+    # Z = eqx.error_if(Z, jnp.any(~jnp.isfinite(Z)), "NaN/Inf in Z after cho_solve")
     # jax.debug.print("observed_fim_impl: Z after cho_solve: {x}", x=Z) # Indentation fixed
     I_ff = V - V @ Z
+    # I_ff = eqx.error_if(I_ff, jnp.any(~jnp.isfinite(I_ff)), "NaN/Inf in I_ff")
     # jax.debug.print("observed_fim_impl: I_ff: {x}", x=I_ff) # Indentation fixed
 
 
     v = lambda_r.T @ Dinv_r
+    # v = eqx.error_if(v, jnp.any(~jnp.isfinite(v)), "NaN/Inf in v")
     z_p = jax.scipy.linalg.cho_solve((L_M, True), v)
+    # z_p = eqx.error_if(z_p, jnp.any(~jnp.isfinite(z_p)), "NaN/Inf in z_p after cho_solve")
     # jax.debug.print("observed_fim_impl: z_p after cho_solve: {x}", x=z_p) # Indentation fixed
     Ainv_r = Dinv_r - Dinv_lambda_r @ z_p
+    # Ainv_r = eqx.error_if(Ainv_r, jnp.any(~jnp.isfinite(Ainv_r)), "NaN/Inf in Ainv_r")
     P = lambda_r.T @ Ainv_r
+    # P = eqx.error_if(P, jnp.any(~jnp.isfinite(P)), "NaN/Inf in P")
     # jax.debug.print("observed_fim_impl: P: {x}", x=P) # Indentation fixed
 
 
     J_ff = I_ff
+    # J_ff = eqx.error_if(J_ff, jnp.any(~jnp.isfinite(J_ff)), "NaN/Inf in J_ff")
     # Corrected J_fh calculation based on derivation J_fh[l, k] = exp(h_k) * I_ff[l, k] * P[k]
     J_fh = I_ff * P[None, :] * exp_h[None, :]
+    # J_fh = eqx.error_if(J_fh, jnp.any(~jnp.isfinite(J_fh)), "NaN/Inf in J_fh")
     # jax.debug.print("observed_fim_impl: J_fh: {x}", x=J_fh) # Indentation fixed
 
 
     exp_h_outer = jnp.outer(exp_h, exp_h)
     P_outer = jnp.outer(P, P)
     term1_diag = 0.5 * exp_h * (jnp.diag(I_ff) - P**2)
+    # term1_diag = eqx.error_if(term1_diag, jnp.any(~jnp.isfinite(term1_diag)), "NaN/Inf in term1_diag for J_hh")
     term2 = -0.5 * exp_h_outer * I_ff * (I_ff - 2 * P_outer)
+    # term2 = eqx.error_if(term2, jnp.any(~jnp.isfinite(term2)), "NaN/Inf in term2 for J_hh")
     # Correct J_hh calculation: diagonal includes term1_diag AND diag(term2)
     # Off-diagonal is offdiag(term2). This simplifies to diag(term1_diag) + term2.
     J_hh = jnp.diag(term1_diag) + term2
+    # J_hh = eqx.error_if(J_hh, jnp.any(~jnp.isfinite(J_hh)), "NaN/Inf in J_hh")
     # jax.debug.print("observed_fim_impl: J_hh: {x}", x=J_hh) # Indentation fixed
 
     J = jnp.block([[J_ff, J_fh], [J_fh.T, J_hh]])
     J = 0.5 * (J + J.T)
+    # J = eqx.error_if(J, jnp.any(~jnp.isfinite(J)), "NaN/Inf in final J before return")
 
 
     # jax.debug.print("observed_fim_impl: J final: {x}", x=J) # Indentation fixed

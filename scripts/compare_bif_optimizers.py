@@ -123,11 +123,11 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
     learning_rate = 1e-2 # Example LR for Optax optimizers
 
     optimizers_to_test = {
-        # "BFGS": optx.BFGS(rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
-        # "NonlinearCG": optx.NonlinearCG(rtol=rtol, atol=atol),
+        "BFGS": optx.BFGS(rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
+        "NonlinearCG": optx.NonlinearCG(rtol=rtol, atol=atol),
         "SGD": optx.OptaxMinimiser(optax.sgd(learning_rate=learning_rate), rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
-        # "Adam": optx.OptaxMinimiser(optax.adam(learning_rate=learning_rate), rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
-        # "AdamW": optx.OptaxMinimiser(optax.adamw(learning_rate=learning_rate), rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
+        "Adam": optx.OptaxMinimiser(optax.adam(learning_rate=learning_rate), rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
+        "AdamW": optx.OptaxMinimiser(optax.adamw(learning_rate=learning_rate), rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
     }
 
     # Create uninformed initial parameters

@@ -252,10 +252,10 @@ def optimize_with_transformations(params, returns, filter, T=1000, maxiter=100):
             self.verbose = verbose
         
     # Transform parameters for transformed optimization
-    solver = optx.OptaxMinimiser(optim=opt, rtol=1e-6, atol=1e-6, norm=optx.max_norm, 
+    solver = optx.OptaxMinimiser(optim=opt, rtol=1e-6, atol=1e-6, norm=optx.rms_norm, 
                                 verbose=frozenset({"step", "loss"}))
-    # # solver=optx.BFGS(rtol=1e-3, atol=1e-3, norm=optx.max_norm,verbose=frozenset({"step_size", "loss"}))
-    # solver=CustomBFGS(rtol=1e-5, atol=1e-5, norm=optx.max_norm, verbose=frozenset({"step_size", "loss"}))
+    # # solver=optx.BFGS(rtol=1e-3, atol=1e-3, norm=optx.rms_norm,verbose=frozenset({"step_size", "loss"}))
+    # solver=CustomBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset({"step_size", "loss"}))
     transformed_params = transform_params(uninformed_params)
     
     # Run standard optimization

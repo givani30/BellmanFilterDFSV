@@ -14,7 +14,7 @@ from .base import DFSVFilter # Import base class from sibling module
 # Update imports to use models.dfsv instead
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 # Remove redundant jax_params import
-from ._bellman_impl import build_covariance_impl, fisher_information_impl, log_posterior_impl, kl_penalty_impl,bif_likelihood_penalty_impl,observed_fim_impl
+from ._bellman_impl import build_covariance_impl, log_posterior_impl, kl_penalty_impl,bif_likelihood_penalty_impl,observed_fim_impl
 from ._bellman_optim import update_factors, update_h_bfgs # Import optimization helpers
 
 
@@ -166,7 +166,7 @@ class DFSVBellmanFilter(DFSVFilter):
         # JIT the imported implementation functions
         self.build_covariance_jit = jit(build_covariance_impl)
         self.fisher_information_jit = jit(
-            partial(fisher_information_impl, K=self.K)
+            partial(observed_fim_impl, K=self.K)
         )
         self.log_posterior_jit = jit(
             partial(log_posterior_impl, K=self.K, build_covariance_fn=self.build_covariance_jit)
