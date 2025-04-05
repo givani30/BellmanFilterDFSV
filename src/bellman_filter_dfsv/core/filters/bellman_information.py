@@ -330,8 +330,8 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         Returns:
             Tuple[jnp.ndarray, jnp.ndarray]: Predicted state alpha_{t|t-1} (JAX array, shape (state_dim, 1)),
                                              predicted information Omega_{t|t-1} (JAX array, shape (state_dim, state_dim)).
-        """
-        # jax.debug.print("predict >>> Inputs: state_post={sp}, info_post={ip}", sp=state_post, ip=info_post)
+       """
+        jax.debug.print("predict --- Inputs: state_post={sp}, info_post={ip}", sp=state_post, ip=info_post) # Corrected Indent
         K = self.K
         state_dim = self.state_dim
         jitter = 1e-8 # Small jitter for numerical stability
@@ -339,7 +339,10 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         # checkify.check(jnp.all(jnp.linalg.eigvalsh(params.Q_h) >= -1e-8), "Q_h must be positive semi-definite, eigenvalues: {evals}", evals=jnp.linalg.eigvalsh(params.Q_h))
 
         # --- State Prediction ---
-        F_t = self._get_transition_matrix(params) # Returns JAX array
+        # Extract Phi_f and Phi_h before calling _get_transition_matrix
+        Phi_f = params.Phi_f
+        Phi_h = params.Phi_h
+        F_t = self._get_transition_matrix(Phi_f, Phi_h) # Pass components directly
         state_post_flat = state_post.flatten()
         factors_post = state_post_flat[:K]
         log_vols_post = state_post_flat[K:]
@@ -353,24 +356,20 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
         # 1. Calculate Q_t_inv (Inverse of Process Noise Covariance)
         # Q_f = diag(exp(predicted_log_vols)) -> Q_f_inv = diag(exp(-predicted_log_vols))
-        ## jax.debug.print("predict: predicted_log_vols for Q_f_inv: {x}", x=predicted_log_vols)
-        # jax.debug.print("predict --- predicted_log_vols: {x}", x=predicted_log_vols)
+        jax.debug.print("predict --- predicted_log_vols: {x}", x=predicted_log_vols)
         Q_f_inv = jnp.diag(jnp.exp(-predicted_log_vols))
-        ## jax.debug.print("predict: Q_f_inv diagonal after exp: {x}", x=jnp.diag(Q_f_inv))
-        # jax.debug.print("predict --- Q_f_inv diag: {x}", x=jnp.diag(Q_f_inv))
+        jax.debug.print("predict --- Q_f_inv diag (before jitter): {x}", x=jnp.diag(Q_f_inv))
         Q_f_inv = Q_f_inv + jitter * jnp.eye(K, dtype=jnp.float64) # Add jitter
 
         # Q_h_inv = params.Q_h^-1
         Q_h_jittered = params.Q_h + jitter * jnp.eye(K, dtype=jnp.float64)
         try:
-            ## jax.debug.print("predict: Q_h_jittered for Cholesky: {x}", x=Q_h_jittered)
-            # jax.debug.print("predict --- Q_h_jittered: {x}", x=Q_h_jittered)
+            jax.debug.print("predict --- Q_h_jittered: {x}", x=Q_h_jittered)
             chol_Qh = jax.scipy.linalg.cholesky(Q_h_jittered, lower=True)
             Q_h_inv = jax.scipy.linalg.cho_solve((chol_Qh, True), jnp.eye(K, dtype=jnp.float64))
-            ## jax.debug.print("predict: Q_h_inv after cho_solve: {x}", x=Q_h_inv)
-            # jax.debug.print("predict --- Q_h_inv: {x}", x=Q_h_inv)
+            jax.debug.print("predict --- Q_h_inv: {x}", x=Q_h_inv)
         except jnp.linalg.LinAlgError:
-            print("Warning: Cholesky failed for Q_h inversion in predict. Falling back to pinv.")
+            jax.debug.print("predict --- Cholesky failed for Q_h inversion. Falling back to pinv.")
             Q_h_inv = jnp.linalg.pinv(Q_h_jittered)
         Q_h_inv = (Q_h_inv + Q_h_inv.T) / 2 # Ensure symmetry
 
@@ -382,38 +381,35 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         Q_t_inv = (Q_t_inv + Q_t_inv.T) / 2 # Ensure symmetry
 
         # 2. Calculate M = info_post + F_t.T @ Q_t_inv @ F_t
+        jax.debug.print("predict --- M inputs: info_post={ip}, Ft={ft}, Qt_inv={qi}", ip=info_post, ft=F_t, qi=Q_t_inv)
         M = info_post + F_t.T @ Q_t_inv @ F_t
-        # jax.debug.print("predict --- M inputs: info_post={ip}, Ft={ft}, Qt_inv={qi}", ip=info_post, ft=F_t, qi=Q_t_inv)
-        M = info_post + F_t.T @ Q_t_inv @ F_t
-        # jax.debug.print("predict --- M: {x}", x=M)
+        jax.debug.print("predict --- M: {x}", x=M)
         # --- Add Condition Number Check ---
-        # cond_M = jnp.linalg.cond(M) # Commented out debug print
-        ## jax.debug.print("predict: M condition number: {cond}", cond=cond_M) # Commented out debug print
+        cond_M = jnp.linalg.cond(M)
+        jax.debug.print("predict --- M condition number: {cond}", cond=cond_M)
         # --- End Condition Number Check ---
         M_jittered = M + jitter * jnp.eye(state_dim, dtype=jnp.float64)
 
         # 3. Invert M stably
         try:
-            ## jax.debug.print("predict: M_jittered for Cholesky: {x}", x=M_jittered)
-            # jax.debug.print("predict --- M_jittered: {x}", x=M_jittered)
+            jax.debug.print("predict --- M_jittered: {x}", x=M_jittered)
             chol_M = jax.scipy.linalg.cholesky(M_jittered, lower=True)
             M_inv = jax.scipy.linalg.cho_solve((chol_M, True), jnp.eye(state_dim, dtype=jnp.float64))
-            ## jax.debug.print("predict: M_inv after cho_solve: {x}", x=M_inv)
-            # jax.debug.print("predict --- M_inv: {x}", x=M_inv)
+            jax.debug.print("predict --- M_inv (via Cholesky): {x}", x=M_inv)
         except jnp.linalg.LinAlgError:
-            print("Warning: Cholesky failed for M inversion in predict. Falling back to pinv.")
+            jax.debug.print("predict --- Cholesky failed for M inversion. Falling back to pinv.")
             M_inv = jnp.linalg.pinv(M_jittered)
+            jax.debug.print("predict --- M_inv (via pinv): {x}", x=M_inv)
         M_inv = (M_inv + M_inv.T) / 2 # Ensure symmetry
 
         # 4. Calculate predicted information: Omega_pred = Q_t_inv - Q_t_inv @ F_t @ M_inv @ F_t.T @ Q_t_inv
         term = Q_t_inv @ F_t @ M_inv @ F_t.T @ Q_t_inv
+        jax.debug.print("predict --- term_subtracted: {x}", x=term) # DEBUG ADDED
         predicted_info = Q_t_inv - term
         predicted_info = (predicted_info + predicted_info.T) / 2 # Ensure symmetry
-        # jax.debug.print("predict <<< Output: predicted_info={pi}", pi=predicted_info)
-        ## jax.debug.print("predict: predicted_info final: {x}", x=predicted_info)
+        jax.debug.print("predict --- Output: predicted_state={ps}, predicted_info={pi}", ps=predicted_state.reshape(-1, 1), pi=predicted_info)
 
         return predicted_state.reshape(-1, 1), predicted_info
-        # jax.debug.print("predict <<< Output: predicted_state={ps}", ps=predicted_state.reshape(-1, 1))
 
     # --- Block Coordinate Update (Copied from bellman.py) ---
     # Note: This relies on JITted functions (build_covariance_jit, log_posterior_jit)
@@ -565,9 +561,9 @@ class DFSVBellmanInformationFilter(DFSVFilter):
                 Updated state alpha_{t|t} (JAX array, shape (state_dim, 1)),
                 updated information Omega_{t|t} (JAX array, shape (state_dim, state_dim)),
                 log-likelihood contribution log p(y_t|F_{t-1}) (JAX scalar).
-        """
-        # jax.debug.print("update >>> Inputs: pred_state={ps}, pred_info={pi}, obs={o}", ps=predicted_state, pi=predicted_info, o=observation)
-        ## jax.debug.print("update: START - predicted_state: {ps}, predicted_info: {pi}, observation: {o}", ps=predicted_state, pi=predicted_info, o=observation)
+       """
+        jax.debug.print("update --- Inputs: pred_state={ps}, pred_info={pi}, obs={o}", ps=predicted_state, pi=predicted_info, o=observation) # ADDED
+        jax.debug.print("update --- pred_info eigenvalues: {evals}", evals=jnp.linalg.eigvalsh(predicted_info)) # Eigenvalue Check
         K = self.K
         N = self.N
         state_dim = self.state_dim
@@ -598,27 +594,37 @@ class DFSVBellmanInformationFilter(DFSVFilter):
             max_iters=10 # Use a reasonable default or make configurable
             # h_solver, build_covariance_fn, log_posterior_fn are assumed bound
         )
+        jax.debug.print("update --- alpha_updated (after block_coord): {x}", x=alpha_updated) # DEBUG ADDED
 
-        ## jax.debug.print("update: alpha_updated after block_coord: {x}", x=alpha_updated)
         # jax.debug.print("update --- alpha_updated: {x}", x=alpha_updated)
         # --- Information Update ---
         # Calculate Observed Fisher Information J_observed = -Hessian(log p(y_t|alpha_t))
         # Reuse the fisher_information_impl function (passed as fisher_info_fn)
         # Note: fisher_info_fn needs build_covariance_fn bound to it.
         J_observed = fisher_info_fn(lambda_r, sigma2, alpha_updated, observation)
-        ## jax.debug.print("update: J_observed after fisher_info_fn: {x}", x=J_observed)
-        # jax.debug.print("update --- J_observed: {x}", x=J_observed)
+        jax.debug.print("update --- J_observed: {x}", x=J_observed) # DEBUG ADDED
+        
+        # --- Regularize J_observed to ensure PSD ---
+        evals_j, evecs_j = jnp.linalg.eigh(J_observed)
+        jax.debug.print("update --- J_observed eigenvalues (original): {evals}", evals=evals_j) # Eigenvalue Check
+        min_eigenvalue = 1e-8 # Small positive floor
+        evals_j_clipped = jnp.maximum(evals_j, min_eigenvalue)
+        J_observed_psd = evecs_j @ jnp.diag(evals_j_clipped) @ evecs_j.T
+        J_observed_psd = (J_observed_psd + J_observed_psd.T) / 2 # Ensure symmetry after reconstruction
+        jax.debug.print("update --- J_observed eigenvalues (clipped): {evals}", evals=evals_j_clipped) # Eigenvalue Check
+        jax.debug.print("update --- J_observed_psd: {x}", x=J_observed_psd) # DEBUG ADDED
+        # --- End Regularization ---
 
-        # Compute updated information matrix Omega_{t|t} = Omega_{t|t-1} + J_observed
-        updated_info = predicted_info + J_observed + jitter * jnp.eye(state_dim, dtype=jnp.float64)
+        # Compute updated information matrix Omega_{t|t} = Omega_{t|t-1} + J_observed_psd
+        updated_info = predicted_info + J_observed_psd + jitter * jnp.eye(state_dim, dtype=jnp.float64)
         updated_info = (updated_info + updated_info.T) / 2 # Ensure symmetry
+        jax.debug.print("update --- updated_info: {x}", x=updated_info) # DEBUG ADDED
 
-        # jax.debug.print("update --- updated_info: {x}", x=updated_info)
         # --- Log-Likelihood Contribution ---
         # Calculate fit term log p(y_t | alpha_{t|t})
         # Reuse log_posterior_impl (passed as log_posterior_fn)
         log_lik_fit = log_posterior_fn(lambda_r, sigma2, alpha_updated, jax_observation)
-        ## jax.debug.print("update: log_lik_fit after log_posterior_fn: {x}", x=log_lik_fit)
+        jax.debug.print("update --- log_lik_fit: {x}", x=log_lik_fit) # DEBUG ADDED
         # jax.debug.print("update --- log_lik_fit: {x}", x=log_lik_fit)
 
         # Calculate KL-type penalty term (using the passed JITted function)
@@ -628,12 +634,12 @@ class DFSVBellmanInformationFilter(DFSVFilter):
             Omega_pred=predicted_info,
             Omega_post=updated_info
         )
-        ## jax.debug.print("update: kl_penalty after kl_penalty_fn: {x}", x=kl_penalty)
+        jax.debug.print("update --- kl_penalty: {x}", x=kl_penalty) # DEBUG ADDED
         # jax.debug.print("update --- kl_penalty: {x}", x=kl_penalty)
 
         # Combine: log p(y_t|F_{t-1}) ≈ log p(y_t|alpha_{t|t}) - KL_penalty
         log_lik_contrib = log_lik_fit - kl_penalty
-        ## jax.debug.print("update: log_lik_contrib final: {x}", x=log_lik_contrib)
+        jax.debug.print("update --- log_lik_contrib: {x}", x=log_lik_contrib) # DEBUG ADDED
         # jax.debug.print("update <<< Output: log_lik_contrib={llc}", llc=log_lik_contrib)
 
         # Return results as JAX arrays (reshaped state), keep log_lik as JAX scalar
@@ -1073,20 +1079,20 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
     # --- Helper Methods ---
     def _get_transition_matrix(
-        self, params: DFSVParamsDataclass
+        self, Phi_f: jnp.ndarray, Phi_h: jnp.ndarray
     ) -> jnp.ndarray: # Return JAX array
         """
         Construct the state transition matrix F (which is constant in this model).
 
         Args:
-            params: Model parameters (DFSVParamsDataclass with JAX arrays).
+            Phi_f: Factor transition matrix (JAX array).
+            Phi_h: Log-volatility transition matrix (JAX array).
 
         Returns:
             jnp.ndarray: State transition matrix F (JAX array).
         """
         K = self.K
-        Phi_f = params.Phi_f
-        Phi_h = params.Phi_h
+        # Phi_f and Phi_h are now passed directly
 
         F_t = jnp.block([
             [Phi_f,                   jnp.zeros((K, K), dtype=jnp.float64)],

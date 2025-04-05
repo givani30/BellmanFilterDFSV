@@ -21,6 +21,7 @@ import optax
 from functools import partial
 from collections import namedtuple
 from typing import Dict, Any, Optional
+import dataclasses # Added import
 
 # Project specific imports
 from bellman_filter_dfsv.core.filters.bellman_information import DFSVBellmanInformationFilter
@@ -47,9 +48,9 @@ def create_simple_model(N=3, K=1):
     # Long-run mean for log-volatilities
     mu = np.array([-1.0]) if K == 1 else np.random.randn(K) * 0.5 - 1.0
     # Idiosyncratic variance (diagonal)
-    sigma2 = np.random.uniform(0.05, 0.2, N)
+    sigma2 = np.random.uniform(0.05, 0.1, N)
     # Log-volatility noise covariance
-    Q_h = np.array([[0.1]]) if K == 1 else np.diag(np.random.uniform(0.05, 0.15, K))
+    Q_h = np.array([[0.1]]) if K == 1 else np.diag(np.random.uniform(0.1, 0.3, K))
 
     params = DFSVParamsDataclass(
         N=N, K=K, lambda_r=lambda_r, Phi_f=Phi_f, Phi_h=Phi_h, mu=mu, sigma2=sigma2, Q_h=Q_h
@@ -94,16 +95,19 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
     results = []
 
     # Define Optimizers to Compare
-    rtol = 1e-3
+    rtol = 1e-5
     atol = 1e-5
-    learning_rate = 1e-2 # Example LR for Optax optimizers
-
+    learning_rate = 1e-3 # Example LR for Optax optimizers
+    #Optax wrapper for the optimizer to ensure robustness for NaN's and picking the best parameters
+    # opt_wrapper=optax.chain(optax.apply_if_finite())
     optimizers_to_test = {
         # "BFGS": optx.BFGS(rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
         # "NonlinearCG": optx.NonlinearCG(rtol=rtol, atol=atol),
         # "SGD": optx.OptaxMinimiser(optax.sgd(learning_rate=learning_rate), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
-        "Adam": optx.OptaxMinimiser(optax.adam(learning_rate=learning_rate), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
-        "AdamW": optx.OptaxMinimiser(optax.adamw(learning_rate=learning_rate), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
+        # "Adam": optx.OptaxMinimiser(optax.adam(learning_rate=learning_rate), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
+        "radam":optx.OptaxMinimiser(optax.apply_if_finite(optax.radam(learning_rate=learning_rate),10), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
+        "adabelief":optx.OptaxMinimiser(optax.apply_if_finite(optax.adabelief(learning_rate=learning_rate),10), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
+        "AdamW": optx.OptaxMinimiser(optax.apply_if_finite(optax.adamw(learning_rate=learning_rate),10), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
     }
 
     # Define Prior Configurations to Test
@@ -339,7 +343,9 @@ def save_results_to_csv(results: list[OptimizerResult], filename: str = "bif_pri
         return
 
     # Get headers from the namedtuple fields
-    headers = OptimizerResult._fields
+    # Exclude 'final_params' from CSV headers as it's a complex object
+    headers = [field for field in OptimizerResult._fields if field != 'final_params']
+
 
     try:
         with open(filename, 'w', newline='') as csvfile:
@@ -348,12 +354,60 @@ def save_results_to_csv(results: list[OptimizerResult], filename: str = "bif_pri
             writer.writerow(headers)
             # Write data rows
             for result in results:
-                # Convert JAX arrays/scalars if necessary (though they should be float/int by now)
-                row = [float(item) if isinstance(item, (jnp.ndarray, jnp.generic)) else item for item in result]
+                # Prepare row data, excluding final_params
+                row_data = {field: getattr(result, field) for field in headers}
+                # Convert JAX arrays/scalars if necessary
+                row = [float(item) if isinstance(item, (jnp.ndarray, jnp.generic)) else item for item in row_data.values()]
                 writer.writerow(row)
         print(f"Results successfully saved to {filename}")
     except IOError as e:
         print(f"Error saving results to CSV: {e}")
+
+def print_parameter_comparison(results: list[OptimizerResult], true_params: DFSVParamsDataclass):
+    """Prints a comparison between true and estimated parameters for successful runs."""
+    print("\n\n--- Parameter Estimation Comparison ---")
+
+    # Get parameter names from the dataclass, excluding N and K
+    param_names = [f.name for f in dataclasses.fields(DFSVParamsDataclass) if f.name not in ['N', 'K']]
+
+    # Set numpy print options for better readability
+    np.set_printoptions(precision=4, suppress=True)
+
+    for res in sorted(results, key=lambda x: (x.prior_config_name, x.optimizer_name, x.uses_transformations)):
+        if res.final_params is not None:
+            print(f"\n-- Run: Prior='{res.prior_config_name}' | Optimizer='{res.optimizer_name}' | Success='{'Yes' if res.success else 'No'}' --")
+            print("-" * 80)
+            print(f"{'Parameter':<10} | {'True Value':<35} | {'Estimated Value'}")
+            print("-" * 80)
+
+            for name in param_names:
+                true_val = getattr(true_params, name)
+                est_val = getattr(res.final_params, name)
+
+                # Convert to numpy for consistent printing
+                true_val_np = np.asarray(true_val)
+                est_val_np = np.asarray(est_val)
+
+                # Format for printing (handle multi-line arrays)
+                true_str_lines = str(true_val_np).split('\n')
+                est_str_lines = str(est_val_np).split('\n')
+
+                # Print first line with parameter name
+                print(f"{name:<10} | {true_str_lines[0]:<35} | {est_str_lines[0]}")
+
+                # Print subsequent lines aligned
+                max_lines = max(len(true_str_lines), len(est_str_lines))
+                for i in range(1, max_lines):
+                    true_line = true_str_lines[i] if i < len(true_str_lines) else ""
+                    est_line = est_str_lines[i] if i < len(est_str_lines) else ""
+                    print(f"{'':<10} | {true_line:<35} | {est_line}")
+            print("-" * 80)
+        else:
+            print(f"\n-- Run: Prior='{res.prior_config_name}' | Optimizer='{res.optimizer_name}' --")
+            print("  No final parameters available for comparison (likely failed early).")
+
+    # Reset numpy print options to default if desired
+    # np.set_printoptions()
 
 
 
@@ -362,14 +416,29 @@ def main():
     print("Starting BIF Optimizer and Prior Comparison Study...")
 
     # 1. Create Model Parameters
-    true_params = create_simple_model(N=5, K=2) # Example: 5 series, 2 factors
+    true_params = create_simple_model(N=3, K=1) # Example: 5 series, 2 factors
     print(f"Using model N={true_params.N}, K={true_params.K}")
+    # Ensure true params are also JAX arrays for consistency if needed later
+    true_params = DFSVBellmanInformationFilter(true_params.N, true_params.K)._process_params(true_params)
 
     # 2. Generate Simulation Data
-    T = 500 # Shorter time series for faster testing
+    T = 1500 # Shorter time series for faster testing
     print(f"Generating {T} time steps of simulation data...")
     returns = create_training_data(true_params, T=T, seed=123)
     print("Simulation data generated.")
+
+    # Calculate objective at true parameters (no priors) for reference
+    print("Calculating objective function at true parameters...")
+    try:
+        filter_instance_for_true = DFSVBellmanInformationFilter(true_params.N, true_params.K)
+        true_objective_value = bellman_objective(true_params, returns, filter_instance_for_true)
+        if jnp.isfinite(true_objective_value):
+            print(f"Objective function value at TRUE parameters (no priors): {true_objective_value:.4f}")
+        else:
+            print("Objective function value at TRUE parameters is non-finite.")
+    except Exception as e:
+        print(f"ERROR calculating objective at true parameters: {e}")
+
 
     # 3. Run Comparison
     max_opt_steps = 500 # Keep max steps relatively low for comparison speed
@@ -377,6 +446,29 @@ def main():
     results = run_comparison(true_params, returns, max_steps=max_opt_steps)
 
     # 4. Print Results
+
+    # 6. Save Final Estimated Parameters
+    print("\nSaving final estimated parameters...")
+    for res in results:
+        if res.final_params is not None:
+            status_str = 'Success' if res.success else 'Failure'
+            opt_name = res.optimizer_name.replace(' ', '_')
+            prior_name = res.prior_config_name.replace(' ', '_')
+            filename = f"estimated_params_{opt_name}_{prior_name}_{status_str}.pkl"
+            try:
+                with open(filename, 'wb') as f:
+                    cloudpickle.dump(res.final_params, f)
+                print(f"  Saved parameters to {filename}")
+            except Exception as e:
+                print(f"  ERROR saving parameters for {opt_name}/{prior_name} to {filename}: {e}")
+        else:
+            opt_name = res.optimizer_name.replace(' ', '_')
+            prior_name = res.prior_config_name.replace(' ', '_')
+            print(f"  Skipping parameter saving for {opt_name}/{prior_name} (final_params is None)")
+
+    # 7. Print Parameter Comparison Table
+    print_parameter_comparison(results, true_params) # Added call
+
     print_results_table(results)
 
     # 5. Save Results to CSV
