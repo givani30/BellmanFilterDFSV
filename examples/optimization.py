@@ -88,7 +88,7 @@ def bellman_objective(params, y, filter):
         The Bellman objective value.
     """
     # run the bellman filter
-    ll = DFSVBellmanFilter.jit_log_likelihood_of_params(filter, params, y)
+    ll = DFSVBellmanFilter.jit_log_likelihood_wrt_params(filter, params, y)
     return -ll
 
 

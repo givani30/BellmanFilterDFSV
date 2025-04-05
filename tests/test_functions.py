@@ -274,6 +274,43 @@ class TestDFSVBellmanFilter(unittest.TestCase):
         self.assertLess(factor_rmse, 1.2, f"Factor RMSE too high: {factor_rmse}")
         self.assertLess(vol_rmse, 2.0, f"Log-volatility RMSE too high: {vol_rmse}")
 
+
+    def test_smooth(self):
+        """Tests the smoother implementation for the Bellman Filter."""
+        # Run filter first to populate results
+        _, _, _ = self.bf.filter_scan(self.params, self.returns)
+
+        # Run the smoother
+        try:
+            # Pass params to the smooth method
+            smoothed_states, smoothed_covs = self.bf.smooth(self.params)
+        except Exception as e:
+            self.fail(f"Smoother raised an unexpected exception: {e}")
+
+        # Check output shapes
+        state_dim = self.K * 2
+        self.assertEqual(smoothed_states.shape, (self.T, state_dim), f"Expected smoothed states shape ({self.T}, {state_dim}), got {smoothed_states.shape}")
+        self.assertEqual(smoothed_covs.shape, (self.T, state_dim, state_dim), f"Expected smoothed covs shape ({self.T}, {state_dim}, {state_dim}), got {smoothed_covs.shape}")
+
+        # Check dtypes (should be NumPy arrays)
+        self.assertEqual(smoothed_states.dtype, np.float64)
+        self.assertEqual(smoothed_covs.dtype, np.float64)
+
+        # Check properties
+        self.assertTrue(np.all(np.isfinite(smoothed_states)), "Smoothed states contain non-finite values")
+        self.assertTrue(np.all(np.isfinite(smoothed_covs)), "Smoothed covs contain non-finite values")
+
+        # Check internal storage matches returned values (use attributes directly)
+        np.testing.assert_array_equal(smoothed_states, self.bf.smoothed_states)
+        np.testing.assert_array_equal(smoothed_covs, self.bf.smoothed_covs)
+
+        # Check symmetry of smoothed covariances
+        for i in range(self.T):
+            matrix = smoothed_covs[i]
+            np.testing.assert_allclose(matrix, matrix.T, atol=1e-7, rtol=1e-6,
+                                       err_msg=f"Smoothed covariance matrix at index {i} is not symmetric")
+
+
     def test_jax_gradients(self):
         """Test that JAX gradient computation works"""
         try:
@@ -290,7 +327,7 @@ class TestDFSVBellmanFilter(unittest.TestCase):
                 modified_params = self.params.replace(mu=jnp.array(mu_val))
 
                 # Compute log likelihood using the modified JAX dataclass
-                return -self.bf.log_likelihood_of_params(modified_params, test_returns)
+                return -self.bf.log_likelihood_wrt_params(modified_params, test_returns)
             
             # Get gradient function
             grad_fn = jax.grad(objective_fn)

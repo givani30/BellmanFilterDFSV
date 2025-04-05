@@ -60,14 +60,14 @@ def bif_setup():
 
 # --- Test Functions ---
 
-def test_initialize_state_info(bif_setup):
+def test_initialize_state(bif_setup):
     """Tests the initialization of state and information matrix."""
     bif_filter = bif_setup["filter"]
     params = bif_setup["params"]
     state_dim = bif_setup["state_dim"]
     K = bif_setup["K"]
 
-    initial_state, initial_info = bif_filter.initialize_state_info(params)
+    initial_state, initial_info = bif_filter.initialize_state(params)
 
     # Check shapes
     assert initial_state.shape == (state_dim, 1), f"Expected state shape ({state_dim}, 1), got {initial_state.shape}"
@@ -101,7 +101,7 @@ def test_predict_jax_info(bif_setup):
     K = bif_setup["K"]
 
     # Get initial state and info
-    initial_state, initial_info = bif_filter.initialize_state_info(params)
+    initial_state, initial_info = bif_filter.initialize_state(params)
 
     # Perform one prediction step
     predicted_state, predicted_info = bif_filter.predict_jax_info_jit(
@@ -144,7 +144,7 @@ def test_update_jax_info(bif_setup):
     N = bif_setup["N"]
 
     # Get initial state and info
-    initial_state, initial_info = bif_filter.initialize_state_info(params)
+    initial_state, initial_info = bif_filter.initialize_state(params)
 
     # Perform one prediction step
     predicted_state, predicted_info = bif_filter.predict_jax_info_jit(
@@ -251,14 +251,14 @@ def test_filter_scan_loop(bif_setup):
     assert total_log_lik_jax == bif_filter.get_total_log_likelihood() # Compare JAX scalar
 
 
-def test_log_likelihood_of_params(bif_setup):
-    """Tests the log_likelihood_of_params method."""
+def test_log_likelihood_wrt_params(bif_setup):
+    """Tests the log_likelihood_wrt_params method."""
     bif_filter = bif_setup["filter"]
     params = bif_setup["params"]
     observations = bif_setup["observations"]
 
     # Pass the params dataclass directly
-    log_lik = bif_filter.log_likelihood_of_params(params, observations)
+    log_lik = bif_filter.log_likelihood_wrt_params(params, observations)
 
     # Check type, shape, and finiteness
     assert isinstance(log_lik, jax.Array), f"Expected JAX Array, got {type(log_lik)}"
@@ -267,7 +267,7 @@ def test_log_likelihood_of_params(bif_setup):
     assert jnp.isfinite(log_lik), "Log likelihood is non-finite"
 
 
-def test_jit_log_likelihood(bif_setup):
+def test_jit_log_likelihood_wrt_params(bif_setup):
     """Tests the JIT-compiled log-likelihood function."""
     bif_filter = bif_setup["filter"]
     params = bif_setup["params"]
@@ -275,7 +275,7 @@ def test_jit_log_likelihood(bif_setup):
     observations_jax = jnp.asarray(bif_setup["observations"])
 
     # Get the JITted function
-    jit_log_lik_fn = bif_filter.jit_log_likelihood_of_params()
+    jit_log_lik_fn = bif_filter.jit_log_likelihood_wrt_params()
 
     # Call the JITted function
     log_lik_jit = jit_log_lik_fn(params, observations_jax)
@@ -287,7 +287,8 @@ def test_jit_log_likelihood(bif_setup):
     assert jnp.isfinite(log_lik_jit), "JIT Log likelihood is non-finite"
 
     # Compare with non-JITted version (using the internal impl for direct comparison)
-    log_lik_non_jit = bif_filter._log_likelihood_of_params_impl(params, observations_jax)
+    # Note: The internal implementation name also changed
+    log_lik_non_jit = bif_filter._log_likelihood_wrt_params_impl(params, observations_jax)
     np.testing.assert_allclose(log_lik_jit, log_lik_non_jit, atol=1e-7, rtol=1e-6, err_msg="JIT vs non-JIT likelihood mismatch")
 
 
@@ -360,7 +361,7 @@ def test_bif_stability_during_optimization(bif_setup):
 
     # Define the objective function using the BIF filter instance
     # Note: transformed_bellman_objective expects the filter instance
-    # It will internally call filter.jit_log_likelihood_of_params()
+    # It will internally call filter.jit_log_likelihood_wrt_params() # Updated method name
     # Set priors to zero (or near zero variance) for this stability test
     prior_mu_mean = 0.0
     prior_mu_var = 1e-9 # Use variance, set near zero for minimal effect
@@ -394,7 +395,7 @@ def test_bif_stability_during_optimization(bif_setup):
     try:
         # Ensure the filter's JIT functions are ready *before* the objective is called by optimistix
         # This might involve calling a dummy likelihood calculation once if not done in fixture
-        _ = bif_filter.log_likelihood_of_params(uninformed_params, observations) # Pass dataclass directly
+        _ = bif_filter.log_likelihood_wrt_params(uninformed_params, observations) # Pass dataclass directly
 
         result = optx.minimise(
             fn=objective_wrapper, # Use the wrapper function
@@ -431,6 +432,48 @@ def test_bif_stability_during_optimization(bif_setup):
 
     except Exception as e:
         pytest.fail(f"Optimization process raised an unexpected exception: {e}")
+
+def test_smooth(bif_setup):
+    """Tests the smoother implementation for BIF."""
+    bif_filter = bif_setup["filter"]
+    params = bif_setup["params"]
+    observations = bif_setup["observations"]
+    T = bif_setup["T"]
+    state_dim = bif_setup["state_dim"]
+
+    # Run the filter first to populate filtered results
+    _, _, _ = bif_filter.filter_scan(params, observations)
+
+    # Run the smoother
+    try:
+        # Pass params to the smooth method
+        smoothed_states, smoothed_covs = bif_filter.smooth(params)
+    except Exception as e:
+        pytest.fail(f"Smoother raised an unexpected exception: {e}")
+
+    # Check output shapes
+    assert smoothed_states.shape == (T, state_dim), f"Expected smoothed states shape ({T}, {state_dim}), got {smoothed_states.shape}"
+    assert smoothed_covs.shape == (T, state_dim, state_dim), f"Expected smoothed covs shape ({T}, {state_dim}, {state_dim}), got {smoothed_covs.shape}"
+
+    # Check dtypes (should be NumPy arrays)
+    assert smoothed_states.dtype == np.float64
+    assert smoothed_covs.dtype == np.float64
+
+    # Check properties
+    assert np.all(np.isfinite(smoothed_states)), "Smoothed states contain non-finite values"
+    assert np.all(np.isfinite(smoothed_covs)), "Smoothed covs contain non-finite values"
+
+    # Check internal storage matches returned values (use attributes directly)
+    np.testing.assert_array_equal(smoothed_states, bif_filter.smoothed_states)
+    np.testing.assert_array_equal(smoothed_covs, bif_filter.smoothed_covs)
+
+    # Check symmetry of smoothed covariances
+    for i in range(T):
+        matrix = smoothed_covs[i]
+        np.testing.assert_allclose(matrix, matrix.T, atol=1e-7, rtol=1e-6,
+                                   err_msg=f"Smoothed covariance matrix at index {i} is not symmetric")
+
+
 def test_getters(bif_setup):
     """Tests all getter methods after running the filter."""
     bif_filter = bif_setup["filter"]

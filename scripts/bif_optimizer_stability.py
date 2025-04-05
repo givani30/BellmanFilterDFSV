@@ -76,8 +76,8 @@ def bif_objective(params: DFSVParamsDataclass, returns: jnp.ndarray, filter_inst
 
     # Calculate pseudo log-likelihood from filter
     # Use the non-JITted version if debugging internals, otherwise use JITted
-    # total_log_lik = filter_instance.log_likelihood_of_params(params, returns) # Non-JIT version
-    total_log_lik = filter_instance.jit_log_likelihood_of_params()(params, returns) # JIT version
+    # total_log_lik = filter_instance.log_likelihood_wrt_params(params, returns) # Non-JIT version
+    total_log_lik = filter_instance.jit_log_likelihood_wrt_params()(params, returns) # JIT version
 
     # Calculate log prior density (using default hyperparameters for now)
     # TODO: Pass prior hyperparameters if needed

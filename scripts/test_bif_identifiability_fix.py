@@ -99,7 +99,7 @@ def constrained_transformed_objective(transformed_params, args):
      constrained_params = apply_identification_constraint(params_positive_diag)
      # 3. Calculate likelihood (no priors)
      # Ensure y (returns data) is passed correctly to the likelihood function
-     log_lik = filter_instance.jit_log_likelihood_of_params()(constrained_params, y) # Pass unpacked y
+     log_lik = filter_instance.jit_log_likelihood_wrt_params()(constrained_params, y) # Pass unpacked y
      # Use negative log-likelihood for minimization, handle non-finite values
      safe_neg_ll = jnp.nan_to_num(-log_lik, nan=1e10, posinf=1e10, neginf=1e10)
      return safe_neg_ll

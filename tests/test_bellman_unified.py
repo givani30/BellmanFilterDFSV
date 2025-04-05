@@ -134,6 +134,59 @@ class TestBasicBellmanFilter(unittest.TestCase):
         self.assertFalse(np.isnan(total_log_likelihood), "Total log-likelihood is NaN")
 
 
+
+    def test_smooth(self):
+        """Tests the smoother implementation for the Bellman Filter."""
+        # Create a small test model
+        K = 1
+        N = 3
+        params = DFSVParamsDataclass(
+            N=N, K=K,
+            lambda_r=jnp.array(np.random.normal(0, 1, (N, K))),
+            Phi_f=jnp.array([[0.9]]),
+            Phi_h=jnp.array([[0.95]]),
+            mu=jnp.array([-5.0]),
+            sigma2=jnp.array(np.ones(N) * 0.1),
+            Q_h=jnp.array([[0.2]]),
+        )
+        T = 50 # Shorter series for smoother test
+        y, _, _ = simulate_DFSV(params, T=T, seed=555)
+
+        # Initialize and run the filter
+        bf = DFSVBellmanFilter(N, K)
+        _, _, _ = bf.filter_scan(params, y) # Use filter_scan to populate results
+
+        # Run the smoother
+        try:
+            # Pass params to the smooth method
+            smoothed_states, smoothed_covs = bf.smooth(params)
+        except Exception as e:
+            self.fail(f"Smoother raised an unexpected exception: {e}")
+
+        # Check output shapes
+        state_dim = K * 2
+        self.assertEqual(smoothed_states.shape, (T, state_dim), f"Expected smoothed states shape ({T}, {state_dim}), got {smoothed_states.shape}")
+        self.assertEqual(smoothed_covs.shape, (T, state_dim, state_dim), f"Expected smoothed covs shape ({T}, {state_dim}, {state_dim}), got {smoothed_covs.shape}")
+
+        # Check dtypes (should be NumPy arrays)
+        self.assertEqual(smoothed_states.dtype, np.float64)
+        self.assertEqual(smoothed_covs.dtype, np.float64)
+
+        # Check properties
+        self.assertTrue(np.all(np.isfinite(smoothed_states)), "Smoothed states contain non-finite values")
+        self.assertTrue(np.all(np.isfinite(smoothed_covs)), "Smoothed covs contain non-finite values")
+
+        # Check internal storage matches returned values (use attributes directly)
+        np.testing.assert_array_equal(smoothed_states, bf.smoothed_states)
+        np.testing.assert_array_equal(smoothed_covs, bf.smoothed_covs)
+
+        # Check symmetry of smoothed covariances
+        for i in range(T):
+            matrix = smoothed_covs[i]
+            np.testing.assert_allclose(matrix, matrix.T, atol=1e-7, rtol=1e-6,
+                                       err_msg=f"Smoothed covariance matrix at index {i} is not symmetric")
+
+
 class TestComprehensiveBellmanFilter(unittest.TestCase):
     """Comprehensive tests for the DFSVBellmanFilter class."""
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 """
-Gradient testing script for the jit_log_likelihood_of_params function.
+Gradient testing script for the log_likelihood_wrt_params function.
 
 This script:
 1. Creates a simple DFSV model
-2. Computes analytical gradients using jit_log_likelihood_of_params
+2. Computes analytical gradients using jax.grad on log_likelihood_wrt_params
 3. Computes numerical gradients using finite differences
 4. Compares the gradients to validate correctness
 """
@@ -127,10 +127,10 @@ def compute_numerical_gradient(func, params_dict, eps=1e-6):
     
     return grad
 
-def test_jit_likelihood_gradient():
-    """Test the gradient of jit_log_likelihood_of_params."""
-    print("\n==== Testing jit_log_likelihood_of_params Gradient ====")
-    
+def test_likelihood_wrt_params_gradient():
+    """Test the gradient of log_likelihood_wrt_params."""
+    print("\n==== Testing log_likelihood_wrt_params Gradient ====")
+
     # Create model and data
     jax_params = create_test_model() # Now returns DFSVParamsDataclass directly
     T = 50  # Shorter time series for faster testing
@@ -169,8 +169,8 @@ def test_jit_likelihood_gradient():
         complete_params['N'] = N_value
         complete_params['K'] = K_value
         # Don't convert to float here - let JAX handle the value type during differentiation
-        return -bf.log_likelihood_of_params(complete_params, returns)
-    
+        return -bf.log_likelihood_wrt_params(complete_params, returns)
+
     print("Parameter dictionary contents (excluding N and K for gradient):")
     for key, value in cleaned_params.items():
         if isinstance(value, (np.ndarray, jnp.ndarray)):
@@ -328,4 +328,4 @@ def test_jit_likelihood_gradient():
         print("The gradient computation may have errors.")
 
 if __name__ == "__main__":
-    test_jit_likelihood_gradient()
+    test_likelihood_wrt_params_gradient()

@@ -70,8 +70,8 @@ def examine_likelihood_surface():
     
     # Define the objective function (negative log-likelihood)
     def objective(complete_params):
-        return -bf.jit_log_likelihood_of_params(complete_params, returns)
-    
+        return -bf.jit_log_likelihood_wrt_params(complete_params, returns)
+
     # Parameters to examine
     param_names = ['Phi_h', 'Phi_f', 'mu', 'Q_h']
     param_ranges = {

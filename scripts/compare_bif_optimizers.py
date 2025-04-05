@@ -69,7 +69,7 @@ def bif_objective(params: DFSVParamsDataclass, returns: jnp.ndarray, filter_inst
         Negative pseudo log-likelihood (JAX scalar). Returns Inf if errors occur.
     """
 
-    total_log_lik = filter_instance.jit_log_likelihood_of_params()(params, returns)
+    total_log_lik = filter_instance.jit_log_likelihood_wrt_params()(params, returns)
 
     # Error handling is now done via the is_not_ok check below
 

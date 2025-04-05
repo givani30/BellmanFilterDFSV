@@ -248,7 +248,7 @@ def demonstrate_optimizer_with_transformations():
         original_p['K'] = K_value
         
         # Calculate negative log-likelihood
-        return -bf.log_likelihood_of_params(original_p, returns)
+        return -bf.log_likelihood_wrt_params(original_p, returns)
     
     # Define objective function using ORIGINAL parameters (for comparison)
     def objective_original(p):
@@ -258,7 +258,7 @@ def demonstrate_optimizer_with_transformations():
         p_with_dims['K'] = K_value
         
         # Calculate negative log-likelihood
-        return -bf.log_likelihood_of_params(p_with_dims, returns)
+        return -bf.log_likelihood_wrt_params(p_with_dims, returns)
     
     # Compute and compare gradients
     print("\nComputing gradients in original and transformed parameter spaces...")
