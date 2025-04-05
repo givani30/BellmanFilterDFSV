@@ -134,12 +134,12 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
 
     # Define Optimizers to Compare
     # Set common tolerances
-    rtol = 1e-5
+    rtol = 1e-3
     atol = 1e-5
-    learning_rate = 1e-4 # Example LR for Optax optimizers
+    learning_rate = 1e-1 # Example LR for Optax optimizers
 
     optimizers_to_test = {
-        "BFGS": optx.BFGS(rtol=rtol, atol=atol,norm=optx.rms_norm, verbose=frozenset({"loss"})), #, verbose=frozenset({"loss"})),
+        # "BFGS": optx.BFGS(rtol=rtol, atol=atol,norm=optx.rms_norm, verbose=frozenset({"loss"})), #, verbose=frozenset({"loss"})),
         # "NonlinearCG": optx.NonlinearCG(rtol=rtol, atol=atol),
         # "SGD": optx.OptaxMinimiser(optax.sgd(learning_rate=learning_rate), rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
         "Adam": optx.OptaxMinimiser(optax.adam(learning_rate=learning_rate), rtol=rtol, atol=atol,norm=optx.rms_norm, verbose=frozenset({"loss"})),

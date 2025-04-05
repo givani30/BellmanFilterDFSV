@@ -103,11 +103,8 @@ def main():
     print(f"\nInitial State (a_0): {a_prev}")
     print("Initial Information (Omega_0):")
     print(Omega_prev)
-    if not check_matrix_stability(Omega_prev, "Omega_0"):
-        nan_detected = True # Treat instability as NaN for stopping
 
     for t in range(T_val):
-        if nan_detected: break # Stop if NaN detected in previous step
 
         print(f"\n--- Time Step t={t+1} ---")
         y_t = returns[t]
@@ -132,8 +129,6 @@ def main():
             # print(f"  Predicted State (a_{t+1|t}): {a_pred.flatten()}") # Can uncomment
             # print(f"  Predicted Information (Omega_{t+1|t}):") # Can uncomment
             # print(Omega_pred) # Can uncomment
-            if not check_matrix_stability(Omega_pred, f"Omega_{t+1|t}"):
-                 nan_detected = True # Treat instability as NaN for stopping
 
 
             # 2. Update Step
@@ -161,8 +156,6 @@ def main():
             # print(f"  Updated State (a_{t+1|t+1}): {a_updated.flatten()}") # Can uncomment
             # print(f"  Updated Information (Omega_{t+1|t+1}):") # Can uncomment
             # print(Omega_updated) # Can uncomment
-            if not check_matrix_stability(Omega_updated, f"Omega_{t+1|t+1}"):
-                 nan_detected = True # Treat instability as NaN for stopping
 
             log_lik_cumulative += step_lik
             # print(f"  Step Pseudo-LogLik Contribution: {step_lik:.4f}") # Can uncomment

@@ -95,19 +95,24 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_s
     results = []
 
     # Define Optimizers to Compare
-    rtol = 1e-5
+    rtol = 1e-3
     atol = 1e-5
-    learning_rate = 1e-3 # Example LR for Optax optimizers
+    learning_rate = 1e-1 # Example LR for Optax optimizers
+    #Scheduler to use
+    initial_lr=1e-2
+    peak_lr=1e-1
+    end_lr=1e-6
+    scheduler=optax.warmup_cosine_decay_schedule(init_value=initial_lr, peak_value=peak_lr, end_value=end_lr, warmup_steps=20, decay_steps=500)
     #Optax wrapper for the optimizer to ensure robustness for NaN's and picking the best parameters
     # opt_wrapper=optax.chain(optax.apply_if_finite())
     optimizers_to_test = {
         # "BFGS": optx.BFGS(rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
         # "NonlinearCG": optx.NonlinearCG(rtol=rtol, atol=atol),
-        # "SGD": optx.OptaxMinimiser(optax.sgd(learning_rate=learning_rate), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
+        # "SGD": optx.OptaxMinimiser(optax.sgd(learning_rate=scheduler), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
         # "Adam": optx.OptaxMinimiser(optax.adam(learning_rate=learning_rate), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
-        "radam":optx.OptaxMinimiser(optax.apply_if_finite(optax.radam(learning_rate=learning_rate),10), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
-        "adabelief":optx.OptaxMinimiser(optax.apply_if_finite(optax.adabelief(learning_rate=learning_rate),10), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
-        "AdamW": optx.OptaxMinimiser(optax.apply_if_finite(optax.adamw(learning_rate=learning_rate),10), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
+        # "radam":optx.OptaxMinimiser(optax.apply_if_finite(optax.radam(learning_rate=scheduler),10), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
+        "adabelief":optx.OptaxMinimiser(optax.apply_if_finite(optax.adabelief(learning_rate=scheduler),10), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
+        "AdamW": optx.OptaxMinimiser(optax.apply_if_finite(optax.adamw(learning_rate=scheduler),10), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
     }
 
     # Define Prior Configurations to Test
@@ -416,7 +421,7 @@ def main():
     print("Starting BIF Optimizer and Prior Comparison Study...")
 
     # 1. Create Model Parameters
-    true_params = create_simple_model(N=3, K=1) # Example: 5 series, 2 factors
+    true_params = create_simple_model(N=5, K=2) # Example: 5 series, 2 factors
     print(f"Using model N={true_params.N}, K={true_params.K}")
     # Ensure true params are also JAX arrays for consistency if needed later
     true_params = DFSVBellmanInformationFilter(true_params.N, true_params.K)._process_params(true_params)
@@ -441,7 +446,7 @@ def main():
 
 
     # 3. Run Comparison
-    max_opt_steps = 500 # Keep max steps relatively low for comparison speed
+    max_opt_steps = 200 # Keep max steps relatively low for comparison speed
     print(f"Running optimizer comparison (max_steps={max_opt_steps})...")
     results = run_comparison(true_params, returns, max_steps=max_opt_steps)
 
