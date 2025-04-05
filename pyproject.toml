@@ -28,6 +28,7 @@ dependencies = [
     # Add any other direct dependencies here
     "gcsfs", # Added for Google Cloud Storage access
     "pyarrow>=19.0.1",
+    "cloudpickle>=3.1.1",
 ]
 
 [tool.setuptools.packages.find]

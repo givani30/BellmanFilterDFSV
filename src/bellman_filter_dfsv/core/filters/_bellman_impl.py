@@ -1,6 +1,11 @@
 # src/bellman_filter_dfsv/core/filters/_bellman_impl.py
-"""
-Static JAX implementations of core Bellman filter calculations.
+"""Static JAX implementations of core Bellman filter calculations.
+
+This module provides standalone, JAX-based functions for computations
+used within the Bellman filters (both covariance and information forms),
+such as building covariance matrices, calculating Fisher information,
+log posteriors, and likelihood penalties. These functions are designed
+to be JIT-compiled by the filter classes that use them.
 """
 from functools import partial
 from typing import Callable
@@ -19,28 +24,28 @@ BuildCovarianceFn = Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], jnp.ndarra
 def build_covariance_impl(
     lambda_r: jnp.ndarray, exp_h: jnp.ndarray, sigma2: jnp.ndarray
 ) -> jnp.ndarray:
-    """
-    Static implementation of build_covariance.
+    """Builds the observation covariance matrix Sigma_t = Lambda * Sigma_f * Lambda^T + Sigma_e.
 
     Args:
-        lambda_r (jnp.ndarray): Factor loading matrix (N, K).
-        exp_h (jnp.ndarray): Exponentiated log-volatilities (K,).
-        sigma2 (jnp.ndarray): Idiosyncratic variances (N, N) or (N,).
+        lambda_r: Factor loading matrix Lambda (N, K).
+        exp_h: Exponentiated log-volatilities diag(Sigma_f) = exp(h_t) (K,).
+        sigma2: Idiosyncratic variances diag(Sigma_e) (N,).
 
     Returns:
-        jnp.ndarray: Covariance matrix (N, N).
+        The observation covariance matrix Sigma_t (N, N).
     """
     K = lambda_r.shape[1]
     N = lambda_r.shape[0]
 
-    # Ensure sigma2 is a 2D diagonal matrix if 1D
-    sigma2_mat = jnp.diag(sigma2) if sigma2.ndim == 1 else sigma2
+    # Ensure sigma2 is a 1D array for diagonal construction
+    sigma2_1d = sigma2.flatten() if sigma2.ndim > 1 else sigma2
+    Sigma_e = jnp.diag(sigma2_1d)
 
     Sigma_f = jnp.diag(exp_h.flatten()) # Ensure exp_h is 1D
     lambda_r = lambda_r.reshape(N, K) # Ensure correct shape
-    A = lambda_r @ Sigma_f @ lambda_r.T
-    # Use diag(diag(sigma2)) to ensure only diagonal elements are added
-    A += jnp.diag(jnp.diag(sigma2_mat)) + 1e-6 * jnp.eye(N)
+
+    # Calculate Sigma_t = Lambda * Sigma_f * Lambda^T + Sigma_e
+    A = lambda_r @ Sigma_f @ lambda_r.T + Sigma_e + 1e-6 * jnp.eye(N) # Add jitter
     A = 0.5 * (A + A.T) # Ensure symmetry
     return A
 
@@ -66,68 +71,7 @@ def build_covariance_impl(
 #     Returns:
 #         jnp.ndarray: Fisher information matrix (2K, 2K).
 #     """
-#     N = lambda_r.shape[0]
-#     h = alpha[K:]
-#     exp_h = jnp.exp(h)
-#
-#     # --- Optimized FIM using Woodbury Identity & Rank-1 Reformulation ---
-#     # A = D + U C U.T where D=diag(sigma2), U=lambda_r, C=diag(exp(h))
-#     # Ainv = Dinv - Dinv U (Cinv + U.T Dinv U)^-1 U.T Dinv
-#     # Let M = Cinv + U.T Dinv U
-#
-#     # Ensure sigma2 is 1D for easy diagonal inversion
-#     sigma2_1d = sigma2 if sigma2.ndim == 1 else jnp.diag(sigma2)
-#     # Add small jitter for numerical stability before inversion
-#     Dinv_diag = 1.0 / (sigma2_1d + 1e-8)
-#     Cinv_diag = 1.0 / (exp_h + 1e-8)
-#
-#     # Precompute Dinv @ U
-#     Dinv_lambda_r = lambda_r * Dinv_diag[:, None] # (N, K)
-#
-#     # Compute M = Cinv + U.T @ Dinv @ U (K x K matrix)
-#     M = jnp.diag(Cinv_diag) + lambda_r.T @ Dinv_lambda_r # (K,K)
-#
-#     # Cholesky decomposition of M for stable inversion
-#     try:
-#         # Use cho_factor for consistency if needed, but cholesky is fine
-#         L_M = jax.scipy.linalg.cholesky(M, lower=True)
-#     except jnp.linalg.LinAlgError:
-#         # Fallback if M is not positive definite
-#         M_jittered = M + 1e-6 * jnp.eye(K)
-#         L_M = jax.scipy.linalg.cholesky(M_jittered, lower=True)
-#
-#     # --- Compute U_matrix = A_inv @ lambda_r ---
-#     # We need to compute Ainv @ lambda_r using Woodbury:
-#     # Ainv @ U = Dinv @ U - Dinv @ U @ (Minv @ (U.T @ Dinv @ U))
-#     # Let V = U.T @ Dinv @ U = lambda_r.T @ Dinv_lambda_r (K x K matrix)
-#     V = M - jnp.diag(Cinv_diag) # (K, K)
-#
-#     # Solve M @ Z = V for Z using Cholesky: L_M L_M.T Z = V
-#     # Z = Minv @ V
-#     Z = jax.scipy.linalg.cho_solve((L_M, True), V) # (K, K)
-#
-#     # U_matrix = Dinv @ U - (Dinv @ U) @ Z
-#     U_matrix = Dinv_lambda_r - Dinv_lambda_r @ Z # (N, K)
-#
-#     # --- Compute I_ff (mean_part) ---
-#     # I_ff = lambda_r.T @ A_inv @ lambda_r = lambda_r.T @ U_matrix
-#     I_ff = lambda_r.T @ U_matrix # (K, K)
-#
-#     # --- Compute I_hh (cov_part_block) using Rank-1 Reformulation ---
-#     # I_hh[k, l] = 0.5 * exp(h_k + h_l) * (lambda_r_k.T @ A_inv @ lambda_r_l)^2
-#     # Note that lambda_r_k.T @ A_inv @ lambda_r_l is exactly I_ff[k, l]
-#     # Use outer product for exp(h_k + h_l)
-#     exp_h_outer = jnp.outer(exp_h, exp_h) # (K, K)
-#     I_hh = 0.5 * exp_h_outer * (I_ff ** 2) # (K, K)
-#
-#     # --- Assemble ---
-#     I_fh = jnp.zeros((K, K)) # Block diagonal assumption
-#     I_fisher = jnp.block([[I_ff, I_fh], [I_fh.T, I_hh]])
-#
-#     # Ensure symmetry (numerical precision might cause small asymmetries)
-#     I_fisher = 0.5 * (I_fisher + I_fisher.T)
-#
-#     return I_fisher
+#     # ... implementation commented out ...
 
 # This is the old fisher_information_impl - keeping it commented out
 # def fisher_information_impl(
@@ -152,71 +96,7 @@ def build_covariance_impl(
 #     Returns:
 #         jnp.ndarray: Observed Fisher Information matrix (Negative Hessian) (2K, 2K).
 #     """
-#     N = lambda_r.shape[0]
-#
-#     alpha = alpha.flatten()
-#     observation = observation.flatten()
-#
-#     f = alpha[:K]
-#     h = alpha[K:]
-#     exp_h = jnp.exp(h)
-#
-#     r = observation - lambda_r @ f
-#
-#
-#     sigma2_1d = sigma2 if sigma2.ndim == 1 else jnp.diag(sigma2)
-#     jitter = 1e-8
-#     Dinv_diag = 1.0 / (sigma2_1d + jitter)
-#     Cinv_diag = 1.0 / (exp_h + jitter)
-#
-#     Dinv_lambda_r = lambda_r * Dinv_diag[:, None]
-#     Dinv_r = r * Dinv_diag
-#
-#     M = jnp.diag(Cinv_diag) + lambda_r.T @ Dinv_lambda_r
-#
-#     try:
-#         # jax.debug.print("observed_fim: M for Cholesky: {x}", x=M) # Indentation fixed
-#         L_M = jax.scipy.linalg.cholesky(M, lower=True)
-#     except jnp.linalg.LinAlgError:
-#         M_jittered = M + 1e-6 * jnp.eye(K)
-#         L_M = jax.scipy.linalg.cholesky(M_jittered, lower=True)
-#     # jax.debug.print("observed_fim: L_M after Cholesky: {x}", x=L_M) # Indentation fixed
-#
-#     V = M - jnp.diag(Cinv_diag)
-#     Z = jax.scipy.linalg.cho_solve((L_M, True), V)
-#     # jax.debug.print("observed_fim: Z after cho_solve: {x}", x=Z) # Indentation fixed
-#     I_ff = V - V @ Z
-#     # jax.debug.print("observed_fim: I_ff: {x}", x=I_ff) # Indentation fixed
-#
-#
-#     v = lambda_r.T @ Dinv_r
-#     z_p = jax.scipy.linalg.cho_solve((L_M, True), v)
-#     # jax.debug.print("observed_fim: z_p after cho_solve: {x}", x=z_p) # Indentation fixed
-#     Ainv_r = Dinv_r - Dinv_lambda_r @ z_p
-#     P = lambda_r.T @ Ainv_r
-#     # jax.debug.print("observed_fim: P: {x}", x=P) # Indentation fixed
-#
-#
-#     J_ff = I_ff
-#     # Corrected J_fh calculation based on derivation J_fh[l, k] = exp(h_k) * I_ff[l, k] * P[k]
-#     J_fh = jnp.zeros((K, K)) # Block diagonal assumption
-#
-#
-#     exp_h_outer = jnp.outer(exp_h, exp_h)
-#     P_outer = jnp.outer(P, P)
-#     term1_diag = 0.5 * exp_h * (jnp.diag(I_ff) - P**2)
-#     term2 = -0.5 * exp_h_outer * I_ff * (I_ff - 2 * P_outer)
-#     # Correct J_hh calculation: diagonal includes term1_diag AND diag(term2)
-#     # Off-diagonal is offdiag(term2). This simplifies to diag(term1_diag) + term2.
-#     J_hh = jnp.diag(term1_diag) + term2
-#     # jax.debug.print("observed_fim: J_hh: {x}", x=J_hh) # Indentation fixed
-#
-#     J = jnp.block([[J_ff, J_fh], [J_fh.T, J_hh]])
-#     J = 0.5 * (J + J.T)
-#
-#
-#     # jax.debug.print("observed_fim: J final: {x}", x=J) # Indentation fixed
-#     return J
+    # ... implementation commented out ...
 
 def observed_fim_impl(
     lambda_r: jnp.ndarray,
@@ -225,27 +105,21 @@ def observed_fim_impl(
     observation: jnp.ndarray,
     K: int, # Pass K explicitly
 ) -> jnp.ndarray:
-    """
-    Static implementation of the Observed Fisher Information (Negative Hessian).
+    """Calculates the Observed Fisher Information (Negative Hessian).
 
-    Computes J = - d^2(log_lik) / d(alpha) d(alpha)^T using efficient Woodbury identity approach.
+    Computes J = - d^2(log p(y_t|alpha_t)) / d(alpha_t) d(alpha_t)^T using an
+    efficient approach based on the Woodbury matrix identity.
 
     Args:
-        lambda_r (jnp.ndarray): Factor loading matrix (N, K).
-        sigma2 (jnp.ndarray): Idiosyncratic variances (N, N) or (N,).
-        alpha (jnp.ndarray): State vector [f, h] (2K,).
-        observation (jnp.ndarray): Observation vector (N,).
-        K (int): Number of factors.
+        lambda_r: Factor loading matrix Lambda (N, K).
+        sigma2: Idiosyncratic variances diag(Sigma_e) (N,).
+        alpha: State vector alpha_t = [f_t, h_t] (state_dim,).
+        observation: Observation vector y_t (N,).
+        K: Number of factors.
 
     Returns:
-        jnp.ndarray: Observed Fisher Information matrix (Negative Hessian) (2K, 2K).
+        The Observed Fisher Information matrix J_observed (state_dim, state_dim).
     """
-    # --- Add Input Checks ---
-    # lambda_r = eqx.error_if(lambda_r, jnp.any(~jnp.isfinite(lambda_r)), "NaN/Inf in lambda_r input to observed_fim")
-    # sigma2 = eqx.error_if(sigma2, jnp.any(~jnp.isfinite(sigma2)), "NaN/Inf in sigma2 input to observed_fim")
-    # alpha = eqx.error_if(alpha, jnp.any(~jnp.isfinite(alpha)), "NaN/Inf in alpha input to observed_fim")
-    # observation = eqx.error_if(observation, jnp.any(~jnp.isfinite(observation)), "NaN/Inf in observation input to observed_fim")
-    # --- Checkify Checks ---
     N = lambda_r.shape[0]
 
     alpha = alpha.flatten()
@@ -254,85 +128,59 @@ def observed_fim_impl(
     f = alpha[:K]
     h = alpha[K:]
     exp_h = jnp.exp(h)
-    # exp_h = eqx.error_if(exp_h, jnp.any(~jnp.isfinite(exp_h)), "NaN/Inf in exp_h")
 
-    r = observation - lambda_r @ f
-    # r = eqx.error_if(r, jnp.any(~jnp.isfinite(r)), "NaN/Inf in residual r")
+    r = observation - lambda_r @ f # Residuals
 
-
-    sigma2_1d = sigma2 if sigma2.ndim == 1 else jnp.diag(sigma2)
+    # Ensure sigma2 is 1D for diagonal matrix operations
+    sigma2_1d = sigma2.flatten() if sigma2.ndim > 1 else sigma2
     jitter = 1e-8
-    Dinv_diag = 1.0 / (sigma2_1d + jitter)
-    # Dinv_diag = eqx.error_if(Dinv_diag, jnp.any(~jnp.isfinite(Dinv_diag)), "NaN/Inf in Dinv_diag")
-    Cinv_diag = 1.0 / (exp_h + jitter)
-    # Cinv_diag = eqx.error_if(Cinv_diag, jnp.any(~jnp.isfinite(Cinv_diag)), "NaN/Inf in Cinv_diag")
+    Dinv_diag = 1.0 / (sigma2_1d + jitter) # Inverse of Sigma_e (diagonal)
+    Cinv_diag = 1.0 / (exp_h + jitter)     # Inverse of Sigma_f (diagonal)
 
-    Dinv_lambda_r = lambda_r * Dinv_diag[:, None]
-    Dinv_r = r * Dinv_diag
+    Dinv_lambda_r = lambda_r * Dinv_diag[:, None] # Sigma_e^-1 @ Lambda
+    Dinv_r = r * Dinv_diag                       # Sigma_e^-1 @ r
 
+    # M = Cinv + U.T @ Dinv @ U = Sigma_f^-1 + Lambda^T @ Sigma_e^-1 @ Lambda
     M = jnp.diag(Cinv_diag) + lambda_r.T @ Dinv_lambda_r
-    # M = eqx.error_if(M, jnp.any(~jnp.isfinite(M)), "NaN/Inf in M before Cholesky")
 
-    # jax.debug.print("observed_fim_impl: M for Cholesky: {x}", x=M) # Indentation fixed
+    # Cholesky decomposition for stable inversion of M
     try:
         L_M = jax.scipy.linalg.cholesky(M, lower=True)
     except jnp.linalg.LinAlgError:
-        # Fallback if M is not positive definite (should not happen in theory)
-        # Add jitter and retry
         M_jittered = M + 1e-6 * jnp.eye(K)
         L_M = jax.scipy.linalg.cholesky(M_jittered, lower=True)
-        # L_M = eqx.error_if(L_M, jnp.any(~jnp.isfinite(L_M)), "NaN/Inf in L_M after fallback Cholesky")
-        # L_M = eqx.error_if(L_M, jnp.any(~jnp.isfinite(L_M)), "NaN/Inf in L_M after Cholesky")
-    # jax.debug.print("observed_fim_impl: L_M after Cholesky: {x}", x=L_M) # Indentation fixed
 
-    V = M - jnp.diag(Cinv_diag)
-    Z = jax.scipy.linalg.cho_solve((L_M, True), V)
-    # Z = eqx.error_if(Z, jnp.any(~jnp.isfinite(Z)), "NaN/Inf in Z after cho_solve")
-    # jax.debug.print("observed_fim_impl: Z after cho_solve: {x}", x=Z) # Indentation fixed
-    I_ff = V - V @ Z
-    # I_ff = eqx.error_if(I_ff, jnp.any(~jnp.isfinite(I_ff)), "NaN/Inf in I_ff")
-    # jax.debug.print("observed_fim_impl: I_ff: {x}", x=I_ff) # Indentation fixed
+    # Calculate I_ff = Lambda^T @ Sigma_t^-1 @ Lambda using Woodbury
+    # I_ff = Lambda^T @ (Dinv - Dinv U Minv U^T Dinv) @ Lambda
+    # I_ff = Lambda^T@Dinv@Lambda - (Lambda^T@Dinv@U) @ Minv @ (U^T@Dinv@Lambda)
+    # I_ff = (M - Cinv) - (M - Cinv) @ Minv @ (M - Cinv)
+    V = M - jnp.diag(Cinv_diag) # V = Lambda^T @ Sigma_e^-1 @ Lambda
+    Z = jax.scipy.linalg.cho_solve((L_M, True), V) # Z = M^-1 @ V
+    I_ff = V - V @ Z # = V - V M^-1 V
 
-
-    v = lambda_r.T @ Dinv_r
-    # v = eqx.error_if(v, jnp.any(~jnp.isfinite(v)), "NaN/Inf in v")
-    z_p = jax.scipy.linalg.cho_solve((L_M, True), v)
-    # z_p = eqx.error_if(z_p, jnp.any(~jnp.isfinite(z_p)), "NaN/Inf in z_p after cho_solve")
-    # jax.debug.print("observed_fim_impl: z_p after cho_solve: {x}", x=z_p) # Indentation fixed
-    Ainv_r = Dinv_r - Dinv_lambda_r @ z_p
-    # Ainv_r = eqx.error_if(Ainv_r, jnp.any(~jnp.isfinite(Ainv_r)), "NaN/Inf in Ainv_r")
-    P = lambda_r.T @ Ainv_r
-    # P = eqx.error_if(P, jnp.any(~jnp.isfinite(P)), "NaN/Inf in P")
-    # jax.debug.print("observed_fim_impl: P: {x}", x=P) # Indentation fixed
+    # Calculate P = Lambda^T @ Sigma_t^-1 @ r
+    v = lambda_r.T @ Dinv_r # v = Lambda^T @ Sigma_e^-1 @ r
+    z_p = jax.scipy.linalg.cho_solve((L_M, True), v) # z_p = M^-1 @ v
+    Ainv_r = Dinv_r - Dinv_lambda_r @ z_p # Ainv_r = Sigma_t^-1 @ r
+    P = lambda_r.T @ Ainv_r # P = Lambda^T @ Sigma_t^-1 @ r
 
 
+    # Calculate blocks of the Hessian J = - d^2(log_lik) / d(alpha) d(alpha)^T
     J_ff = I_ff
-    # J_ff = eqx.error_if(J_ff, jnp.any(~jnp.isfinite(J_ff)), "NaN/Inf in J_ff")
-    # Corrected J_fh calculation based on derivation J_fh[l, k] = exp(h_k) * I_ff[l, k] * P[k]
+    # J_fh[l, k] = exp(h_k) * I_ff[l, k] * P[k] (derived from Hessian calculation)
     J_fh = I_ff * P[None, :] * exp_h[None, :]
-    # J_fh = eqx.error_if(J_fh, jnp.any(~jnp.isfinite(J_fh)), "NaN/Inf in J_fh")
-    # jax.debug.print("observed_fim_impl: J_fh: {x}", x=J_fh) # Indentation fixed
 
-
+    # J_hh calculation (more complex derivation)
     exp_h_outer = jnp.outer(exp_h, exp_h)
     P_outer = jnp.outer(P, P)
     term1_diag = 0.5 * exp_h * (jnp.diag(I_ff) - P**2)
-    # term1_diag = eqx.error_if(term1_diag, jnp.any(~jnp.isfinite(term1_diag)), "NaN/Inf in term1_diag for J_hh")
     term2 = -0.5 * exp_h_outer * I_ff * (I_ff - 2 * P_outer)
-    # term2 = eqx.error_if(term2, jnp.any(~jnp.isfinite(term2)), "NaN/Inf in term2 for J_hh")
-    # Correct J_hh calculation: diagonal includes term1_diag AND diag(term2)
-    # Off-diagonal is offdiag(term2). This simplifies to diag(term1_diag) + term2.
     J_hh = jnp.diag(term1_diag) + term2
-    # J_hh = eqx.error_if(J_hh, jnp.any(~jnp.isfinite(J_hh)), "NaN/Inf in J_hh")
-    # jax.debug.print("observed_fim_impl: J_hh: {x}", x=J_hh) # Indentation fixed
 
+    # Assemble the full Hessian matrix
     J = jnp.block([[J_ff, J_fh], [J_fh.T, J_hh]])
-    J = 0.5 * (J + J.T)
-    # J = eqx.error_if(J, jnp.any(~jnp.isfinite(J)), "NaN/Inf in final J before return")
+    J = 0.5 * (J + J.T) # Ensure symmetry
 
-
-    # jax.debug.print("observed_fim_impl: J final: {x}", x=J) # Indentation fixed
-    # checkify.check(jnp.all(jnp.isfinite(J)), "observed_fim_impl: Output J must be finite")
     return J
 
 
@@ -344,105 +192,76 @@ def log_posterior_impl(
     K: int, # Pass K explicitly
     build_covariance_fn: BuildCovarianceFn # Pass build_covariance dependency
 ) -> float:
-    """
-    Static implementation of log_posterior. This is the likelihood of the observation given the state.
+    """Calculates the log posterior log p(y_t | alpha_t).
+
+    Uses the Woodbury matrix identity and Matrix Determinant Lemma for efficient
+    calculation of the log-likelihood of the observation given the current state.
 
     Args:
-        lambda_r (jnp.ndarray): Factor loading matrix (N, K).
-        sigma2 (jnp.ndarray): Idiosyncratic variances (N, N) or (N,).
-        alpha (jnp.ndarray): State vector [f, h] (2K,).
-        observation (jnp.ndarray): Observation vector (N,).
-        K (int): Number of factors.
-        build_covariance_fn (Callable): Function to build the covariance matrix.
+        lambda_r: Factor loading matrix Lambda (N, K).
+        sigma2: Idiosyncratic variances diag(Sigma_e) (N,).
+        alpha: State vector alpha_t = [f_t, h_t] (state_dim,).
+        observation: Observation vector y_t (N,).
+        K: Number of factors.
+        build_covariance_fn: Function to build the observation covariance matrix
+            Sigma_t = Lambda Sigma_f Lambda^T + Sigma_e. (Note: This dependency
+            might be removable if calculation is done via Woodbury as below).
 
     Returns:
-        float: Log posterior value.
+        The log posterior value log p(y_t | alpha_t) (scalar float).
     """
-    # --- Checkify Checks ---
-    # checkify.check(jnp.all(jnp.isfinite(lambda_r)), "log_posterior_impl: lambda_r must be finite")
-    # checkify.check(jnp.all(jnp.isfinite(sigma2)), "log_posterior_impl: sigma2 must be finite")
-    # checkify.check(jnp.all(sigma2 > 0), "log_posterior_impl: sigma2 must be positive, got {s2}", s2=sigma2)
-    # checkify.check(jnp.all(jnp.isfinite(alpha)), "log_posterior_impl: alpha must be finite")
-    # checkify.check(jnp.all(jnp.isfinite(observation)), "log_posterior_impl: observation must be finite")
     N = lambda_r.shape[0]
     alpha = alpha.flatten()
     observation = observation.flatten()
 
     f = alpha[:K]
     log_vols = alpha[K:]
+    exp_log_vols = jnp.exp(log_vols)
 
     pred_obs = lambda_r @ f
     innovation = observation - pred_obs
-    exp_log_vols = jnp.exp(log_vols)
 
     # --- Use Woodbury Identity & Matrix Determinant Lemma ---
-    # A = D + U C U.T
-    # D = diag(sigma2) -> Dinv = diag(1/sigma2)
-    # U = lambda_r
-    # C = diag(exp(h)) -> Cinv = diag(1/exp(h))
+    # Sigma_t = D + U C U.T where D=Sigma_e, U=Lambda, C=Sigma_f
+    sigma2_1d = sigma2.flatten() if sigma2.ndim > 1 else sigma2
+    jitter = 1e-8
+    Dinv_diag = 1.0 / (sigma2_1d + jitter)
+    Cinv_diag = 1.0 / (exp_log_vols + jitter)
 
-    # Ensure sigma2 is 1D for easy diagonal inversion
-    sigma2_1d = sigma2 if sigma2.ndim == 1 else jnp.diag(sigma2)
-    # Add small jitter for numerical stability before inversion
-    Dinv_diag = 1.0 / (sigma2_1d + 1e-8)
-    Cinv_diag = 1.0 / (exp_log_vols + 1e-8)
+    # Precompute terms
+    Dinv_lambda_r = lambda_r * Dinv_diag[:, None] # D^-1 @ U
+    Dinv_innovation = innovation * Dinv_diag      # D^-1 @ innovation
 
-    # Precompute Dinv @ U and Dinv @ innovation
-    Dinv_lambda_r = lambda_r * Dinv_diag[:, None] # Equivalent to diag(Dinv) @ lambda_r
-    Dinv_innovation = innovation * Dinv_diag
-
-    # Compute M = Cinv + U.T @ Dinv @ U (K x K matrix)
+    # Compute M = Cinv + U.T @ Dinv @ U
     M = jnp.diag(Cinv_diag) + lambda_r.T @ Dinv_lambda_r
 
     # Cholesky decomposition of M for stable inversion and logdet
-    # jax.debug.print("log_posterior: M for Cholesky: {x}", x=M) # Indentation fixed
     try:
         L_M = jax.scipy.linalg.cholesky(M, lower=True)
     except jnp.linalg.LinAlgError:
-        # Fallback if M is not positive definite (should not happen in theory)
-        # Add jitter and retry
         M_jittered = M + 1e-6 * jnp.eye(K)
         L_M = jax.scipy.linalg.cholesky(M_jittered, lower=True)
-    # jax.debug.print("log_posterior: L_M after Cholesky: {x}", x=L_M) # Indentation fixed
 
-    # Calculate log determinant of A using Matrix Determinant Lemma
-    # logdet(A) = logdet(M) + logdet(C) + logdet(D)
-    # Note: logdet(M) = 2 * sum(log(diag(L_M)))
-    #       logdet(C) = sum(log(exp(h))) = sum(h)
-    #       logdet(D) = sum(log(sigma2))
+    # Calculate log determinant of Sigma_t using Matrix Determinant Lemma
+    # logdet(Sigma_t) = logdet(M) + logdet(C) + logdet(D)
     logdet_M = 2.0 * jnp.sum(jnp.log(jnp.maximum(jnp.diag(L_M), 1e-10)))
-    # jax.debug.print("log_posterior: logdet_M: {x}", x=logdet_M) # Indentation fixed
-    logdet_C = jnp.sum(log_vols)
-    # jax.debug.print("log_posterior: logdet_C (sum(log_vols)): {x}", x=logdet_C) # Indentation fixed
+    logdet_C = jnp.sum(log_vols) # logdet(diag(exp(h))) = sum(h)
     logdet_D = jnp.sum(jnp.log(jnp.maximum(sigma2_1d, 1e-10)))
-    # jax.debug.print("log_posterior: logdet_D (sum(log(sigma2))): {x}", x=logdet_D) # Indentation fixed
-    logdet_A = logdet_M + logdet_C + logdet_D
-    # jax.debug.print("log_posterior: logdet_A: {x}", x=logdet_A) # Indentation fixed
+    logdet_Sigma_t = logdet_M + logdet_C + logdet_D
 
-    # Calculate quadratic form: innovation.T @ Ainv @ innovation
-    # Ainv = Dinv - Dinv @ U @ Minv @ U.T @ Dinv
+    # Calculate quadratic form: innovation.T @ Sigma_t^-1 @ innovation
+    # Sigma_t^-1 = Dinv - Dinv U Minv U.T Dinv
     # quad_form = innovation.T @ Dinv @ innovation - (innovation.T @ Dinv @ U) @ Minv @ (U.T @ Dinv @ innovation)
-
-    # Term 1: innovation.T @ Dinv @ innovation
-    term1 = jnp.dot(innovation, Dinv_innovation)
-
-    # Term 2: (innovation.T @ Dinv @ U) @ Minv @ (U.T @ Dinv @ innovation)
-    # Let v = U.T @ Dinv @ innovation (K-dim vector)
-    v = lambda_r.T @ Dinv_innovation
-    # Solve M @ z = v for z using Cholesky: L_M L_M.T z = v
-    z = jax.scipy.linalg.cho_solve((L_M, True), v) # Solves M x = v -> z = Minv @ v
-    # jax.debug.print("log_posterior: z after cho_solve: {x}", x=z) # Indentation fixed
-    term2 = jnp.dot(v, z) # v.T @ Minv @ v
-
+    term1 = jnp.dot(innovation, Dinv_innovation) # innovation.T @ Dinv @ innovation
+    v = lambda_r.T @ Dinv_innovation             # v = U.T @ Dinv @ innovation
+    z = jax.scipy.linalg.cho_solve((L_M, True), v) # z = Minv @ v
+    term2 = jnp.dot(v, z)                         # term2 = v.T @ Minv @ v
     quad_form = term1 - term2
-    # jax.debug.print("log_posterior: quad_form: {x}", x=quad_form) # Indentation fixed
-    #Calculate constant term (commented out because it's not needed for parameter optimization)
-    # constant= -0.5 * N * jnp.log(2.0 * jnp.pi)
-    # Calculate log likelihood
-    log_lik = -0.5 * ( logdet_A + quad_form)
 
-    # jax.debug.print("log_posterior: log_lik final: {x}", x=log_lik) # Indentation fixed
-    # checkify.check(jnp.isfinite(log_lik), "log_posterior_impl: Output log_lik must be finite")
+    # Calculate log likelihood: -0.5 * (N*log(2pi) + logdet(Sigma_t) + quad_form)
+    # Constant term -0.5 * N * log(2pi) is often omitted for optimization
+    log_lik = -0.5 * (logdet_Sigma_t + quad_form)
+
     return log_lik
 
 
@@ -452,104 +271,64 @@ def bif_likelihood_penalty_impl(
     a_updated: jnp.ndarray,   # Updated state alpha_{t|t} (flattened)
     Omega_pred: jnp.ndarray,  # Predicted information Omega_{t|t-1}
     Omega_post: jnp.ndarray   # Updated information Omega_{t|t}
-) -> jnp.ndarray: # Return JAX scalar
-    """
-    Static JAX implementation for KL-type pseudo-likelihood penalty.
+) -> jnp.ndarray:
+    """Calculates the BIF pseudo-likelihood penalty term.
 
-    Calculates the penalty term used in the augmented log-likelihood calculation
-    for parameter estimation, as defined in Lange (2024, Eq. 40). This term
-    approximates the KL divergence between the posterior and prior predictive
-    distributions at time t.
+    This term approximates the KL divergence between the posterior and prior
+    predictive distributions, used in the augmented log-likelihood calculation
+    (Lange et al., 2024, Eq. 40).
 
     Formula:
-    penalty = 0.5 * (log_det(Omega_post) - log_det(Omega_pred) + diff^T @ Omega_pred @ diff)
+    penalty = 0.5 * (log_det(Omega_post) - log_det(Omega_pred)
+                     + diff^T @ Omega_pred @ diff)
     where diff = a_updated - a_pred.
 
     Args:
-        a_pred: Predicted state alpha_{t|t-1} (flattened JAX array).
-        a_updated: Updated state alpha_{t|t} (flattened JAX array).
-        Omega_pred: Predicted information matrix Omega_{t|t-1} (JAX array).
-        Omega_post: Updated information matrix Omega_{t|t} (JAX array).
+        a_pred: Predicted state mean alpha_{t|t-1} (state_dim,).
+        a_updated: Updated state mean alpha_{t|t} (state_dim,).
+        Omega_pred: Predicted information matrix Omega_{t|t-1}
+                    (state_dim, state_dim).
+        Omega_post: Updated information matrix Omega_{t|t}
+                    (state_dim, state_dim).
 
     Returns:
-        jnp.ndarray: The calculated penalty term (JAX scalar).
+        The calculated penalty term (JAX scalar).
     """
-    # --- Checkify Checks ---
-    # checkify.check(jnp.all(jnp.isfinite(a_pred)), "bif_likelihood_penalty_impl: a_pred must be finite")
-    # checkify.check(jnp.all(jnp.isfinite(a_updated)), "bif_likelihood_penalty_impl: a_updated must be finite")
-    # checkify.check(jnp.all(jnp.isfinite(Omega_pred)), "bif_likelihood_penalty_impl: Omega_pred must be finite")
-    # checkify.check(jnp.all(jnp.isfinite(Omega_post)), "bif_likelihood_penalty_impl: Omega_post must be finite")
-    # Ensure inputs are flattened states
     a_pred_flat = a_pred.flatten()
     a_updated_flat = a_updated.flatten()
 
     # Calculate log-determinants using stable method (slogdet)
-    # slogdet returns (sign, logabsdet). We need the logabsdet (index 1).
-    # Add jitter for numerical stability
     jitter = 1e-8
-    # jax.debug.print("bif_penalty: Omega_pred for slogdet: {x}", x=Omega_pred + jitter * jnp.eye(Omega_pred.shape[0])) # Indentation fixed
     sign_pred, log_det_Omega_pred = jnp.linalg.slogdet(Omega_pred + jitter * jnp.eye(Omega_pred.shape[0]))
-    # jax.debug.print("bif_penalty: Omega_post for slogdet: {x}", x=Omega_post + jitter * jnp.eye(Omega_post.shape[0])) # Indentation fixed
     sign_post, log_det_Omega_post = jnp.linalg.slogdet(Omega_post + jitter * jnp.eye(Omega_post.shape[0]))
-    # jax.debug.print("bif_penalty: log_det_Omega_pred: {x}", x=log_det_Omega_pred) # Indentation fixed
 
-    # jax.debug.print("bif_penalty: log_det_Omega_post: {x}", x=log_det_Omega_post) # Indentation fixed
     # Calculate quadratic term: diff^T @ Omega_pred @ diff
     diff = a_updated_flat - a_pred_flat
     quad_term = diff.T @ Omega_pred @ diff
-    # jax.debug.print("bif_penalty: quad_term: {x}", x=quad_term) # Indentation fixed
 
     # Compute penalty
     penalty = 0.5 * (log_det_Omega_post - log_det_Omega_pred + quad_term)
-    # jax.debug.print("bif_penalty: penalty final: {x}", x=penalty) # Indentation fixed
 
     # Ensure the result is a scalar
-    # checkify.check(jnp.isfinite(penalty), "bif_likelihood_penalty_impl: Output penalty must be finite")
     return jnp.asarray(penalty, dtype=jnp.float64)
 
-
-def kl_penalty_impl(
-    a_pred: jnp.ndarray,
-    a_updated: jnp.ndarray,
-    I_pred: jnp.ndarray,
-    I_updated: jnp.ndarray,
-) -> float:
-    """
-    Static implementation of the KL penalty term.
-
-    Args:
-        a_pred: Predicted state mean.
-        a_updated: Updated state mean.
-        I_pred: Predicted state precision.
-        I_updated: Updated state precision.
-
-    Returns:
-        KL divergence penalty value.
-    """
-    # Ensure inputs are flattened
-    a_pred = a_pred.flatten()
-    a_updated = a_updated.flatten()
-
-    # Compute Cholesky decompositions for log determinants
-    L_pred = jax.scipy.linalg.cholesky(I_pred, lower=True)
-    L_updated = jax.scipy.linalg.cholesky(I_updated, lower=True)
-
-    # Log determinants (using safe log)
-    log_det_Ipred = 2.0 * jnp.sum(jnp.log(jnp.maximum(jnp.diag(L_pred), 1e-10)))
-    log_det_Iupdated = 2.0 * jnp.sum(jnp.log(jnp.maximum(jnp.diag(L_updated), 1e-10)))
-
-    # Compute inverse of I_updated (updated covariance) using Cholesky
-    P_updated = jax.scipy.linalg.cho_solve((L_updated, True), jnp.eye(I_updated.shape[0]))
-
-    # Trace term: trace(I_pred @ P_updated)
-    trace_term = jnp.trace(I_pred @ P_updated)
-
-    # Quadratic term: (a_updated - a_pred).T @ I_pred @ (a_updated - a_pred)
-    diff = a_updated - a_pred
-    quad_term = diff.T @ I_pred @ diff
-
-    # KL divergence: 0.5 * (log|I_pred| - log|I_updated| + trace(I_pred @ P_updated) + quad_term - k)
-    k = a_pred.shape[0] # Dimension of the state vector
-    kl_div = 0.5 * (log_det_Ipred - log_det_Iupdated + trace_term + quad_term - k)
-
-    return kl_div
+# Removed kl_penalty_impl as it's no longer used by bellman.py
+# def kl_penalty_impl(
+#     a_pred: jnp.ndarray,
+#     a_updated: jnp.ndarray,
+#     I_pred: jnp.ndarray,
+#     I_updated: jnp.ndarray,
+# ) -> float:
+#     """
+#     Static implementation of the KL penalty term.
+#
+#     Args:
+#         a_pred: Predicted state mean.
+#         a_updated: Updated state mean.
+#         I_pred: Predicted state precision.
+#         I_updated: Updated state precision.
+#
+#     Returns:
+#         KL divergence penalty value.
+#     """
+    # ... implementation commented out ...

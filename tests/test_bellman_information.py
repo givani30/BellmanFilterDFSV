@@ -361,24 +361,30 @@ def test_bif_stability_during_optimization(bif_setup):
     # Define the objective function using the BIF filter instance
     # Note: transformed_bellman_objective expects the filter instance
     # It will internally call filter.jit_log_likelihood_of_params()
-    # Set priors to zero for this stability test, matching bf_optimization.py context
+    # Set priors to zero (or near zero variance) for this stability test
     prior_mu_mean = 0.0
-    prior_mu_std_dev = 0.0
+    prior_mu_var = 1e-9 # Use variance, set near zero for minimal effect
 
     # Define a wrapper function for optimistix instead of using partial
     # optimistix calls fn(params, *args)
     def objective_wrapper(t_params, args_tuple):
-        obs_jax, filt, p_mean, p_std = args_tuple # Unpack static args
+        obs_jax, filt, p_mean, p_var = args_tuple # Unpack static args
+        # Construct the priors dictionary expected by the objective function
+        priors_dict = {
+            'prior_mu_mean': p_mean,
+            'prior_mu_var': p_var
+            # Add other prior keys here if needed by the test,
+            # otherwise log_prior_density will use defaults.
+        }
         return transformed_bellman_objective(
             transformed_params=t_params,
             y=obs_jax,
             filter=filt,
-            prior_mean=p_mean,
-            prior_std_dev=p_std
+            priors=priors_dict # Pass the dictionary
         )
 
-    # Package the static arguments for optimistix
-    static_args = (observations_jax, bif_filter, prior_mu_mean, prior_mu_std_dev)
+    # Package the static arguments for optimistix (use variance)
+    static_args = (observations_jax, bif_filter, prior_mu_mean, prior_mu_var)
 
     # Use a simple optimizer for a few steps
     solver = optx.BFGS(rtol=1e-3, atol=1e-3) # Simple BFGS

@@ -744,8 +744,8 @@ class DFSVParticleFilter(DFSVFilter):
             self, params, observations
         )
 
-        # Return the JAX scalar array directly
-        return jax_log_likelihood
+        # Return the JAX scalar array directly, cast to float
+        return float(jax_log_likelihood)
 
     @staticmethod
     @partial(jit, static_argnums=(0,)) # JIT compile, self_static is static

@@ -1,8 +1,8 @@
-"""
-Unified test suite for all Bellman filter implementations.
+"""Unified test suite for the DFSVBellmanFilter implementation.
 
-This module combines tests for different implementations of the Bellman filter,
-including the standard implementation and the JAX-based implementation.
+This module contains tests verifying the functionality, numerical stability,
+and estimation accuracy of the covariance-based Bellman filter, which now
+utilizes the BIF pseudo-likelihood calculation internally.
 """
 
 import sys
@@ -23,12 +23,10 @@ from bellman_filter_dfsv.core.simulation import simulate_DFSV
 
 
 class TestBasicBellmanFilter(unittest.TestCase):
-    """
-    Basic tests for the standard Bellman filter implementation.
-    """
+    """Basic tests for the DFSVBellmanFilter implementation."""
 
     def test_bellman_single_step(self):
-        """Test a single step of prediction and update."""
+        """Tests a single prediction and update step of the filter."""
         # Set random seed for reproducibility
         np.random.seed(42)
 
@@ -36,7 +34,6 @@ class TestBasicBellmanFilter(unittest.TestCase):
         N = 5  # Number of observed series
         K = 2  # Number of factors
 
-        # Initialize model parameters
         # Initialize model parameters using JAX dataclass
         params = DFSVParamsDataclass(
             N=N,
@@ -63,25 +60,25 @@ class TestBasicBellmanFilter(unittest.TestCase):
         predicted_state, predicted_cov = bf.predict(params,initial_state, initial_cov)
 
         # Update step
+        # Note: y[0] because update expects a single observation vector
         updated_state, updated_cov, log_likelihood = bf.update(params,
-            predicted_state, predicted_cov, y
+            predicted_state, predicted_cov, y[0]
         )
 
         # Basic assertions
-        self.assertEqual(initial_state.shape, (2 * K, 1), "Incorrect state shape")
-        self.assertEqual(
-            initial_cov.shape, (2 * K, 2 * K), "Incorrect covariance shape"
-        )
-        self.assertIsNotNone(log_likelihood, "Log-likelihood should not be None")
-        self.assertFalse(np.any(np.isnan(updated_state)), "State contains NaN values")
-        self.assertFalse(
-            np.any(np.isnan(updated_cov)), "Covariance contains NaN values"
-        )
+        self.assertEqual(initial_state.shape, (2 * K, 1), "Incorrect initial state shape")
+        self.assertEqual(initial_cov.shape, (2 * K, 2 * K), "Incorrect initial covariance shape")
+        self.assertEqual(predicted_state.shape, (2 * K, 1), "Incorrect predicted state shape")
+        self.assertEqual(predicted_cov.shape, (2 * K, 2 * K), "Incorrect predicted covariance shape")
+        self.assertEqual(updated_state.shape, (2 * K, 1), "Incorrect updated state shape")
+        self.assertEqual(updated_cov.shape, (2 * K, 2 * K), "Incorrect updated covariance shape")
+        self.assertIsInstance(log_likelihood, float, "Log-likelihood should be a float")
+        self.assertFalse(np.any(np.isnan(updated_state)), "Updated state contains NaN values")
+        self.assertFalse(np.any(np.isnan(updated_cov)), "Updated covariance contains NaN values")
+        self.assertFalse(np.isnan(log_likelihood), "Log-likelihood is NaN")
 
     def test_bellman_full_filter(self):
-        """
-        Test the full filter operation on a small dataset.
-        """
+        """Tests the full filter operation over multiple time steps."""
         # Create a small test model
         K = 1  # Number of factors (using a smaller model for speed)
         N = 3  # Number of observed series
@@ -113,8 +110,8 @@ class TestBasicBellmanFilter(unittest.TestCase):
         # Initialize the Bellman filter
         bf = DFSVBellmanFilter(N,K)
 
-        # Run the filter
-        filtered_states, filtered_covs, log_likelihood = bf.filter(params,y)
+        # Run the filter (using the standard loop version for this test)
+        filtered_states, filtered_covs, total_log_likelihood = bf.filter(params, y)
 
         # Basic assertions for filtered results
         self.assertEqual(
@@ -122,28 +119,30 @@ class TestBasicBellmanFilter(unittest.TestCase):
             (T, 2 * K),
             f"Filtered states have wrong shape: {filtered_states.shape}",
         )
-        self.assertEqual(len(filtered_covs), T, f"Should have {T} covariance matrices")
-        self.assertIsInstance(log_likelihood, float, "Log-likelihood should be a float")
+        self.assertEqual(
+            filtered_covs.shape,
+            (T, 2 * K, 2 * K),
+             f"Filtered covariances have wrong shape: {filtered_covs.shape}"
+        )
+        self.assertIsInstance(total_log_likelihood, float, "Total log-likelihood should be a float")
         self.assertFalse(
             np.any(np.isnan(filtered_states)), "Filtered states contain NaN values"
         )
         self.assertFalse(
-            np.any([np.any(np.isnan(cov)) for cov in filtered_covs]),
-            "Filtered covariances contain NaN values",
+            np.any(np.isnan(filtered_covs)), "Filtered covariances contain NaN values"
         )
+        self.assertFalse(np.isnan(total_log_likelihood), "Total log-likelihood is NaN")
 
 
 class TestComprehensiveBellmanFilter(unittest.TestCase):
-    """Test suite for comprehensive validation of the DFSVBellmanFilter class."""
+    """Comprehensive tests for the DFSVBellmanFilter class."""
 
-    def create_test_parameters(self) -> DFSVParamsDataclass: # Update return type hint
-        """
-        Create a set of test parameters for a small DFSV model as a JAX dataclass.
+    def create_test_parameters(self) -> DFSVParamsDataclass:
+        """Creates a set of test parameters for a DFSV model.
 
-        Returns
-        -------
-        DFSVParamsDataclass
-            Parameters for a 2-factor model with 4 observed series (JAX arrays).
+        Returns:
+            Parameters for a 2-factor, 4-observable model as a DFSVParamsDataclass
+            with JAX arrays.
         """
         # Define model dimensions
         N = 4  # Number of observed series
@@ -151,23 +150,17 @@ class TestComprehensiveBellmanFilter(unittest.TestCase):
 
         # Factor loadings
         lambda_r = np.array([[0.8, 0.2], [0.7, 0.3], [0.3, 0.7], [0.2, 0.8]])
-
         # Factor persistence
         Phi_f = np.array([[0.9, 0.1], [0.1, 0.9]])
-
         # Log-volatility persistence
         Phi_h = np.array([[0.95, 0.0], [0.0, 0.95]])
-
         # Log-volatility long-run mean
         mu = np.array([-1.0, -0.5])
-
         # Idiosyncratic variance (diagonal)
         sigma2 = np.array([0.1, 0.1, 0.1, 0.1])
-
         # Log-volatility noise covariance
         Q_h = np.array([[0.1, 0.02], [0.02, 0.1]])
 
-        # Create parameter object
         # Create parameter dataclass object using JAX arrays
         params = DFSVParamsDataclass(
             N=N,
@@ -179,17 +172,10 @@ class TestComprehensiveBellmanFilter(unittest.TestCase):
             sigma2=jnp.array(sigma2),
             Q_h=jnp.array(Q_h),
         )
-
         return params
 
     def test_bellman_filter_estimation(self):
-        """
-        Test the Bellman filter's ability to estimate states from simulated data.
-        This test:
-        1. Generates synthetic time series data from a known DFSV model
-        2. Applies the Bellman filter to estimate states
-        3. Checks that the estimates are reasonably close to the true states
-        """
+        """Tests the filter's state estimation accuracy on simulated data."""
         # Set random seed for reproducibility
         np.random.seed(42)
 
@@ -203,40 +189,42 @@ class TestComprehensiveBellmanFilter(unittest.TestCase):
             params, f0=f0, T=T, seed=42
         )
 
-        # Create and run Bellman filter
+        # Create and run Bellman filter (using filter_scan for efficiency)
         bf = DFSVBellmanFilter(params.N,params.K)
-        filtered_states, filtered_covs, log_likelihood = bf.filter(params,returns)
+        # Use filter_scan as it's generally preferred
+        filtered_states_np, filtered_covs_np, log_likelihood_jax = bf.filter_scan(params, returns)
 
         # Extract factor and volatility estimates
         filtered_factors = bf.get_filtered_factors()
         filtered_log_vols = bf.get_filtered_volatilities()
 
+        # Assertions on shapes and types
+        self.assertEqual(filtered_factors.shape, (T, params.K))
+        self.assertEqual(filtered_log_vols.shape, (T, params.K))
+
         # Test: Check correlation between true and filtered factors
         for k in range(params.K):
             corr = np.corrcoef(true_factors[:, k], filtered_factors[:, k])[0, 1]
-            self.assertGreater(corr, 0.7, f"Factor {k} correlation too low: {corr}")
+            self.assertGreater(corr, 0.7, f"Factor {k+1} correlation too low: {corr:.3f}")
 
         # Test: Check correlation between true and filtered log-volatilities
         for k in range(params.K):
             corr = np.corrcoef(true_log_vols[:, k], filtered_log_vols[:, k])[0, 1]
-            # Relaxed threshold slightly from 0.5 to 0.4 to account for potential noise/minor changes
+            # Threshold kept as per original test, may need adjustment based on BIF impact
             self.assertGreater(
-                corr, 0.4, f"Log-volatility {k} correlation too low: {corr}"
+                corr, 0.4, f"Log-volatility {k+1} correlation too low: {corr:.3f}"
             )
 
         # Test: Check the average estimation error is within reasonable bounds
         factor_rmse = np.sqrt(np.mean((true_factors - filtered_factors) ** 2))
         vol_rmse = np.sqrt(np.mean((true_log_vols - filtered_log_vols) ** 2))
 
-        self.assertLess(factor_rmse, 0.6, f"Factor RMSE too high: {factor_rmse}")
-        self.assertLess(vol_rmse, 1.5, f"Log-volatility RMSE too high: {vol_rmse}")
+        # Thresholds kept as per original test
+        self.assertLess(factor_rmse, 0.6, f"Factor RMSE too high: {factor_rmse:.3f}")
+        self.assertLess(vol_rmse, 1.5, f"Log-volatility RMSE too high: {vol_rmse:.3f}")
 
     def test_bellman_filter_numeric_stability(self):
-        """
-        Test the Bellman filter's numerical stability with a longer time series.
-        This test focuses on making sure the filter doesn't break down over long
-        sequences and maintains reasonable estimation quality.
-        """
+        """Tests the filter's numerical stability over a longer time series."""
         # Create test parameters
         params = self.create_test_parameters()
 
@@ -244,25 +232,29 @@ class TestComprehensiveBellmanFilter(unittest.TestCase):
         T = 500
         returns, true_factors, true_log_vols = simulate_DFSV(params, T=T, seed=123)
 
-        # Create and run Bellman filter
+        # Create and run Bellman filter (using filter_scan)
         bf = DFSVBellmanFilter(params.N,params.K)
-        filtered_states, filtered_covs, log_likelihood = bf.filter(params,returns)
+        filtered_states, filtered_covs, log_likelihood = bf.filter_scan(params, returns)
 
         # Check that the filter completes without errors and returns valid estimates
         self.assertFalse(
-            np.any(np.isnan(filtered_states)), "Filter produced NaN values"
+            np.any(np.isnan(filtered_states)), "Filter produced NaN states"
         )
         self.assertFalse(
-            np.any(np.isinf(filtered_states)), "Filter produced infinite values"
+            np.any(np.isinf(filtered_states)), "Filter produced infinite states"
         )
-        self.assertIsInstance(
-            log_likelihood, float, "Log-likelihood should be a valid float"
+        self.assertFalse(
+            np.any(np.isnan(filtered_covs)), "Filter produced NaN covariances"
+        )
+        self.assertFalse(
+            np.any(np.isinf(filtered_covs)), "Filter produced infinite covariances"
+        )
+        self.assertTrue(
+             jnp.isfinite(log_likelihood), "Log-likelihood is not finite"
         )
 
     def test_visualization(self):
-        """
-        Test to generate and save visual comparison of Bellman filter results.
-        """
+        """Generates and saves a visual comparison of filter results."""
         # Create an absolute path for the output file
         output_dir = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "..", "outputs"
@@ -282,18 +274,18 @@ class TestComprehensiveBellmanFilter(unittest.TestCase):
         self.assertTrue(
             os.path.exists(save_path), f"Figure was not saved to {save_path}"
         )
+        # Close the plot to free memory
+        plt.close(fig)
 
     def create_visual_comparison(self, save_path=None):
-        """
-        Create visual comparisons between true and filtered states.
-        Parameters
-        ----------
-        save_path : str, optional
-            Path to save the figure. If None, the figure will be displayed.
-        Returns
-        -------
-        plt.Figure
-            The created figure
+        """Creates visual comparisons between true and filtered states.
+
+        Args:
+            save_path (Optional[str]): Path to save the figure. If None, the
+                figure is not saved.
+
+        Returns:
+            matplotlib.figure.Figure: The created figure object.
         """
         # Set random seed for reproducibility
         np.random.seed(456)
@@ -305,45 +297,50 @@ class TestComprehensiveBellmanFilter(unittest.TestCase):
         T = 300
         returns, true_factors, true_log_vols = simulate_DFSV(params, T=T, seed=456)
 
-        # Create and run Bellman filter
+        # Create and run Bellman filter (using filter_scan)
         bf = DFSVBellmanFilter(params.N,params.K)
-        filtered_states, filtered_covs, log_likelihood = bf.filter(params,returns)
+        filtered_states, filtered_covs, log_likelihood = bf.filter_scan(params, returns)
 
         # Extract filtered factors and volatilities
         filtered_factors = bf.get_filtered_factors()
         filtered_log_vols = bf.get_filtered_volatilities()
 
         # Create figure with subplots for factors and log-volatilities
-        fig, axs = plt.subplots(2, 2, figsize=(14, 10))
+        fig, axs = plt.subplots(2, 2, figsize=(14, 10), sharex=True) # Share x-axis
 
         # Plot factors
         for k in range(params.K):
             ax = axs[0, k]
-            ax.plot(true_factors[:, k], "b-", label="True")
+            ax.plot(true_factors[:, k], "b-", label="True", alpha=0.8)
             ax.plot(filtered_factors[:, k], "r--", label="Filtered")
             ax.set_title(f"Factor {k+1}")
             ax.legend()
-            ax.grid(True)
+            ax.grid(True, linestyle='--', alpha=0.6)
 
         # Plot log-volatilities
         for k in range(params.K):
             ax = axs[1, k]
-            ax.plot(true_log_vols[:, k], "b-", label="True")
+            ax.plot(true_log_vols[:, k], "b-", label="True", alpha=0.8)
             ax.plot(filtered_log_vols[:, k], "r--", label="Filtered")
             ax.set_title(f"Log-Volatility {k+1}")
             ax.legend()
-            ax.grid(True)
+            ax.grid(True, linestyle='--', alpha=0.6)
+            ax.set_xlabel("Time Step") # Add x-label to bottom row
 
         fig.suptitle(
             "Bellman Filter Performance: True vs. Filtered States", fontsize=16
         )
-        plt.tight_layout()
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust layout
 
         # Save the figure if a path is provided
         if save_path:
             try:
                 plt.savefig(save_path, dpi=300, bbox_inches="tight")
+                print(f"Visual comparison saved to {save_path}")
             except Exception as e:
                 print(f"Failed to save figure: {e}")
 
         return fig
+
+if __name__ == "__main__":
+    unittest.main()

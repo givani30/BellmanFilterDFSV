@@ -17,7 +17,7 @@ from pathlib import Path
 
 # Updated imports
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Removed unused DFSV_params import
-from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params
+from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params, inverse_softplus
 
 class TestParameterTransformations(unittest.TestCase):
     """Tests for parameter transformation functions."""
@@ -106,10 +106,10 @@ class TestParameterTransformations(unittest.TestCase):
             transformed = transform_params(self.params)
             
             # Check that sigma2 and Q_h are transformed
-            # The transformation is log(p)
+            # The transformation is inverse_softplus(p)
             
             # For sigma2
-            expected_sigma2_diag = jnp.log(jnp.array([0.1, 0.2, 0.3]))
+            expected_sigma2_diag = inverse_softplus(jnp.array([0.1, 0.2, 0.3]))
             np.testing.assert_allclose(
                 jnp.diag(transformed.sigma2), 
                 expected_sigma2_diag, 
@@ -117,7 +117,7 @@ class TestParameterTransformations(unittest.TestCase):
             )
             
             # For Q_h
-            expected_q_h_diag = jnp.log(jnp.diag(self.Q_h))
+            expected_q_h_diag = inverse_softplus(jnp.diag(self.Q_h))
             np.testing.assert_allclose(
                 jnp.diag(transformed.Q_h), 
                 expected_q_h_diag, 

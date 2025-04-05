@@ -9,7 +9,6 @@ parameter transformations.
 """
 
 import time
-from jax.experimental import checkify
 import jax
 import jax.numpy as jnp
 import numpy as np
