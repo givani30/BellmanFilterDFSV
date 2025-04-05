@@ -88,14 +88,18 @@ def transform_params(params: DFSVParamsDataclass) -> DFSVParamsDataclass:
     transformed_diag_q_h = inverse_softplus(diag_q_h)
     transformed_q_h = jnp.diag(transformed_diag_q_h) # Keep diagonal structure
 
-    # Note: mu and lambda_r are typically unconstrained, so no transformation needed here.
+    # Note: mu is typically unconstrained.
+    # lambda_r diagonal is fixed to 1, off-diagonals are unconstrained.
+    # No transformation needed for lambda_r itself.
 
     # Return a new params object with transformed values
+    # lambda_r is NOT transformed as its diagonal is fixed and off-diagonals are unconstrained.
     return result.replace(
         Phi_f=transformed_phi_f,
         Phi_h=transformed_phi_h,
         sigma2=transformed_sigma2,
         Q_h=transformed_q_h
+        # lambda_r is intentionally omitted from replace()
     )
 
 def untransform_params(transformed_params: DFSVParamsDataclass) -> DFSVParamsDataclass:
@@ -137,10 +141,16 @@ def untransform_params(transformed_params: DFSVParamsDataclass) -> DFSVParamsDat
     diag_q_h_orig = softplus(jnp.diag(transformed_params.Q_h))
     q_h_original = jnp.diag(diag_q_h_orig)
 
+    # lambda_r diagonal is fixed to 1 and was not transformed.
+    # Off-diagonals remained unconstrained.
+    # No untransformation needed for lambda_r itself.
+
     # Return a new params object with untransformed values
+    # lambda_r is intentionally omitted as it wasn't transformed.
     return transformed_params.replace(
         Phi_f=phi_f_original,
         Phi_h=phi_h_original,
         sigma2=sigma2_original,
         Q_h=q_h_original
+        # lambda_r is intentionally omitted from replace()
     )
