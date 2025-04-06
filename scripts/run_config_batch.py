@@ -28,6 +28,7 @@ try:
     from bellman_filter_dfsv.core.simulation import simulate_DFSV
     from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
     from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
+    from bellman_filter_dfsv.core.filters.bellman_information import DFSVBellmanInformationFilter # Added BIF
 except ImportError as e:
     print(f"Error importing bellman_filter_dfsv package: {e}")
     print("Please ensure the package is installed correctly (e.g., 'pip install -e .')")
@@ -227,7 +228,7 @@ def main():
     parser.add_argument('--N', type=int, required=True, help='Number of assets.')
     parser.add_argument('--K', type=int, required=True, help='Number of factors.')
     parser.add_argument('--T', type=int, required=True, help='Time series length.')
-    parser.add_argument('--filter_type', type=str, required=True, choices=['BF', 'PF'], help='Filter type (Bellman or Particle).')
+    parser.add_argument('--filter_type', type=str, required=True, choices=['BF', 'PF', 'BIF'], help='Filter type (Bellman, Particle, or Bellman Information).') # Added BIF
     parser.add_argument('--num_particles', type=int, help='Number of particles (required for PF).')
     parser.add_argument('--num_reps', type=int, required=True, help='Number of replicates to run for this configuration.')
     parser.add_argument('--base_results_dir', type=str, required=True, help='Base directory where study folders are located.')
@@ -258,6 +259,7 @@ def main():
     # --- Instantiate Filter ONCE ---
     bf_instance = None
     pf_instance = None
+    bif_instance = None # Added BIF instance
     instantiation_time = None
     start_time_inst = time.time()
     try:
@@ -273,12 +275,24 @@ def main():
             pf_instance = DFSVParticleFilter(N=args.N, K=args.K, num_particles=args.num_particles, seed=pf_base_seed)
             # Optional: Pre-compile JAX functions here
             # pf_instance.precompile_jax_functions() # Assuming such a method exists
+        elif args.filter_type == 'BIF': # Added BIF instantiation
+            print(f"Instantiating Bellman Information Filter (N={args.N}, K={args.K})...")
+            bif_instance = DFSVBellmanInformationFilter(args.N, args.K)
+            # Optional: Pre-compile JAX functions here
+            # bif_instance.precompile_jax_functions() # Assuming such a method exists
         instantiation_time = time.time() - start_time_inst
         print(f"Filter instantiation took {instantiation_time:.2f}s")
     except Exception as e:
-        print(f"!!!!!! FATAL ERROR: Filter instantiation failed for N={args.N}, K={args.K}, Filter={args.filter_type}, P={args.num_particles}: {e}")
+        # Updated error message to handle BIF (which doesn't use num_particles)
+        filter_details = f"{args.filter_type}"
+        if args.filter_type == 'PF':
+            filter_details += f", P={args.num_particles}"
+        print(f"!!!!!! FATAL ERROR: Filter instantiation failed for N={args.N}, K={args.K}, Filter={filter_details}: {e}")
         # Optionally write a config-level error file using string path and fs if needed
-        error_file_path_str = f"{study_path_str}/config_N{args.N}_K{args.K}_{args.filter_type}{args.num_particles or ''}_INSTANTIATION_ERROR.json"
+        error_file_suffix = f"{args.filter_type}"
+        if args.filter_type == 'PF':
+            error_file_suffix += f"{args.num_particles}"
+        error_file_path_str = f"{study_path_str}/config_N{args.N}_K={args.K}_{error_file_suffix}_INSTANTIATION_ERROR.json"
         error_payload = {'error': f"Instantiation failed: {e}", **vars(args)}
         try:
             if is_gcs:
@@ -299,7 +313,11 @@ def main():
     completed_reps = 0
     error_reps = 0
 
-    print(f"\n--- Starting Batch for Config: N={args.N}, K={args.K}, Filter={args.filter_type}, P={args.num_particles or 'N/A'}, Reps={args.num_reps} ---")
+    # Updated log message to handle BIF
+    filter_details_log = f"{args.filter_type}"
+    if args.filter_type == 'PF':
+        filter_details_log += f", P={args.num_particles}"
+    print(f"\n--- Starting Batch for Config: N={args.N}, K={args.K}, Filter={filter_details_log}, Reps={args.num_reps} ---")
     start_time_batch = time.time()
 
     for rep in range(args.num_reps):
@@ -308,8 +326,12 @@ def main():
         # --- Construct Run Label and Path ---
         if args.filter_type == "BF":
             run_label = f"config_N{args.N}_K{args.K}_BF_rep{rep}"
-        else: # PF
+        elif args.filter_type == "PF":
             run_label = f"config_N{args.N}_K{args.K}_PF{args.num_particles}_rep{rep}"
+        elif args.filter_type == "BIF": # Added BIF label
+            run_label = f"config_N{args.N}_K{args.K}_BIF_rep{rep}"
+        else: # Should not happen due to choices in argparse
+            raise ValueError(f"Unsupported filter_type: {args.filter_type}")
         # Construct run path string
         run_path_str = f"{study_path_str}/{run_label}"
 
@@ -355,15 +377,17 @@ def main():
             'num_particles': args.num_particles if args.filter_type == 'PF' else None,
             'seed': seed, 'filter_type': args.filter_type, 'rep': rep, # Added rep
             'param_gen_time': None, 'data_sim_time': None,
-            'bf_filter_time': None, 'pf_filter_time': None,
+            'bf_filter_time': None, 'pf_filter_time': None, 'bif_filter_time': None, # Added BIF time field
             'bf_rmse_f': None, 'bf_corr_f': None, 'bf_rmse_h': None, 'bf_corr_h': None,
             'pf_rmse_f': None, 'pf_corr_f': None, 'pf_rmse_h': None, 'pf_corr_h': None,
+            'bif_rmse_f': None, 'bif_corr_f': None, 'bif_rmse_h': None, 'bif_corr_h': None, # Added BIF accuracy fields
             'error': None
         }
         raw_data_out = {
             'returns': None, 'true_factors': None, 'true_log_vols': None,
             'filtered_factors_bf': None, 'filtered_log_vols_bf': None,
-            'filtered_factors_pf': None, 'filtered_log_vols_pf': None
+            'filtered_factors_pf': None, 'filtered_log_vols_pf': None,
+            'filtered_factors_bif': None, 'filtered_log_vols_bif': None # Added BIF raw data fields
         }
 
         try:
@@ -412,6 +436,22 @@ def main():
                 # Clear JAX caches periodically if needed (might not be necessary if filter is reused)
                 # if (rep + 1) % 10 == 0: jax.clear_caches()
 
+            elif args.filter_type == 'BIF': # Added BIF execution
+                start_time = time.time()
+                # Assuming filter_scan exists and has a similar signature
+                bif_instance.filter_scan(params_rep, returns_rep)
+                metrics['bif_filter_time'] = time.time() - start_time # Store BIF time
+
+                # Accuracy calculation and result storage for BIF
+                if hasattr(bif_instance, 'get_filtered_factors') and hasattr(bif_instance, 'get_filtered_volatilities'):
+                    filtered_factors_bif = bif_instance.get_filtered_factors()
+                    filtered_log_vols_bif = bif_instance.get_filtered_volatilities()
+                    raw_data_out['filtered_factors_bif'] = filtered_factors_bif
+                    raw_data_out['filtered_log_vols_bif'] = filtered_log_vols_bif
+                    metrics['bif_rmse_f'], metrics['bif_corr_f'] = calculate_accuracy(true_factors_rep, filtered_factors_bif)
+                    metrics['bif_rmse_h'], metrics['bif_corr_h'] = calculate_accuracy(true_log_vols_rep, filtered_log_vols_bif)
+                else: print("Warning: BIF object missing result methods.")
+
         except Exception as e:
             print(f"  !!!!!! ERROR during execution of Rep {rep} ({run_label}): {e}")
             metrics['error'] = f"Execution error: {e}"
@@ -434,7 +474,11 @@ def main():
     total_batch_duration = end_time_batch - start_time_batch
     avg_rep_time = total_replicate_time / completed_reps if completed_reps > 0 else 0
 
-    print(f"\n--- Completed Batch for Config: N={args.N}, K={args.K}, Filter={args.filter_type}, P={args.num_particles or 'N/A'} ---")
+    # Updated completion log message
+    filter_details_log_end = f"{args.filter_type}"
+    if args.filter_type == 'PF':
+        filter_details_log_end += f", P={args.num_particles}"
+    print(f"\n--- Completed Batch for Config: N={args.N}, K={args.K}, Filter={filter_details_log_end} ---")
     print(f"  Total Batch Time: {total_batch_duration:.2f}s")
     print(f"  Completed Replicates: {completed_reps}/{args.num_reps}")
     print(f"  Errored Replicates: {error_reps}")

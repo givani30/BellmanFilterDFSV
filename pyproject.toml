@@ -23,12 +23,13 @@ dependencies = [
     "plotly",
     "tqdm",
     "altair",
-    "pytest",
+    # "pytest", # Moved to dev dependencies
     "scipy",
     # Add any other direct dependencies here
     "gcsfs", # Added for Google Cloud Storage access
     "pyarrow>=19.0.1",
     "cloudpickle>=3.1.1",
+    "scikit-learn>=1.6.1",
 ]
 
 [tool.setuptools.packages.find]
@@ -37,7 +38,7 @@ where = ["src"] # Look for packages in src/
 [project.optional-dependencies]
 dev = [
     "pytest",
-    "coverage",
+    "pytest-cov", # Replaced coverage
     "flake8",
     "black",
     # Add other development tools

@@ -144,11 +144,9 @@ def observed_fim_impl(
     M = jnp.diag(Cinv_diag) + lambda_r.T @ Dinv_lambda_r
 
     # Cholesky decomposition for stable inversion of M
-    try:
-        L_M = jax.scipy.linalg.cholesky(M, lower=True)
-    except jnp.linalg.LinAlgError:
-        M_jittered = M + 1e-6 * jnp.eye(K)
-        L_M = jax.scipy.linalg.cholesky(M_jittered, lower=True)
+    # Add jitter for numerical stability before Cholesky
+    M_jittered = M + 1e-6 * jnp.eye(K)
+    L_M = jax.scipy.linalg.cholesky(M_jittered, lower=True)
 
     # Calculate I_ff = Lambda^T @ Sigma_t^-1 @ Lambda using Woodbury
     # I_ff = Lambda^T @ (Dinv - Dinv U Minv U^T Dinv) @ Lambda
@@ -236,11 +234,9 @@ def log_posterior_impl(
     M = jnp.diag(Cinv_diag) + lambda_r.T @ Dinv_lambda_r
 
     # Cholesky decomposition of M for stable inversion and logdet
-    try:
-        L_M = jax.scipy.linalg.cholesky(M, lower=True)
-    except jnp.linalg.LinAlgError:
-        M_jittered = M + 1e-6 * jnp.eye(K)
-        L_M = jax.scipy.linalg.cholesky(M_jittered, lower=True)
+    # Add jitter for numerical stability before Cholesky
+    M_jittered = M + 1e-6 * jnp.eye(K)
+    L_M = jax.scipy.linalg.cholesky(M_jittered, lower=True)
 
     # Calculate log determinant of Sigma_t using Matrix Determinant Lemma
     # logdet(Sigma_t) = logdet(M) + logdet(C) + logdet(D)

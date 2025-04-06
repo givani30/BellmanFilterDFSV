@@ -646,12 +646,9 @@ class DFSVBellmanFilter(DFSVFilter):
 
         # --- Calculate Predicted Information Matrix (Omega_pred = P_pred^-1) ---
         jax_predicted_cov_jittered = predicted_cov + jitter_pred * jnp.eye(state_dim, dtype=jnp.float64)
-        try:
-            chol_pred_cov = jax.scipy.linalg.cholesky(jax_predicted_cov_jittered, lower=True)
-            Omega_pred = jax.scipy.linalg.cho_solve((chol_pred_cov, True), jnp.eye(state_dim, dtype=jnp.float64))
-        except jnp.linalg.LinAlgError:
-            # Fallback to pseudo-inverse if Cholesky fails
-            Omega_pred = jnp.linalg.pinv(jax_predicted_cov_jittered)
+        # Use Cholesky decomposition to invert the jittered predicted covariance
+        chol_pred_cov = jax.scipy.linalg.cholesky(jax_predicted_cov_jittered, lower=True)
+        Omega_pred = jax.scipy.linalg.cho_solve((chol_pred_cov, True), jnp.eye(state_dim, dtype=jnp.float64))
         Omega_pred = (Omega_pred + Omega_pred.T) / 2 # Ensure symmetry
 
         # --- State Update (Posterior Mode Calculation) ---
@@ -688,12 +685,9 @@ class DFSVBellmanFilter(DFSVFilter):
         Omega_post = (Omega_post + Omega_post.T) / 2 # Ensure symmetry
 
         # --- Calculate Updated Covariance (P_post = Omega_post^-1) ---
-        try:
-            chol_Omega_post = jax.scipy.linalg.cholesky(Omega_post, lower=True) # Omega_post already has jitter
-            updated_cov = jax.scipy.linalg.cho_solve((chol_Omega_post, True), jnp.eye(state_dim, dtype=jnp.float64))
-        except jnp.linalg.LinAlgError:
-            # Fallback to pseudo-inverse if Cholesky fails
-            updated_cov = jnp.linalg.pinv(Omega_post)
+        # Use Cholesky decomposition to invert the posterior information matrix
+        chol_Omega_post = jax.scipy.linalg.cholesky(Omega_post, lower=True) # Omega_post already has jitter
+        updated_cov = jax.scipy.linalg.cho_solve((chol_Omega_post, True), jnp.eye(state_dim, dtype=jnp.float64))
         updated_cov = (updated_cov + updated_cov.T) / 2 # Ensure symmetry
 
         # --- Calculate Log-Likelihood Contribution using BIF formula (Lange Eq. 40) ---
@@ -933,12 +927,52 @@ class DFSVBellmanFilter(DFSVFilter):
         return self.get_filtered_states(), self.get_filtered_covariances(), self.total_log_likelihood
 
 
-    def log_likelihood_of_params(
+    # --- Smoothing Method ---
+    def smooth(self, params: DFSVParamsDataclass) -> Tuple[np.ndarray, np.ndarray]:
+        """Performs Rauch-Tung-Striebel (RTS) smoothing.
+
+        Requires the filter to have been run first. Uses the base class
+        implementation which relies on stored filtered and predicted results.
+
+        Returns:
+            A tuple containing:
+                - smoothed_states: Smoothed states (T, state_dim) as NumPy array.
+                - smoothed_covs: Smoothed covariances (T, state_dim, state_dim)
+                  as NumPy array.
+
+        Raises:
+            RuntimeError: If the filter has not been run yet (results are None).
+        """
+        # Check if filter results (JAX arrays) are available
+        if getattr(self, 'filtered_states', None) is None or getattr(self, 'filtered_covs', None) is None:
+            raise RuntimeError(
+                "Filter must be run successfully (e.g., using filter_scan) "
+                "before smoothing."
+            )
+
+        # Convert JAX arrays to NumPy arrays just before calling base smoother
+        # Overwrite the attributes temporarily for the base class call
+        self.filtered_states = np.asarray(self.filtered_states)
+        self.filtered_covs = np.asarray(self.filtered_covs)
+        self.is_filtered = True # Ensure base class knows filter was run
+
+        # Call the base class implementation which expects NumPy arrays and now params
+        smoothed_states_np, smoothed_covs_np = super().smooth(params)
+
+        # Note: self.smoothed_states and self.smoothed_covariances are set
+        #       by the base class smoother (as NumPy arrays).
+
+        return smoothed_states_np, smoothed_covs_np
+
+
+    # --- Log-Likelihood Methods ---
+    def log_likelihood_wrt_params(
         self, params_dict: Dict[str, Any], observations: np.ndarray
     ) -> jnp.ndarray: # Return JAX scalar
         """Calculates the log-likelihood for given parameters and observations.
 
-        Uses the `filter_scan` method internally.
+        Uses the `filter_scan` method internally. This is the primary method
+        for evaluating the likelihood for external use (e.g., optimization).
 
         Args:
             params_dict: Dictionary of parameters.
@@ -959,13 +993,14 @@ class DFSVBellmanFilter(DFSVFilter):
             return jnp.array(-jnp.inf, dtype=jnp.float64)
 
 
-    def _log_likelihood_of_params_impl(
+    def _log_likelihood_wrt_params_impl(
         self, params: DFSVParamsDataclass, observations: jnp.ndarray
     ) -> float:
         """Internal JAX-compatible implementation for log-likelihood using scan.
 
         Designed to be JIT-compiled. Assumes inputs are JAX arrays. Only returns
-        the final log-likelihood sum, discarding intermediate filter states.
+        the final log-likelihood sum, discarding intermediate filter states. This
+        is the function that gets JIT-compiled by `jit_log_likelihood_wrt_params`.
 
         Args:
             params: DFSVParamsDataclass instance with JAX arrays.
@@ -1004,17 +1039,13 @@ class DFSVBellmanFilter(DFSVFilter):
         return jnp.where(jnp.isnan(total_log_lik) | jnp.isinf(total_log_lik), -jnp.inf, total_log_lik)
 
 
-    # Method to get a JIT-compiled version of the log-likelihood function
-    def jit_log_likelihood_of_params(self):
-        """Returns a JIT-compiled function to compute the log-likelihood.
+    # JIT-compiled version of the log-likelihood calculation
+    # This should be defined *after* the implementation it wraps
+    @partial(eqx.filter_jit)
+    def jit_log_likelihood_wrt_params(self):
+        """Returns a JIT-compiled function for log-likelihood calculation.
 
-        The returned function takes parameters (as a DFSVParamsDataclass pytree)
-        and observations (as a JAX array) and returns the total log-likelihood
-        as a JAX scalar. Suitable for use with JAX-based optimizers.
-
-        Returns:
-            A JIT-compiled function `likelihood_fn(params, observations)`.
+        The returned function takes (params_dataclass, observations_jax) as input.
         """
-        # JIT the implementation method directly
-        # Caller must ensure inputs are correct JAX types (DFSVParamsDataclass, jnp.ndarray)
-        return jit(self._log_likelihood_of_params_impl)
+        # Return the JIT-compiled internal implementation
+        return self._log_likelihood_wrt_params_impl

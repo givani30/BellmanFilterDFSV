@@ -6,7 +6,7 @@ used within the DFSV framework.
 """
 
 import warnings
-from typing import Tuple, Optional, Union, Dict, Any
+from typing import Tuple, Optional, Union, Dict, Any, Callable # Added Callable
 
 import jax
 import jax.numpy as jnp
@@ -102,7 +102,7 @@ class DFSVFilter:
     # --- Common Helper Methods ---
 
     def _process_params(
-        self, params: Union[Dict[str, Any], DFSVParamsDataclass]
+        self, params: Union[Dict[str, Any], DFSVParamsDataclass],default_dtype=jnp.float64
     ) -> DFSVParamsDataclass:
         """Converts/validates parameters to the internal DFSVParamsDataclass format.
 
@@ -151,7 +151,6 @@ class DFSVFilter:
             raise TypeError(f"Unsupported parameter type: {type(params)}. Expected Dict or DFSVParamsDataclass.")
 
         # Ensure internal arrays are JAX arrays with correct dtype and shape
-        default_dtype = jnp.float64
         updates = {}
         changed = False
         expected_shapes = {
@@ -260,8 +259,9 @@ class DFSVFilter:
         discrete Lyapunov equation for the log-volatility block.
 
         Note:
-            Subclasses (like BIF) might override this to return the initial
-            information matrix (Omega_0 = P_0^-1) instead of the covariance.
+            Subclasses (like information filters) might override this to return the
+            initial information matrix (Omega_0 = P_0^-1) instead of the covariance
+            matrix P_0 in the second element of the returned tuple.
 
         Args:
             params: Parameters of the DFSV model (as a JAX dataclass).
@@ -269,8 +269,8 @@ class DFSVFilter:
         Returns:
             A tuple containing:
                 - initial_state: The initial state vector (state_dim, 1) as JAX array.
-                - initial_cov: The initial state covariance matrix
-                  (state_dim, state_dim) as JAX array.
+                - initial_cov_or_info: The initial state covariance matrix P_0 or
+                  information matrix Omega_0 (state_dim, state_dim) as JAX array.
         """
         params = self._process_params(params) # Ensure params are processed
 
@@ -325,19 +325,19 @@ class DFSVFilter:
 
 
     def predict(
-        self, params: DFSVParamsDataclass, state: jnp.ndarray, cov: jnp.ndarray
+        self, params: DFSVParamsDataclass, state: jnp.ndarray, cov_or_info: jnp.ndarray
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Performs the prediction step of the filter.
 
         This method must be implemented by subclasses to define how the state
-        and its uncertainty (covariance or information) are propagated forward
+        and its uncertainty (covariance or information matrix) are propagated forward
         in time according to the model dynamics.
 
         Args:
             params: Model parameters (DFSVParamsDataclass with JAX arrays).
             state: Current state estimate (state_dim, 1) as JAX array.
-            cov: Current state covariance or information matrix (state_dim, state_dim)
-                 as JAX array.
+            cov_or_info: Current state covariance or information matrix
+                         (state_dim, state_dim) as JAX array.
 
         Returns:
             A tuple containing the predicted state and predicted covariance/information
@@ -352,27 +352,28 @@ class DFSVFilter:
         self,
         params: DFSVParamsDataclass,
         predicted_state: jnp.ndarray,
-        predicted_cov: jnp.ndarray, # Or predicted_info for BIF
+        predicted_cov_or_info: jnp.ndarray,
         observation: jnp.ndarray,
     ) -> Tuple[jnp.ndarray, jnp.ndarray, float]:
         """Performs the update step of the filter.
 
         This method must be implemented by subclasses to define how the predicted
-        state and uncertainty are updated using the current observation, and to
-        calculate the log-likelihood contribution of that observation.
+        state and uncertainty (covariance or information matrix) are updated using
+        the current observation, and to calculate the log-likelihood contribution
+        of that observation.
 
         Args:
             params: Model parameters (DFSVParamsDataclass with JAX arrays).
             predicted_state: Predicted state (state_dim, 1) as JAX array.
-            predicted_cov: Predicted state covariance or information matrix
-                           (state_dim, state_dim) as JAX array.
+            predicted_cov_or_info: Predicted state covariance or information matrix
+                                   (state_dim, state_dim) as JAX array.
             observation: Current observation (N,) as JAX array.
 
         Returns:
             A tuple containing:
                 - updated_state: Updated state estimate (state_dim, 1) as JAX array.
-                - updated_cov: Updated covariance or information matrix
-                  (state_dim, state_dim) as JAX array.
+                - updated_cov_or_info: Updated covariance or information matrix
+                                       (state_dim, state_dim) as JAX array.
                 - log_lik_contrib: Log-likelihood contribution for this step (scalar).
 
         Raises:
@@ -380,7 +381,50 @@ class DFSVFilter:
         """
         raise NotImplementedError("Update method must be implemented by subclasses")
 
-    def smooth(self) -> Tuple[np.ndarray, np.ndarray]:
+    def log_likelihood_wrt_params(
+        self, params: DFSVParamsDataclass, observations: jnp.ndarray
+    ) -> jnp.ndarray:
+        """Calculates the log-likelihood of the observations given the parameters.
+
+        This method must be implemented by subclasses to compute the total
+        log-likelihood of the entire observation sequence `y` given a specific
+        set of model parameters `params`. This is often the objective function
+        for parameter estimation.
+
+        Args:
+            params: The model parameters (DFSVParamsDataclass) for which to
+                    calculate the likelihood.
+            observations: The sequence of observations (T, N) as a JAX array.
+
+        Returns:
+            The total log-likelihood value (scalar) as a JAX array.
+
+        Raises:
+            NotImplementedError: If the subclass does not implement this method.
+        """
+        raise NotImplementedError(
+            "log_likelihood_wrt_params method must be implemented by subclasses"
+        )
+
+    def jit_log_likelihood_wrt_params(self) -> Callable:
+        """Returns a JIT-compiled version of the log-likelihood calculation.
+
+        This method should return a callable function (often a JIT-compiled version
+        of `log_likelihood_wrt_params` or a related internal function) that takes
+        parameters and observations as input and efficiently computes the
+        log-likelihood. This is crucial for optimization routines.
+
+        Returns:
+            A callable function, typically JIT-compiled, for log-likelihood calculation.
+
+        Raises:
+            NotImplementedError: If the subclass does not implement this method.
+        """
+        raise NotImplementedError(
+            "jit_log_likelihood_wrt_params method must be implemented by subclasses"
+        )
+
+    def smooth(self, params: DFSVParamsDataclass) -> Tuple[np.ndarray, np.ndarray]:
         """Runs the Rauch-Tung-Striebel (RTS) smoother.
 
         This performs a backward pass after filtering to refine state estimates
@@ -434,11 +478,11 @@ class DFSVFilter:
             cov_tp1_smooth = smoothed_covs[t + 1, :, :]
 
             # Get the transition matrix F_t (NumPy)
-            F_t = self._get_transition_matrix_np(state_t_filt) # Requires NumPy implementation
+            F_t = self._get_transition_matrix_np(params, state_t_filt) # Pass params
 
             # Predict state and covariance from t to t+1 using filtered estimate at t (NumPy)
             state_tp1_pred, cov_tp1_pred = self._predict_with_matrix(
-                state_t_filt, cov_t_filt, F_t # Requires NumPy implementation
+                params, state_t_filt, cov_t_filt, F_t # Pass params
             )
 
             # Compute smoother gain K_t (using NumPy)
@@ -468,7 +512,7 @@ class DFSVFilter:
 
         return smoothed_states, smoothed_covs
 
-    def _get_transition_matrix_np(self, state: np.ndarray) -> np.ndarray:
+    def _get_transition_matrix_np(self, params: DFSVParamsDataclass, state: np.ndarray) -> np.ndarray:
         """Gets the state transition matrix F_t using NumPy.
 
         This method is primarily needed for the RTS smoother implemented in the
@@ -484,17 +528,17 @@ class DFSVFilter:
             The transition matrix F_t (state_dim, state_dim) as NumPy array.
 
         Raises:
-            AttributeError: If self.params is not set.
+            AttributeError: If params is None.
         """
-        if self.params is None:
-             raise AttributeError("self.params must be set before calling _get_transition_matrix_np")
+        if params is None:
+             raise AttributeError("params must be provided to _get_transition_matrix_np")
 
         # Use the static JAX implementation and convert to NumPy
-        F_t_jax = self._get_transition_matrix(self.params, self.K)
+        F_t_jax = self._get_transition_matrix(params, self.K)
         return np.asarray(F_t_jax)
 
     def _predict_with_matrix(
-        self, state: np.ndarray, cov: np.ndarray, transition_matrix: np.ndarray
+        self, params: DFSVParamsDataclass, state: np.ndarray, cov: np.ndarray, transition_matrix: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Predicts state and covariance using a given transition matrix (NumPy).
 
@@ -515,17 +559,17 @@ class DFSVFilter:
                   (state_dim, state_dim) as NumPy array.
 
         Raises:
-            AttributeError: If self.params is not set or lacks necessary attributes.
+            AttributeError: If params is None or lacks necessary attributes.
         """
-        if self.params is None:
-             raise AttributeError("self.params must be set before calling _predict_with_matrix")
+        if params is None:
+             raise AttributeError("params must be provided to _predict_with_matrix")
 
-        K = self.K
+        K = self.K # K comes from the instance
         state_col = state.reshape(-1, 1)
 
-        # Use NumPy versions of parameters
-        mu_np = np.asarray(self.params.mu).reshape(-1, 1)
-        q_h_np = np.asarray(self.params.Q_h)
+        # Use NumPy versions of parameters from the passed 'params' object
+        mu_np = np.asarray(params.mu).reshape(-1, 1)
+        q_h_np = np.asarray(params.Q_h)
 
         # Predict state mean E[x_{t+1}|t]
         # For DFSV: x_{t+1|t} = F_t @ x_t (approximation for mean)

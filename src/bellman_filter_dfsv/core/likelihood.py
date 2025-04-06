@@ -237,7 +237,7 @@ def bellman_objective(
     """
     # Original negative log-likelihood from the filter
     # Note: The filter's likelihood method does NOT receive priors.
-    jit_ll_func = filter.jit_log_likelihood_of_params()
+    jit_ll_func = filter.jit_log_likelihood_wrt_params() # Corrected method name
     log_lik = jit_ll_func(params, y)
     safe_neg_ll = jnp.nan_to_num(-log_lik, nan=1e10, posinf=1e10, neginf=1e10)
 

@@ -8,7 +8,7 @@ introduced by stochastic volatility.
 """
 
 import warnings
-from typing import Tuple, Union, NamedTuple
+from typing import Tuple, Union, NamedTuple, Callable
 from functools import partial
 from dataclasses import asdict
 
@@ -18,7 +18,7 @@ import jax.scipy.linalg
 import jax.scipy.special
 import numpy as np
 from jax import jit
-
+import equinox as eqx
 # Local imports
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Only import the dataclass
 from .base import DFSVFilter # Import base class from sibling module
@@ -167,7 +167,24 @@ class DFSVParticleFilter(DFSVFilter):
             # If no changes needed, return the original instance
             return params
 
-    def initialize_particles(
+    def initialize_state(
+        self, params: DFSVParamsDataclass
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        """Initializes the state vector and covariance matrix using the base method.
+
+        Args:
+            params: Model parameters (as a JAX dataclass).
+
+        Returns:
+            A tuple containing:
+                - initial_state: The initial state vector (state_dim, 1) as JAX array.
+                - initial_cov: The initial state covariance matrix
+                  (state_dim, state_dim) as JAX array.
+        """
+        # Use the base class method directly
+        return super().initialize_state(params)
+
+    def _initialize_particles(
         self, params: DFSVParamsDataclass, rng_key: jax.random.PRNGKey
     ) -> Tuple[jax.random.PRNGKey, jnp.ndarray, jnp.ndarray]:
         """
@@ -270,7 +287,7 @@ class DFSVParticleFilter(DFSVFilter):
 
         return rng_key, predicted_particles
 
-    @partial(jit, static_argnums=(0, 5, 6)) # self, K, N are static
+    @eqx.filter_jit # self, K, N are static
     def compute_log_likelihood_particle(
         self,
         particles: jnp.ndarray,          # (state_dim, P)
@@ -329,7 +346,7 @@ class DFSVParticleFilter(DFSVFilter):
 
     # Removed _compute_logprob_cholesky static method as it's replaced by direct calculation
 
-    @partial(jit, static_argnums=(0,)) # self is static
+    @eqx.filter_jit # self is static
     def resample_particles(
         self,
         rng_key: jax.random.PRNGKey,
@@ -412,6 +429,136 @@ class DFSVParticleFilter(DFSVFilter):
 
         return rng_key, next_particles, next_normalized_log_weights, ess
 
+
+    def predict(
+        self, params: DFSVParamsDataclass, state: jnp.ndarray, cov: jnp.ndarray
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        """Predict step is not applicable for the particle filter in this standard form."""
+        raise NotImplementedError(
+            "Predict method with single state/covariance input is not applicable to Particle Filter."
+        )
+
+    def update(
+        self,
+        params: DFSVParamsDataclass,
+        predicted_state: jnp.ndarray,
+        predicted_cov: jnp.ndarray,
+        observation: jnp.ndarray,
+    ) -> Tuple[jnp.ndarray, jnp.ndarray, float]:
+        """Update step is not applicable for the particle filter in this standard form."""
+        raise NotImplementedError(
+            "Update method with single state/covariance input is not applicable to Particle Filter."
+        )
+
+    @staticmethod
+    @eqx.filter_jit
+    def _jit_filter_scan_for_filter(
+        self_static, # Pass the instance statically (handled by eqx.filter_jit)
+        params: DFSVParamsDataclass,
+        observations: jnp.ndarray,
+        obs_noise_variances: jnp.ndarray, # Pass precomputed variances statically
+        chol_Q_h_local: jnp.ndarray      # Pass precomputed Cholesky statically
+    ) -> Tuple[PFScanState, Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]: # Return final state and scan outputs
+        """
+        Static, JIT-compiled function to run the particle filter scan for the main filter method.
+
+        Args:
+            self_static: The DFSVParticleFilter instance (passed statically).
+            params: The specific DFSV parameters to use for this calculation (dynamic).
+            observations: The observation data (T, N) (dynamic).
+            obs_noise_variances: Precomputed observation noise variances (static).
+            chol_Q_h_local: Precomputed Cholesky decomposition of Q_h (static).
+
+        Returns:
+            A tuple containing:
+                - final_state: The final PFScanState after the scan.
+                - scan_outputs: A tuple containing (filtered_means, filtered_covs, ess_history).
+        """
+        T = observations.shape[0]
+        N = params.N
+        K = params.K
+
+        # --- Initialize state for scan ---
+        # Use instance's methods but with the provided `params` and a fresh key from seed
+        rng_key = jax.random.PRNGKey(self_static.seed)
+        init_rng_key, init_particles, init_log_weights = self_static._initialize_particles(
+            params, rng_key # Use input params here
+        )
+        initial_scan_state = PFScanState(
+            rng_key=init_rng_key,
+            particles=init_particles,
+            normalized_log_weights=init_log_weights,
+            log_likelihood_accum=jnp.array(0.0, dtype=jnp.float32), # Use float32 accumulator
+        )
+
+        # --- Define the scan body function (identical to the one previously in filter) ---
+        def scan_body(
+            state: PFScanState,                 # The dynamic state
+            obs_t: jnp.ndarray                  # The dynamic observation
+            ):
+            """Body function for jax.lax.scan, performs one filter step."""
+            key, current_particles, current_norm_log_weights, ll_accum = state
+            observation = obs_t.reshape(-1, 1) # Ensure (N, 1)
+
+            # 1. Predict (pass params and chol_Q_h)
+            key, predicted_particles = self_static.predict_particles(
+                key, current_particles, params, chol_Q_h_local
+            )
+
+            # 2. Weight (pass factor_loadings and obs_noise_variances)
+            log_likelihood_terms = self_static.compute_log_likelihood_particle(
+                predicted_particles,
+                observation,
+                params.lambda_r, # Get factor loadings from params
+                obs_noise_variances,    # Use passed obs_noise_variances (matches signature)
+                K,
+                N,
+            )
+            # Calculate unnormalized weights for resampling and LL contribution
+            unnormalized_log_weights = current_norm_log_weights + log_likelihood_terms
+
+            # 3. Calculate Log-Likelihood Contribution for this step
+            ll_increment = jax.scipy.special.logsumexp(unnormalized_log_weights)
+            ll_accum_next = ll_accum + ll_increment
+
+            # 4. Resample (uses self_static for threshold etc.)
+            key, particles_next, next_norm_log_weights, ess = self_static.resample_particles(
+                key, predicted_particles, unnormalized_log_weights
+            )
+
+            # --- Calculate outputs for storage ---
+            # Weighted mean estimate of state x_t (using next particles/weights)
+            weights_linear = jnp.exp(next_norm_log_weights)
+            filtered_mean = jnp.sum(particles_next * weights_linear, axis=1)
+
+            # Weighted covariance estimate of state x_t
+            diff = particles_next - filtered_mean.reshape(-1, 1) # Shape (state_dim, P)
+            weighted_diff = diff * weights_linear[None, :] # Shape (state_dim, P)
+            filtered_cov = weighted_diff @ diff.T
+            filtered_cov = (filtered_cov + filtered_cov.T) / 2.0
+
+            # Prepare next state and outputs
+            next_scan_state = PFScanState(
+                rng_key=key,
+                particles=particles_next,
+                normalized_log_weights=next_norm_log_weights,
+                log_likelihood_accum=ll_accum_next,
+            )
+            scan_output = (filtered_mean, filtered_cov, ess)
+
+            return next_scan_state, scan_output
+        # --- End of scan_body definition ---
+
+        # --- Run the scan ---
+        final_state, scan_outputs = jax.lax.scan(
+            scan_body, # Use the scan_body defined above
+            initial_scan_state,
+            observations
+        )
+
+        return final_state, scan_outputs
+
+
     def filter(
         self, params: DFSVParamsDataclass, observations: Union[np.ndarray, jnp.ndarray]
     ) -> Tuple[np.ndarray, np.ndarray, float]:
@@ -451,17 +598,18 @@ class DFSVParticleFilter(DFSVFilter):
                  raise ValueError(f"Observations dimension mismatch: expected {self.N} columns/rows, got {obs_jax.shape}")
         T = obs_jax.shape[0]
 
-        # --- Prepare parameters and derived values for scan body ---
+        # --- Prepare parameters and derived values ---
         jax_params = self._ensure_params_are_jax(params)
         K = self.K # From self
         N = self.N # From self
 
-        # Compute Cholesky of Q_h from passed params
+        # Compute Cholesky of Q_h from passed params, adding jitter for stability
+        jitter = 1e-6 * jnp.eye(K)
         try:
-            chol_Q_h = jax.scipy.linalg.cholesky(jax_params.Q_h, lower=True)
+            chol_Q_h = jax.scipy.linalg.cholesky(jax_params.Q_h + jitter, lower=True)
         except jnp.linalg.LinAlgError as e:
             raise ValueError(
-                "Q_h matrix from passed params must be positive definite."
+                "Q_h matrix (+jitter) from passed params must be positive definite."
             ) from e
 
         # Compute observation noise variances (diagonal of R) from passed params
@@ -480,114 +628,16 @@ class DFSVParticleFilter(DFSVFilter):
         else:
             raise ValueError(f"sigma2 has invalid shape {sigma2_curr.shape}")
 
-        # Extract factor loadings
-        factor_loadings = jax_params.lambda_r # Shape (N, K)
-
-        # --- Initialize state for scan ---
-        # Use the instance's current rng_key, but pass params explicitly
-        init_rng_key, init_particles, init_log_weights = self.initialize_particles(
-            jax_params, self.rng_key
-        )
-        initial_scan_state = PFScanState(
-            rng_key=init_rng_key,
-            particles=init_particles,
-            normalized_log_weights=init_log_weights,
-            log_likelihood_accum=0.0,
-        )
-
-        # --- Define the scan body function (partially applied with params) ---
-        # Note: JIT is applied to the partially applied scan_step below
-        def scan_body(
-            self_static, # Pass self statically for methods like resample
-            params_static: DFSVParamsDataclass, # Pass params statically for this run
-            chol_Q_h_static: jnp.ndarray,       # Pass chol_Q_h statically for this run
-            obs_noise_variances: jnp.ndarray,   # Pass obs_noise_variances statically
-            K_static: int,                      # Pass K statically
-            N_static: int,                      # Pass N statically
-            state: PFScanState,                 # The dynamic state
-            obs_t: jnp.ndarray                  # The dynamic observation
-            ):
-            """Body function for jax.lax.scan, performs one filter step."""
-            key, current_particles, current_norm_log_weights, ll_accum = state
-            observation = obs_t.reshape(-1, 1) # Ensure (N, 1)
-
-            # 1. Predict (pass params and chol_Q_h)
-            key, predicted_particles = self_static.predict_particles(
-                key, current_particles, params_static, chol_Q_h_static
-            )
-
-            # 2. Weight (pass factor_loadings and obs_noise_variances)
-            log_likelihood_terms = self_static.compute_log_likelihood_particle(
-                predicted_particles,
-                observation,
-                params_static.lambda_r, # Get factor loadings from params
-                obs_noise_variances,    # Use passed obs_noise_variances (matches signature)
-                K_static,
-                N_static,
-            )
-            # Calculate unnormalized weights for resampling and LL contribution
-            unnormalized_log_weights = current_norm_log_weights + log_likelihood_terms
-
-            # 3. Calculate Log-Likelihood Contribution for this step
-            ll_increment = jax.scipy.special.logsumexp(unnormalized_log_weights)
-            ll_accum_next = ll_accum + ll_increment
-
-            # 4. Resample (uses self_static for threshold etc.)
-            key, particles_next, next_norm_log_weights, ess = self_static.resample_particles(
-                key, predicted_particles, unnormalized_log_weights
-            )
-
-            # --- Calculate outputs for storage ---
-            # Weighted mean estimate of state x_t (using next particles/weights)
-            weights_linear = jnp.exp(next_norm_log_weights)
-            filtered_mean = jnp.sum(particles_next * weights_linear, axis=1)
-
-            # Weighted covariance estimate of state x_t
-            diff = particles_next - filtered_mean.reshape(-1, 1) # Shape (state_dim, P)
-            # Alternative calculation using matrix multiplication:
-            # weighted_diff = diff * sqrt(weights_linear[None, :]) # Or just weights? Check derivation.
-            # Let's use the direct weighting: diff * weights
-            weighted_diff = diff * weights_linear[None, :] # Shape (state_dim, P)
-            # filtered_cov = weighted_diff @ diff.T # (state_dim, P) @ (P, state_dim) -> (state_dim, state_dim)
-            # This computes Sum_p [ w_p * diff_jp * diff_kp ] which is correct.
-            filtered_cov = weighted_diff @ diff.T
-            # Ensure symmetry (might still be needed due to precision)
-            filtered_cov = (filtered_cov + filtered_cov.T) / 2.0
-
-            # Prepare next state and outputs
-            next_scan_state = PFScanState(
-                rng_key=key,
-                particles=particles_next,
-                normalized_log_weights=next_norm_log_weights,
-                log_likelihood_accum=ll_accum_next,
-            )
-            scan_output = (filtered_mean, filtered_cov, ess)
-
-            return next_scan_state, scan_output
-        # --- End of scan_body definition ---
-
-        # --- Create the function to be scanned ---
-        # Partially apply the static arguments to scan_body and JIT the result
-        scan_step = jit(partial(
-            scan_body,
-            self, # Pass self statically
-            jax_params, # Pass params statically for this run
-            chol_Q_h, # Pass chol_Q_h statically for this run
-            obs_noise_variances, # Pass obs_noise_variances statically for this run
-            K, # Pass K statically
-            N, # Pass N statically
-        ))
-
-        # --- Run the scan ---
-        final_state, scan_outputs = jax.lax.scan(
-            scan_step, # Use the partially applied and JITted function
-            initial_scan_state,
-            obs_jax
+        # --- Call the static JITted helper function ---
+        final_state, scan_outputs = DFSVParticleFilter._jit_filter_scan_for_filter(
+            self, jax_params, obs_jax, obs_noise_variances, chol_Q_h
         )
 
         # Unpack results
         filtered_states_means, filtered_states_covs, ess_history = scan_outputs
-        final_log_likelihood = float(final_state.log_likelihood_accum)
+        # Handle potential NaN in final LL consistently with _jit_filter_scan_for_likelihood
+        final_ll_jax = final_state.log_likelihood_accum
+        final_log_likelihood = float(jnp.where(jnp.isnan(final_ll_jax), -jnp.inf, final_ll_jax))
 
         # Update instance state
         self.rng_key = final_state.rng_key # Store final key state
@@ -602,12 +652,13 @@ class DFSVParticleFilter(DFSVFilter):
         self.is_filtered = True
         self.is_smoothed = False # Reset smoothed flag
         self.last_filter_params = jax_params # Store params used for this filter run
+        self.params = jax_params # Store for smoother
 
         return self.filtered_states, self.filtered_covs, self.log_likelihood
 
 
     # --- Methods for RTS Smoothing ---
-    def _get_transition_matrix(self, state: np.ndarray) -> np.ndarray:
+    def _get_transition_matrix_np(self, params: DFSVParamsDataclass, state: np.ndarray) -> np.ndarray:
         """
         Get the linearized state transition matrix F_t (NumPy version for smoother).
 
@@ -638,7 +689,7 @@ class DFSVParticleFilter(DFSVFilter):
         F_t[K:, K:] = phi_h_np
         return F_t
 
-    def _predict_with_matrix(
+    def _predict_with_matrix_np(
         self, state: np.ndarray, cov: np.ndarray, transition_matrix: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -701,12 +752,51 @@ class DFSVParticleFilter(DFSVFilter):
         return predicted_state_mean_col, predicted_cov
 
 
-    # --- Log-Likelihood for Parameter Optimization ---
-    # NOTE: The log_likelihood_of_params and _jit_filter_scan methods below
-    #       are designed for optimization where params are passed externally.
-    #       They correctly use the passed params, not self.last_filter_params.
 
-    def log_likelihood_of_params(
+    def smooth(self, params: DFSVParamsDataclass) -> Tuple[np.ndarray, np.ndarray]:
+        """Runs the Rauch-Tung-Striebel (RTS) smoother using base implementation.
+
+        Relies on filtered_states and filtered_covs computed during the filter pass.
+
+        Returns:
+            A tuple containing:
+                - smoothed_states: Smoothed state estimates (T, state_dim) as NumPy array.
+                - smoothed_covs: Smoothed state covariances (T, state_dim, state_dim)
+                  as NumPy array.
+
+       Raises:
+           RuntimeError: If the filter has not been run yet (results are None) or
+                         if parameters from the last filter run were not stored.
+       """
+        # Check if filter results (NumPy arrays) are available
+        if not self.is_filtered or self.filtered_states is None or self.filtered_covs is None:
+            raise RuntimeError(
+                "Filter must be run successfully before smoothing."
+            )
+        # Check if parameters from the last filter run are stored (needed by _predict_with_matrix_np)
+        if self.last_filter_params is None:
+            raise RuntimeError(
+                "Parameters from the last filter run are required for smoothing but were not stored."
+            )
+        # Ensure self.params is set (should have been done by filter method)
+        if getattr(self, 'params', None) is None:
+            # This should ideally not happen if filter was run correctly
+            self.params = self.last_filter_params
+
+       # Call the base class implementation which expects NumPy arrays and now params
+        smoothed_states_np, smoothed_covs_np = super().smooth(params)
+
+        # Note: self.smoothed_states and self.smoothed_covariances are set
+        #       by the base class smoother (as NumPy arrays).
+
+        return smoothed_states_np, smoothed_covs_np
+
+        # --- Log-Likelihood for Parameter Optimization ---
+        # NOTE: The log_likelihood_of_params and _jit_filter_scan_for_likelihood methods below
+        #       are designed for optimization where params are passed externally.
+        #       They correctly use the passed params, not self.last_filter_params.
+
+    def log_likelihood_wrt_params(
         self,
         params: DFSVParamsDataclass, # Expecting JAX compatible Pytree
         observations: jnp.ndarray,
@@ -715,7 +805,7 @@ class DFSVParticleFilter(DFSVFilter):
         Calculate the log-likelihood for given parameters and observations.
 
         This method is designed for use within optimization routines (e.g., MLE).
-        It leverages a JIT-compiled static helper function (`_jit_filter_scan`)
+        It leverages a JIT-compiled static helper function (`_jit_filter_scan_for_likelihood`)
         that runs the core particle filter steps using `jax.lax.scan`.
 
         Args:
@@ -730,82 +820,109 @@ class DFSVParticleFilter(DFSVFilter):
             ValueError: If observations have incorrect shape or parameters are invalid.
         """
         # Input validation
+        # Ensure parameters use consistent internal precision (float32)
+        jax_params = self._ensure_params_are_jax(params)
         if not isinstance(params, DFSVParamsDataclass):
              raise TypeError("params must be a DFSVParamsDataclass instance.")
         if not isinstance(observations, jnp.ndarray):
              raise TypeError("observations must be a JAX array.")
-        if observations.ndim != 2 or observations.shape[1] != params.N:
-             raise ValueError(f"Observations shape {observations.shape} incompatible with N={params.N}")
+        if observations.ndim != 2 or observations.shape[1] != jax_params.N:
+             raise ValueError(f"Observations shape {observations.shape} incompatible with N={jax_params.N}")
+
+        N = jax_params.N
+        K = jax_params.K # Although K is not directly used here, N is needed for sigma2 check
+
+        # --- Prepare static parameters for scan body (moved from _jit_filter_scan_for_likelihood) ---
+        # Precompute observation noise variances (diagonal of R)
+        sigma2_curr = jax_params.sigma2
+        if sigma2_curr.ndim == 1:
+            if sigma2_curr.shape[0] != N:
+                # Invalid params -> return -inf likelihood directly
+                warnings.warn(f"sigma2 (1D) length {sigma2_curr.shape[0]} != N ({N}) in log_likelihood_of_params")
+                return -jnp.inf
+            obs_noise_variances = sigma2_curr
+        elif sigma2_curr.ndim == 2:
+            if sigma2_curr.shape != (N, N):
+                # Invalid params -> return -inf likelihood directly
+                warnings.warn(f"sigma2 (2D) shape {sigma2_curr.shape} != ({N}, {N}) in log_likelihood_of_params")
+                return -jnp.inf
+            # Assuming diagonal, extract variances
+            # Add check if it's truly diagonal? Might be slow. Let's assume diagonal for now.
+            # if not jnp.allclose(sigma2_curr, jnp.diag(jnp.diag(sigma2_curr))):
+            #     warnings.warn("sigma2 is 2D but not diagonal. Extracting diagonal.")
+            obs_noise_variances = jnp.diag(sigma2_curr)
+        else:
+            # Invalid params -> return -inf likelihood directly
+            warnings.warn(f"sigma2 has invalid shape {sigma2_curr.shape} in log_likelihood_of_params")
+            return -jnp.inf
+
+        # Precompute Cholesky of Q_h for this parameter set
+        # Add jitter for numerical stability before Cholesky
+        jitter = 1e-6 * jnp.eye(K)
+        try:
+            chol_Q_h_local = jax.scipy.linalg.cholesky(jax_params.Q_h + jitter, lower=True)
+            # Check for NaN/Inf in Cholesky result
+            if jnp.any(jnp.isnan(chol_Q_h_local)) or jnp.any(jnp.isinf(chol_Q_h_local)):
+                 warnings.warn("Cholesky decomposition of Q_h resulted in NaN/Inf in log_likelihood_of_params.")
+                 return -jnp.inf
+        except jnp.linalg.LinAlgError:
+             # If Q_h (+jitter) is not valid, return -inf likelihood
+             warnings.warn("Cholesky decomposition failed for Q_h in log_likelihood_of_params.")
+             return -jnp.inf
 
         # Use the static, jitted helper function for the core computation
         # Pass the instance (`self`) as a static argument to access methods/attributes
         # like num_particles, seed, resample_threshold_ess etc.
-        jax_log_likelihood = DFSVParticleFilter._jit_filter_scan(
-            self, params, observations
+        # Pass precomputed values as static arguments as well.
+        jax_log_likelihood = DFSVParticleFilter._jit_filter_scan_for_likelihood(
+            self, params, observations, obs_noise_variances, chol_Q_h_local
         )
 
         # Return the JAX scalar array directly, cast to float
         return float(jax_log_likelihood)
 
     @staticmethod
-    @partial(jit, static_argnums=(0,)) # JIT compile, self_static is static
-    def _jit_filter_scan(
-        self_static, # Pass the instance statically
+    # JIT compile using Equinox JIT. self_static is handled automatically.
+    @eqx.filter_jit
+    def _jit_filter_scan_for_likelihood(
+        self_static, # Pass the instance statically (handled by eqx.filter_jit)
         params: DFSVParamsDataclass,
-        observations: jnp.ndarray
+        observations: jnp.ndarray,
+        obs_noise_variances: jnp.ndarray, # Pass precomputed variances statically
+        chol_Q_h_local: jnp.ndarray      # Pass precomputed Cholesky statically
     ) -> jnp.ndarray: # Return JAX scalar
         """
         Static, JIT-compiled function to run the particle filter scan for likelihood calculation.
 
         Args:
             self_static: The DFSVParticleFilter instance (passed statically).
-            params: The specific DFSV parameters to use for this calculation.
-            observations: The observation data (T, N).
+            params: The specific DFSV parameters to use for this calculation (dynamic).
+            observations: The observation data (T, N) (dynamic).
+            obs_noise_variances: Precomputed observation noise variances (static).
+            chol_Q_h_local: Precomputed Cholesky decomposition of Q_h (static).
 
         Returns:
             Total log-likelihood as a JAX scalar array.
         """
         T = observations.shape[0]
-        N = params.N
+        N = params.N # Still need N and K from dynamic params for dimensions
         K = params.K
 
-        # --- Prepare static parameters for scan body ---
-        # Precompute observation noise variances (diagonal of R)
-        sigma2_curr = params.sigma2
-        if sigma2_curr.ndim == 1:
-            if sigma2_curr.shape[0] != N:
-                # This check might be redundant if params validation is done elsewhere,
-                # but kept for safety within the JITted function context.
-                return jnp.array(-jnp.inf) # Invalid params -> low likelihood
-            obs_noise_variances = sigma2_curr
-        elif sigma2_curr.ndim == 2:
-            if sigma2_curr.shape != (N, N):
-                return jnp.array(-jnp.inf) # Invalid params
-            # Assuming diagonal, extract variances
-            obs_noise_variances = jnp.diag(sigma2_curr)
-            # Optional: Add check if it's truly diagonal? Might be slow inside JIT.
-        else:
-            return jnp.array(-jnp.inf) # Invalid params
-
-        # Precompute Cholesky of Q_h for this parameter set
-        try:
-            chol_Q_h_local = jax.scipy.linalg.cholesky(params.Q_h, lower=True)
-        except jnp.linalg.LinAlgError:
-             # If Q_h is not valid for these params, return -inf likelihood
-             return jnp.array(-jnp.inf)
+        # --- obs_noise_variances and chol_Q_h_local are now passed as static args ---
+        # --- No need to compute them here ---
 
 
         # --- Initialize state for scan ---
         # Use instance's methods but with the provided `params` and a fresh key from seed
         rng_key = jax.random.PRNGKey(self_static.seed)
-        init_rng_key, init_particles, init_log_weights = self_static.initialize_particles(
+        init_rng_key, init_particles, init_log_weights = self_static._initialize_particles(
             params, rng_key # Use input params here
         )
         initial_scan_state = PFScanState(
             rng_key=init_rng_key,
             particles=init_particles,
             normalized_log_weights=init_log_weights,
-            log_likelihood_accum=0.0,
+            log_likelihood_accum=jnp.array(0.0, dtype=jnp.float32), # Use float32 accumulator
         )
 
         # --- Define the scan body function (similar to filter, but uses input params) ---
@@ -814,21 +931,10 @@ class DFSVParticleFilter(DFSVFilter):
             key, current_particles, current_norm_log_weights, ll_accum = state
             observation = obs_t.reshape(-1, 1)
 
-            # 1. Predict (using input params and local chol_Q_h)
-            key, key_h, key_f = jax.random.split(key, 3)
-            factors_t = current_particles[:K, :]
-            log_vols_t = current_particles[K:, :]
-            mu_col = params.mu.reshape(-1, 1)
-            h_deviation = log_vols_t - mu_col
-            h_mean_pred = mu_col + params.Phi_h @ h_deviation
-            noise_h = chol_Q_h_local @ jax.random.normal(key_h, shape=(K, self_static.num_particles))
-            log_vols_tp1 = h_mean_pred + noise_h
-            f_mean_pred = params.Phi_f @ factors_t
-            std_noise_f = jax.random.normal(key_f, shape=(K, self_static.num_particles))
-            vol_scale = jnp.exp(log_vols_tp1 / 2.0)
-            noise_f = vol_scale * std_noise_f
-            factors_tp1 = f_mean_pred + noise_f
-            predicted_particles = jnp.vstack([factors_tp1, log_vols_tp1])
+            # 1. Predict (Call the unified predict_particles method)
+            key, predicted_particles = self_static.predict_particles(
+                key, current_particles, params, chol_Q_h_local
+            )
             # End Predict
 
             # 2. Weight (using input params and precomputed obs_noise_variances)
@@ -851,19 +957,31 @@ class DFSVParticleFilter(DFSVFilter):
             # End LL Increment
 
             # 4. Resample (using instance's resample method)
-            key, particles_next, next_norm_log_weights, _ = self_static.resample_particles(
+            key, particles_next, next_norm_log_weights, ess = self_static.resample_particles( # Capture ess
                 key, predicted_particles, unnormalized_log_weights
             )
             # End Resample
 
+            # --- Add mean/covariance calculations to match filter's scan_body ---
+            # Weighted mean estimate of state x_t (using next particles/weights)
+            weights_linear = jnp.exp(next_norm_log_weights)
+            filtered_mean = jnp.sum(particles_next * weights_linear, axis=1)
+
+            # Weighted covariance estimate of state x_t
+            diff = particles_next - filtered_mean.reshape(-1, 1) # Shape (state_dim, P)
+            weighted_diff = diff * weights_linear[None, :] # Shape (state_dim, P)
+            filtered_cov = weighted_diff @ diff.T # (state_dim, P) @ (P, state_dim) -> (state_dim, state_dim)
+            filtered_cov = (filtered_cov + filtered_cov.T) / 2.0 # Ensure symmetry
+            # --- End added calculations ---
             next_scan_state = PFScanState(
                 rng_key=key,
                 particles=particles_next,
                 normalized_log_weights=next_norm_log_weights,
                 log_likelihood_accum=ll_accum_next,
             )
-            # We only need the final likelihood, so output is None
-            return next_scan_state, None
+            # Return same structure as filter's scan_body for JIT consistency
+            scan_output = (filtered_mean, filtered_cov, ess) # Now use captured ess
+            return next_scan_state, scan_output
 
         # --- Run the scan ---
         final_state, _ = jax.lax.scan(
@@ -874,6 +992,17 @@ class DFSVParticleFilter(DFSVFilter):
         # Handle case where accumulation resulted in NaN (e.g., from -inf + inf)
         final_ll = final_state.log_likelihood_accum
         return jnp.where(jnp.isnan(final_ll), -jnp.inf, final_ll)
+
+
+    def jit_log_likelihood_wrt_params(self) -> Callable:
+        """Returns a JIT-compiled function to compute the log-likelihood.
+
+        Returns:
+            A JIT-compiled function `likelihood_fn(params, observations)`.
+        """
+        # Return the static JITted helper function
+        # Note: self is passed statically via eqx.filter_jit on the helper
+        return DFSVParticleFilter._jit_filter_scan_for_likelihood # Corrected name
 
     # --- Getters for Filtered/Smoothed Results ---
     # These should work as they read from stored results (self.filtered_states etc.)
