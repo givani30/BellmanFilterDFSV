@@ -5,12 +5,12 @@
         "runnables": [
           {
             "container": {
-              "imageUri": "europe-west4-docker.pkg.dev/dsfvbellmanfilter/sim-repo/dfsv-sim:v1.0",
+              "imageUri": "europe-west4-docker.pkg.dev/dsfvbellmanfilter/sim-repo/dfsv-sim:v1.2",
               "entrypoint": "",
               "commands": [
                 "bash",
                 "-c",
-                "python3 scripts/run_config_batch.py --N \"$N\" --K \"$K\" --T \"$T\" --filter_type \"$FILTER_TYPE\" --num_particles \"$NUM_PARTICLES\" --num_reps \"$NUM_REPS\" --base_results_dir \"gs://dsfv-simulation-results-bucket/batch_study_main_20250402_052041\" --study_name \"batch_study_main_20250402_052041\" --save_format \"$SAVE_FORMAT\""
+                "python3 scripts/run_config_batch.py --N \"$N\" --K \"$K\" --T \"$T\" --filter_type \"$FILTER_TYPE\" --num_particles \"$NUM_PARTICLES\" --num_reps \"$NUM_REPS\" --base_results_dir \"gs://dsfv-simulation-results-bucket/batch_study_bif_20250604_050520\" --study_name \"batch_study_bif_20250604_050520\" --save_format \"$SAVE_FORMAT\""
               ]
             }
           }
@@ -23,8 +23,8 @@
           "variables": {
             "T": "1500",
             "NUM_REPS": "100",
-            "BASE_RESULTS_DIR": "gs://dsfv-simulation-results-bucket/batch_study_main_20250402_052041",
-            "STUDY_NAME": "batch_study_main_20250402_052041",
+            "BASE_RESULTS_DIR": "gs://dsfv-simulation-results-bucket/batch_study_bif_20250604_050520",
+            "STUDY_NAME": "batch_study_bif_20250604_050520",
             "SAVE_FORMAT": "npz"
           }
         },
@@ -34,33 +34,33 @@
       "taskCount": "27",
       "parallelism": 10,
       "taskEnvironments": [
-        {"variables": {"N": "5", "K": "2", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "5", "K": "3", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "5", "K": "5", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "10", "K": "2", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "10", "K": "3", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "10", "K": "5", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "10", "K": "10", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "20", "K": "2", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "20", "K": "3", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "20", "K": "5", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "20", "K": "10", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "20", "K": "15", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "50", "K": "2", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "50", "K": "3", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "50", "K": "5", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "50", "K": "10", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "50", "K": "15", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "100", "K": "2", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "100", "K": "3", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "100", "K": "5", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "100", "K": "10", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "100", "K": "15", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "150", "K": "2", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "150", "K": "3", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "150", "K": "5", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "150", "K": "10", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}},
-        {"variables": {"N": "150", "K": "15", "FILTER_TYPE": "BF", "NUM_PARTICLES": "0"}}
+        {"variables": {"N": "5", "K": "2", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "5", "K": "3", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "5", "K": "5", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "10", "K": "2", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "10", "K": "3", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "10", "K": "5", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "10", "K": "10", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "20", "K": "2", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "20", "K": "3", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "20", "K": "5", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "20", "K": "10", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "20", "K": "15", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "50", "K": "2", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "50", "K": "3", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "50", "K": "5", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "50", "K": "10", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "50", "K": "15", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "100", "K": "2", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "100", "K": "3", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "100", "K": "5", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "100", "K": "10", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "100", "K": "15", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "150", "K": "2", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "150", "K": "3", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "150", "K": "5", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "150", "K": "10", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}},
+        {"variables": {"N": "150", "K": "15", "FILTER_TYPE": "BIF", "NUM_PARTICLES": "0"}}
       ]
     }
   ],
@@ -68,7 +68,7 @@
     "instances": [
       {
         "policy": {
-          "machineType": "c2-standard-4",
+          "machineType": "e2-standard-4",
           "provisioningModel": "STANDARD"
         }
       }
@@ -79,7 +79,7 @@
   },
   "labels": {
     "study": "dfsv-simulation",
-    "filter": "bf",
+    "filter": "bif",
     "env": "production"
   },
   "logsPolicy": {

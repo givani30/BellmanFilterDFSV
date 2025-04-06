@@ -62,5 +62,8 @@ memory-bank/systemPatterns.md
 simulation_results_raw_memtest/*
 simulation_data/*
 test_batch_results/*
-2008.11477v16.pdf
+
+# Thesis related files
 QF_Thesis_Proposal_GBoekestijn.pdf
+2008.11477v16.pdf
+batch_job_bf_processed.json
