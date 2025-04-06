@@ -24,6 +24,8 @@ This file provides a high-level overview of the project and the expected product
 *   **Core Components:**
     *   `core/`: Contains the main filtering logic.
         *   `filters/`: Implements different state estimation algorithms (Bellman, Particle) inheriting from a base class (`base.py`). Mathematical details are often separated into internal modules (e.g., `_bellman_impl.py`).
+
+        *   **API Consistency:** Filter classes now adhere to a more consistent API defined by the base class (`DFSVFilter`), including standardized methods for initialization, filtering, smoothing, and likelihood calculation (`log_likelihood_wrt_params`, `jit_log_likelihood_wrt_params`).
         *   `likelihood.py`: Handles likelihood calculations.
         *   `simulation.py`: Provides simulation capabilities.
     *   `models/`: Defines the model structure, primarily the Dynamic Factor Stochastic Volatility (DFSV) model parameters using a JAX-compatible dataclass (`dfsv.py`).
@@ -51,11 +53,27 @@ This file provides a high-level overview of the project and the expected product
     *   `Q_h`: Log-volatility process noise covariance (K x K, positive-definite)
 
 **Observation Equation:**
-*   `r_t = Λ f_t + ε_t` (Eq. 3.1)
-*   `ε_t ∼ N(0, Σ_ε)` where `Σ_ε = diag(e^{h^{(id)}_{1,t}}, ..., e^{h^{(id)}_{N,t}})` (Eq. 3.2, 3.4)
-    *   `r_t`: Observations (N-dimensional vector)
-    *   `Λ`: Factor loadings (N x K)
-    *   `ε_t`: Idiosyncratic errors. Baseline assumes fixed idiosyncratic log-volatilities `h^{(id)}_{i,t} = h^{(id)}_{i}` over time.
+
+* `r_t = Λ f_t + ε_t` (Eq. 3.1)
+    * `r_t`: Observations (N-dimensional vector)
+    * `Λ`: Factor loadings (N x K matrix, parameter `lambda_r`)
+    * `f_t`: Latent factors (K-dimensional vector)
+    * `ε_t`: Idiosyncratic errors, assumed `ε_t ∼ N(0, Σ_ε)`.
+
+* **Idiosyncratic Error Covariance `Σ_ε`:**
+    * `Σ_ε = diag(sigma2)` represents the covariance of the idiosyncratic errors. In the current implementation, this component is assumed constant over time and its diagonal elements are parameters contained in `sigma2`.
+
+* **Effective Conditional Distribution `p(r_t | α_t)`:**
+    * Given the full state `α_t = [f_t', h_t']'`, the filter's likelihood calculations (e.g., `log_posterior_impl` [cite: 18]) operate based on the effective conditional distribution for the observation `r_t`, which is Gaussian:
+        `r_t | f_t, h_t ∼ N(Λ f_t, A_t)`
+
+* **Effective Observation Covariance `A_t`:**
+    * The effective covariance matrix `A_t` used in the likelihood calculation incorporates variance from both the stochastic factors (dependent on `h_t`) and the idiosyncratic noise:
+        `A_t = Λ Var(f_t | h_t) Λ^T + Σ_ε`
+    * As implemented in `build_covariance_impl`[cite: 18], this covariance is calculated using the current log-volatility state `h_t` as:
+        `A_t = Λ diag(exp(h_t)) Λ^T + Σ_ε`
+    * **Key Point:** Because `A_t` includes the `exp(h_t)` term, the conditional distribution of `r_t` used within the filter *does* depend on the state `h_t` through this effective covariance[cite: 18]. This means the observation `r_t` provides information relevant for estimating `h_t` within the filter's update step.
+
 
 ### Estimation Approach
 
@@ -83,7 +101,11 @@ The optimization process targets the pseudo log-likelihood derived from the Bell
     *   Multi-modality (multiple local optima).
     *   Flat regions or sharp ridges, potentially hindering optimizer convergence.
     *   Numerical stability issues, addressed through techniques like `jnp.nan_to_num` and parameter transformations.
+**Known Issues with BIF Pseudo-Likelihood Estimation:**
 
+* **Bias in `mu` Estimation:** Extensive testing revealed that maximizing the BIF pseudo-likelihood (Eq. 40 in Lange, 2024 [cite: 1]) based on the implemented likelihood (`log_posterior_impl` using the `h_t`-dependent covariance `A_t` [cite: 18]) leads to significantly biased estimates for the long-run mean log-volatility parameter `mu`. The bias appears systematic, pushing `mu` towards overly large positive values, likely due to inaccuracies in the KL-penalty approximation term (`bif_likelihood_penalty_impl` [cite: 18]) with respect to `mu`.
+* **Numerical Instability in Information Update:** Calculating the Observed Fisher Information (negative Hessian) based on this implemented likelihood resulted in matrices that were not always positive semi-definite. This required numerical regularization (e.g., eigenvalue clipping) within the BIF update step (`__update_jax_info` [cite: 21]) to ensure filter stability.
+* **Current Recommendations:** Given these findings, accurate estimation within the BIF framework might necessitate using strong, informative priors specifically for `mu` to counteract the likelihood bias. Alternatively, exploring likelihood approximations from other methods like Particle Filters may be needed for less biased estimation, albeit at higher computational cost.
 
 ---
 **Update Log:**
@@ -91,5 +113,7 @@ The optimization process targets the pseudo log-likelihood derived from the Bell
 *   [2025-04-01 01:06:28] - Initial Memory Bank setup.
 *   [2025-04-01 01:12:01] - Added initial architecture summary based on `src/` directory analysis.
 *   [2025-04-01 01:13:06] - Added mathematical specification of the DFSV model under Overall Architecture based on simulation code.
+
+*   [2025-06-04 01:26:00] - Added note about standardized filter API consistency to Overall Architecture.
 *   [2025-04-01 02:47:00] - Added Model Specification and Estimation Approach details from Thesis Proposal & Lange (2024).
 *   [2025-04-01 21:57:48] - Consolidated architecture description, model specification, and moved log entries to footnotes during Memory Bank cleanup.

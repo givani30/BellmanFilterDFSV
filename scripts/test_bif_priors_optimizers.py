@@ -22,6 +22,7 @@ from functools import partial
 from collections import namedtuple
 from typing import Dict, Any, Optional
 import dataclasses # Added import
+import equinox as eqx # Added for tree_at
 
 # Project specific imports
 from bellman_filter_dfsv.core.filters.bellman_information import DFSVBellmanInformationFilter
@@ -36,31 +37,51 @@ jax.config.update("jax_enable_x64", True)
 
 # --- Model and Data Generation (Simplified from bf_optimization.py) ---
 
-def create_simple_model(N=3, K=1):
+def create_simple_model(N=3, K=1): # Default to K=1 for this experiment
     """Create a simple DFSV model."""
     # Factor loadings
-    np.random.seed(42)
-    lambda_r = np.array([[0.9], [0.6], [0.3]]) if K == 1 else np.random.randn(N, K) * 0.5 + 0.5
-    # Factor persistence
-    Phi_f = np.array([[0.95]]) if K == 1 else np.diag(np.random.uniform(0.8, 0.98, K))
-    # Log-volatility persistence
-    Phi_h = np.array([[0.98]]) if K == 1 else np.diag(np.random.uniform(0.9, 0.99, K))
-    # Long-run mean for log-volatilities
-    mu = np.array([-1.0]) if K == 1 else np.random.randn(K) * 0.5 - 1.0
+    np.random.seed(42) # Keep seed for reproducibility
+    # Generate K=1 parameters
+    lambda_r_init = np.random.randn(N, K) * 0.5 + 0.5 # Generate initial random matrix (N x 1)
+    # Apply lower-triangular constraint with diagonal fixed to 1 (for K=1, this means lambda_r[0,0] = 1)
+    lambda_r = jnp.tril(lambda_r_init)
+    diag_indices = jnp.diag_indices(n=min(N, K), ndim=2) # n=1
+    lambda_r = lambda_r.at[diag_indices].set(1.0) # Sets lambda_r[0,0] to 1.0
+    # Factor persistence (K=1 -> scalar)
+    Phi_f = np.diag(np.random.uniform(0.8, 0.98, K)) # K=1 -> [[value]]
+    # Log-volatility persistence (K=1 -> scalar)
+    Phi_h = np.diag(np.random.uniform(0.9, 0.99, K)) # K=1 -> [[value]]
+    # Long-run mean for log-volatilities (K=1 -> scalar)
+    mu = np.array([-1.0]) # Fix to true value for K=1
     # Idiosyncratic variance (diagonal)
     sigma2 = np.random.uniform(0.05, 0.1, N)
-    # Log-volatility noise covariance
-    Q_h = np.array([[0.1]]) if K == 1 else np.diag(np.random.uniform(0.1, 0.3, K))
+    # Log-volatility noise covariance (K=1 -> scalar)
+    Q_h = np.diag(np.random.uniform(0.1, 0.3, K)) # K=1 -> [[value]]
 
     params = DFSVParamsDataclass(
         N=N, K=K, lambda_r=lambda_r, Phi_f=Phi_f, Phi_h=Phi_h, mu=mu, sigma2=sigma2, Q_h=Q_h
     )
+    # Ensure constraint is applied correctly after creation
+    params = apply_identification_constraint(params)
     return params
 
 def create_training_data(params, T=1000, seed=42):
     """Generate simulated data for training."""
     returns, _, _ = simulate_DFSV(params, T=T, seed=seed)
     return jnp.asarray(returns) # Return as JAX array
+
+
+# --- Constraint Helper Function (Copied from test_bif_identifiability_fix.py) ---
+
+def apply_identification_constraint(params: DFSVParamsDataclass) -> DFSVParamsDataclass:
+    """Applies lower-triangular constraint with diagonal fixed to 1 to lambda_r."""
+    # Apply lower-triangular constraint first
+    constrained_lambda_r = jnp.tril(params.lambda_r)
+    # Set diagonal elements to 1.0
+    diag_indices = jnp.diag_indices(n=min(params.N, params.K), ndim=2)
+    constrained_lambda_r = constrained_lambda_r.at[diag_indices].set(1.0)
+    return params.replace(lambda_r=constrained_lambda_r)
+
 
 # --- Objective Functions (Now imported from core.likelihood) ---
 
@@ -76,251 +97,192 @@ OptimizerResult = namedtuple("OptimizerResult", [
     "time_taken",
     "error_message",
     "final_params" # Added field for estimated parameters
-])
+ ])
 
-def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, max_steps: int = 100):
+def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, true_lambda_r: jnp.ndarray, prior_mu_mean: jnp.ndarray, prior_mu_var: jnp.ndarray, max_steps: int = 500):
     """
-    Runs the optimizer and prior comparison study.
-
-    Args:
-        true_params: The true parameters used for simulation (for N, K reference).
-        returns: The simulated observation data.
-        max_steps: Maximum iterations for each optimizer run.
-
-    Returns:
-        List[OptimizerResult]: A list containing results for each optimizer/prior run.
+    Runs the optimization with a strong prior on mu and fixed lambda_r (K=1).
     """
     N, K = true_params.N, true_params.K
+    assert K == 1, "This function is configured for K=1"
     filter_instance = DFSVBellmanInformationFilter(N, K)
     results = []
 
     # Define Optimizers to Compare
     rtol = 1e-3
     atol = 1e-5
-    learning_rate = 1e-1 # Example LR for Optax optimizers
-    #Scheduler to use
+    # Scheduler to use
     initial_lr=1e-2
     peak_lr=1e-1
     end_lr=1e-6
-    scheduler=optax.warmup_cosine_decay_schedule(init_value=initial_lr, peak_value=peak_lr, end_value=end_lr, warmup_steps=20, decay_steps=500)
-    #Optax wrapper for the optimizer to ensure robustness for NaN's and picking the best parameters
-    # opt_wrapper=optax.chain(optax.apply_if_finite())
+    # Adjust decay steps based on max_steps
+    scheduler=optax.warmup_cosine_decay_schedule(init_value=initial_lr, peak_value=peak_lr, end_value=end_lr, warmup_steps=int(max_steps*0.1), decay_steps=max_steps)
     optimizers_to_test = {
-        # "BFGS": optx.BFGS(rtol=rtol, atol=atol, verbose=frozenset({"loss"})),
-        # "NonlinearCG": optx.NonlinearCG(rtol=rtol, atol=atol),
-        # "SGD": optx.OptaxMinimiser(optax.sgd(learning_rate=scheduler), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
-        # "Adam": optx.OptaxMinimiser(optax.adam(learning_rate=learning_rate), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
-        # "radam":optx.OptaxMinimiser(optax.apply_if_finite(optax.radam(learning_rate=scheduler),10), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
-        "adabelief":optx.OptaxMinimiser(optax.apply_if_finite(optax.adabelief(learning_rate=scheduler),10), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
+        # Only run AdamW for this specific analysis
         "AdamW": optx.OptaxMinimiser(optax.apply_if_finite(optax.adamw(learning_rate=scheduler),10), rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"})),
     }
 
-    # Define Prior Configurations to Test
-    # Defined inside run_comparison to access K
-    # Format matches the arguments of log_prior_density in likelihood.py
-    prior_configurations = {
-        "No Priors": None,
-        
-        #Not used for now
-        # "Sigma2_Qh_Priors": {
-        #     "prior_sigma2_alpha": 3.0,
-        #     "prior_sigma2_beta": 0.1,
-        #     "prior_q_h_alpha": 3.0,
-        #     "prior_q_h_beta": 0.05,
-        # },
-        # "InvGamma_sigma2": {
-        #     "prior_sigma2_alpha": 3.0,
-        #     "prior_sigma2_beta": 0.1
-        # },
-        "Full_Priors": {
-            # Mu Prior (Normal)
-            "prior_mu_mean": jnp.zeros(K), # Use K here
-            "prior_mu_var": jnp.ones(K),   # Variance, not stddev
-            # Phi_h Prior (Normal - Diagonal only for simplicity here)
-            # Note: log_prior_density expects means/vars for all elements.
-            # This simplified prior only sets diagonal elements implicitly via log_prior_density logic.
-            "prior_phi_h_diag_mean": 0.9, # Mean for diagonals
-            "prior_phi_h_mean": 0.0,      # Mean for off-diagonals (default in log_prior_density)
-            "prior_phi_h_var": 0.1**2,    # Variance (stddev^2)
-            # Phi_f Prior (Normal - Diagonal only for simplicity here)
-            "prior_phi_f_diag_mean": 0.9, # Mean for diagonals
-            "prior_phi_f_mean": 0.0,      # Mean for off-diagonals (default in log_prior_density)
-            "prior_phi_f_var": 0.1**2,    # Variance (stddev^2)
-            # Sigma2 Prior (Inverse Gamma)
-            "prior_sigma2_alpha": 3.0,
-            "prior_sigma2_beta": 0.1,
-            # Q_h Prior (Inverse Gamma - Diagonal)
-            "prior_q_h_alpha": 3.0,
-            "prior_q_h_beta": 0.05,
-            # Note: Priors for lambda_r, Phi_f, could be added here following the
-            # naming convention: prior_<param_name>_<hyperparam_name>
-        }
-    }
+    # --- Strong Mu Prior + Fixed Lambda Configuration ---
+    config_name = f"Strong Mu Prior (mean={prior_mu_mean}, var={prior_mu_var}) + Fixed Lambda_f"
+    # Correctly format priors_dict for bellman_objective
+    priors_dict = {'prior_mu_mean': prior_mu_mean, 'prior_mu_var': prior_mu_var}
+    # --- End Configuration ---
 
-
-    # Create uninformed initial parameters
+    # Create uninformed initial parameters (K=1)
     data_variance = jnp.var(returns, axis=0)
     uninformed_params = DFSVParamsDataclass(
         N=N, K=K,
-        lambda_r=0.5 * jnp.ones((N, K)),
+        # Initial guess for lambda_r (will be fixed, but needs correct shape and constraint)
+        lambda_r=jnp.ones((N, K)).at[0,0].set(1.0), # Start with constrained guess
         Phi_f=0.8 * jnp.eye(K),
         Phi_h=0.8 * jnp.eye(K),
-        mu=jnp.zeros(K),
+        mu=jnp.zeros(K), # Start mu at 0
         sigma2=0.5 * data_variance,
         Q_h=0.2 * jnp.eye(K)
     )
-    uninformed_params = filter_instance._process_params(uninformed_params) # Ensure JAX arrays
+    # Apply constraint to initial guess (important for transformation)
+    uninformed_params_constrained = apply_identification_constraint(uninformed_params)
+    uninformed_params_constrained = filter_instance._process_params(uninformed_params_constrained) # Ensure JAX arrays
 
-    # Loop through priors, optimizers, and transformation settings
-    for prior_name, priors_dict in prior_configurations.items():
-        for name, solver in optimizers_to_test.items():
-            for use_transform in [True]: # Only run transformed version
-                print(f"\n--- Running: Prior='{prior_name}' | Optimizer='{name}' | Transform={'Yes' if use_transform else 'No'} ---")
+    # Loop through optimizers (only AdamW defined above)
+    for name, solver in optimizers_to_test.items():
+        # Use transformations, objective fixes lambda_r and applies prior to mu
+        use_transform = True
+        print(f"\n--- Running: Config='{config_name}' | Optimizer='{name}' | Transform=Yes ---")
 
-                if use_transform:
-                    initial_y = transform_params(uninformed_params)
-                    # Define wrapper for transformed objective
-                    def transformed_objective_wrapper(t_params, args_tuple):
-                        obs, filt, priors = args_tuple # Unpack static args including priors
-                        # Use imported function name
-                        loss = transformed_bellman_objective(t_params, obs, filt, priors)
-                        return loss
-                    fn_to_minimize = transformed_objective_wrapper
-                    # Use imported function name for final loss calculation
-                    objective_fn_for_loss_calc = bellman_objective
-                else:
-                    initial_y = uninformed_params
-                    # Define wrapper for non-transformed objective
-                    def objective_wrapper(params, args_tuple):
-                        obs, filt, priors = args_tuple # Unpack static args including priors
-                        # Use imported function name
-                        loss = bellman_objective(params, obs, filt, priors)
-                        return loss
-                    fn_to_minimize = objective_wrapper
-                    # Use imported function name for final loss calculation
-                    objective_fn_for_loss_calc = bellman_objective
+        # Transform the constrained initial guess
+        initial_y = transform_params(uninformed_params_constrained)
 
-                # Package static arguments, now including priors
-                static_args = (returns, filter_instance, priors_dict)
+        # Define wrapper for objective with fixed lambda_r and strong mu prior
+        @eqx.filter_jit
+        def fixed_lambda_strong_mu_objective_wrapper(t_params, args_tuple):
+            obs, filt, fixed_lambda_r_val, priors_val = args_tuple # Unpack static args
+            # 1. Untransform parameters being optimized
+            params_iter = untransform_params(t_params)
+            # 2. Fix lambda_r to its true value
+            params_fixed_lambda = eqx.tree_at(lambda p: p.lambda_r, params_iter, fixed_lambda_r_val)
+            # 3. Apply identification constraint (ensures fixed lambda has correct structure)
+            params_fixed_constrained = apply_identification_constraint(params_fixed_lambda)
+            # 4. Calculate loss using the original objective with fixed lambda and priors
+            loss = bellman_objective(params_fixed_constrained, obs, filt, priors=priors_val)
+            return loss
 
-                start_time = time.time()
-                final_loss = jnp.inf
-                num_steps = -1
-                success = False
+        fn_to_minimize = fixed_lambda_strong_mu_objective_wrapper
+
+        # Package static arguments: observations, filter, fixed lambda_r, priors dict
+        static_args = (returns, filter_instance, true_lambda_r, priors_dict)
+
+        start_time = time.time()
+        final_loss = jnp.inf
+        num_steps = -1
+        success = False
+        error_msg = "N/A"
+        final_params_untransformed = None
+
+        # --- Calculate Initial Objective ---
+        initial_loss = jnp.inf
+        try:
+            print("Calculating initial objective...")
+            initial_loss = fn_to_minimize(initial_y, static_args)
+            if not jnp.isfinite(initial_loss):
+                 raise ValueError(f"Initial objective is non-finite: {initial_loss}")
+            print(f"Initial Objective Loss: {initial_loss:.4f}")
+        except Exception as init_e:
+            print(f"ERROR during initial objective calculation: {init_e}")
+            error_msg = f"Initial obj failed: {init_e}"
+            results.append(OptimizerResult(
+                optimizer_name=name, uses_transformations=use_transform, prior_config_name=config_name,
+                success=False, final_loss=float(initial_loss), steps=-1, time_taken=0, error_message=error_msg, final_params=None
+            ))
+            continue # Skip to the next run
+        # --- End Initial Calculation ---
+
+        try:
+            # Run the minimization
+            sol = optx.minimise(
+                fn=fn_to_minimize,
+                solver=solver,
+                y0=initial_y,
+                args=static_args, # Pass static args here
+                max_steps=max_steps,
+                throw=False # Don't raise errors, check sol.result
+            )
+
+            end_time = time.time()
+            time_taken = end_time - start_time
+            num_steps = sol.stats.get('num_steps', -1) # Get steps if available
+
+            # Check solver success first
+            solver_success = (sol.result == optx.RESULTS.successful)
+
+            # --- Final Loss Calculation (Attempt even if solver failed) ---
+            final_loss_recalculated = jnp.inf
+            final_params_untransformed = None # Initialize here
+            validation_exception = None
+            try:
+                # Get final parameters (untransformed) and fix lambda_r
+                final_t_params = sol.value # Final transformed params
+                # 1. Untransform first
+                final_params_untransformed_temp = untransform_params(final_t_params)
+                # 2. Fix lambda_r to its true value in the final untransformed parameters
+                final_params_fixed_lambda = eqx.tree_at(lambda p: p.lambda_r, final_params_untransformed_temp, true_lambda_r)
+                # 3. Apply constraint to ensure final structure is correct
+                final_params_untransformed = apply_identification_constraint(final_params_fixed_lambda) # Final params with fixed lambda
+
+                # Recalculate loss using the non-transformed objective function with the *fixed* final parameters and priors
+                final_loss_recalculated = bellman_objective(final_params_untransformed, returns, filter_instance, priors=priors_dict)
+                if not jnp.isfinite(final_loss_recalculated):
+                     # Raise an exception if the calculated loss is not finite
+                     raise ValueError(f"Recalculated loss is non-finite: {final_loss_recalculated}")
+            except Exception as val_e:
+                validation_exception = val_e
+                final_loss_recalculated = jnp.inf # Ensure loss is Inf if calculation failed
+                print(f"Exception during final loss calculation: {validation_exception}")
+            # --- End Final Loss Calculation ---
+
+            # Determine success based *only* on solver status
+            success = solver_success # Overall success is just solver success
+
+            # Assign final loss based on recalculation result
+            if validation_exception is None and jnp.isfinite(final_loss_recalculated):
+                 final_loss = final_loss_recalculated # Use recalculated loss if valid
+            else:
+                 final_loss = jnp.inf # Otherwise, report Inf
+
+            # Determine error message based on solver status and validation status
+            if success:
                 error_msg = "N/A"
-                final_params_untransformed = None
+                print(f"Success! Final Loss: {final_loss:.4f}, Steps: {num_steps}, Time: {time_taken:.2f}s")
+            else:
+                # Solver failed, report solver error
+                error_msg = f"Solver failed: {sol.result}"
+                # Add note if final loss calculation also failed
+                if validation_exception is not None:
+                    error_msg += f"; Final loss calc failed: {validation_exception}"
+                elif not jnp.isfinite(final_loss_recalculated):
+                     error_msg += f"; Final loss non-finite: {final_loss_recalculated}"
+                print(f"Failed! Status: {error_msg}, Final Loss: {final_loss:.4f}, Steps: {num_steps}, Time: {time_taken:.2f}s") # Print final_loss (potentially Inf)
 
-                # --- Calculate Initial Objective and Gradient ---
-                initial_loss = jnp.inf
-                initial_grad = None
-                try:
-                    print("Calculating initial objective...")
-                    initial_loss = fn_to_minimize(initial_y, static_args)
-                    if not jnp.isfinite(initial_loss):
-                         raise ValueError(f"Initial objective is non-finite: {initial_loss}")
-                    print(f"Initial Objective Loss: {initial_loss:.4f}")
+        except Exception as e: # Catch exceptions during the main optx.minimise call
+            end_time = time.time()
+            time_taken = end_time - start_time
+            success = False
+            error_msg = f"Exception during minimize: {str(e)}"
+            final_loss = jnp.inf # Assign Inf on exception
+            print(f"Exception! Error: {e}, Time: {time_taken:.2f}s")
 
-                    print("Calculating initial gradient...")
-                    grad_fn = jax.grad(fn_to_minimize, argnums=0)
-                    initial_grad = grad_fn(initial_y, static_args)
-
-                    # Check if gradient is finite
-                    grad_leaves = jax.tree_util.tree_leaves(initial_grad)
-                    is_grad_finite = jnp.all(jnp.array([jnp.all(jnp.isfinite(leaf)) for leaf in grad_leaves]))
-                    if not is_grad_finite:
-                        raise ValueError("Initial gradient contains non-finite values.")
-                    print(f"Initial Gradient Finite: {is_grad_finite}")
-                    print("Initial gradient calculated.")
-
-                except Exception as init_e:
-                    print(f"ERROR during initial objective/gradient calculation: {init_e}")
-                    error_msg = f"Initial obj/grad failed: {init_e}"
-                    results.append(OptimizerResult(
-                        optimizer_name=name, uses_transformations=use_transform, prior_config_name=prior_name,
-                        success=False, final_loss=float(initial_loss), steps=-1, time_taken=0, error_message=error_msg
-                    ))
-                    continue # Skip to the next run
-                # --- End Initial Calculation ---
-
-                try:
-                    # Run the minimization
-                    sol = optx.minimise(
-                        fn=fn_to_minimize,
-                        solver=solver,
-                        y0=initial_y,
-                        args=static_args, # Pass static args here
-                        max_steps=max_steps,
-                        throw=False # Don't raise errors, check sol.result
-                    )
-
-                    end_time = time.time()
-                    time_taken = end_time - start_time
-                    num_steps = sol.stats.get('num_steps', -1) # Get steps if available
-
-                    # Check solver success first
-                    solver_success = (sol.result == optx.RESULTS.successful)
-
-                    # --- Final Loss Calculation (Attempt even if solver failed) ---
-                    final_loss_recalculated = jnp.inf
-                    final_params_untransformed = None
-                    validation_exception = None
-                    try:
-                        # Get final parameters (untransformed) - use sol.value which holds the final state
-                        final_params_untransformed = untransform_params(sol.value) if use_transform else sol.value
-                        # Recalculate loss using the non-transformed objective function
-                        final_loss_recalculated = objective_fn_for_loss_calc(final_params_untransformed, returns, filter_instance, priors_dict)
-                        if not jnp.isfinite(final_loss_recalculated):
-                             # Raise an exception if the calculated loss is not finite
-                             raise ValueError(f"Recalculated loss is non-finite: {final_loss_recalculated}")
-                    except Exception as val_e:
-                        validation_exception = val_e
-                        final_loss_recalculated = jnp.inf # Ensure loss is Inf if calculation failed
-                        print(f"Exception during final loss calculation: {validation_exception}")
-                    # --- End Final Loss Calculation ---
-
-                    # Determine success based *only* on solver status
-                    success = solver_success # Overall success is just solver success
-
-                    # Assign final loss based on recalculation result
-                    if validation_exception is None and jnp.isfinite(final_loss_recalculated):
-                         final_loss = final_loss_recalculated # Use recalculated loss if valid
-                    else:
-                         final_loss = jnp.inf # Otherwise, report Inf
-
-                    # Determine error message based on solver status and validation status
-                    if success:
-                        error_msg = "N/A"
-                        print(f"Success! Final Loss: {final_loss:.4f}, Steps: {num_steps}, Time: {time_taken:.2f}s")
-                    else:
-                        # Solver failed, report solver error
-                        error_msg = f"Solver failed: {sol.result}"
-                        # Add note if final loss calculation also failed
-                        if validation_exception is not None:
-                            error_msg += f"; Final loss calc failed: {validation_exception}"
-                        elif not jnp.isfinite(final_loss_recalculated):
-                             error_msg += f"; Final loss non-finite: {final_loss_recalculated}"
-                        print(f"Failed! Status: {error_msg}, Final Loss: {final_loss:.4f}, Steps: {num_steps}, Time: {time_taken:.2f}s") # Print final_loss (potentially Inf)
-
-                except Exception as e: # Catch exceptions during the main optx.minimise call
-                    end_time = time.time()
-                    time_taken = end_time - start_time
-                    success = False
-                    error_msg = f"Exception during minimize: {str(e)}"
-                    final_loss = jnp.inf # Assign Inf on exception
-                    print(f"Exception! Error: {e}, Time: {time_taken:.2f}s")
-
-                # Store results
-                results.append(OptimizerResult(
-                    optimizer_name=name,
-                    uses_transformations=use_transform,
-                    prior_config_name=prior_name, # Added
-                    success=success,
-                    final_loss=float(final_loss), # Convert JAX scalar to float
-                    steps=int(num_steps),
-                    time_taken=time_taken,
-                    error_message=error_msg,
-                    final_params=final_params_untransformed # Store the final params Pytree (or None)
-                ))
+        # Store results
+        results.append(OptimizerResult(
+            optimizer_name=name,
+            uses_transformations=use_transform,
+            prior_config_name=config_name, # Use config_name
+            success=success,
+            final_loss=float(final_loss), # Convert JAX scalar to float
+            steps=int(num_steps),
+            time_taken=time_taken,
+            error_message=error_msg,
+            final_params=final_params_untransformed # Store the final params Pytree (with fixed lambda)
+        ))
 
     return results
 
@@ -328,20 +290,20 @@ def print_results_table(results: list[OptimizerResult]):
     """Prints the comparison results in a formatted table."""
     print("\n\n--- Optimizer and Prior Comparison Results ---")
     # Header
-    print(f"{'Prior Config':<20} | {'Optimizer':<15} | {'Transform':<10} | {'Success':<8} | {'Final Loss':<15} | {'Steps':<8} | {'Time (s)':<10} | {'Error Message'}")
-    print("-" * 115) # Adjusted width
-    # Rows - Sort by prior, then optimizer, then transform
+    print(f"{'Config Name':<35} | {'Optimizer':<15} | {'Transform':<10} | {'Success':<8} | {'Final Loss':<15} | {'Steps':<8} | {'Time (s)':<10} | {'Error Message'}") # Updated header
+    print("-" * 130) # Adjusted width
+    # Rows - Sort by config, then optimizer, then transform
     for res in sorted(results, key=lambda x: (x.prior_config_name, x.optimizer_name, x.uses_transformations)):
         success_str = "Yes" if res.success else "No"
         loss_str = f"{res.final_loss:.4e}" if np.isfinite(res.final_loss) else "Inf/NaN"
         steps_str = str(res.steps) if res.steps >= 0 else "N/A"
         time_str = f"{res.time_taken:.2f}"
         error_str = res.error_message if not res.success else "N/A"
-        print(f"{res.prior_config_name:<20} | {res.optimizer_name:<15} | {'Yes' if res.uses_transformations else 'No':<10} | {success_str:<8} | {loss_str:<15} | {steps_str:<8} | {time_str:<10} | {error_str}")
-    print("-" * 115) # Adjusted width
+        print(f"{res.prior_config_name:<35} | {res.optimizer_name:<15} | {'Yes' if res.uses_transformations else 'No':<10} | {success_str:<8} | {loss_str:<15} | {steps_str:<8} | {time_str:<10} | {error_str}") # Updated print format
+    print("-" * 130) # Adjusted width
 
 
-def save_results_to_csv(results: list[OptimizerResult], filename: str = "bif_prior_optimizer_results_rms.csv"):
+def save_results_to_csv(results: list[OptimizerResult], filename: str = "bif_strong_mu_prior_fixed_lambda_results.csv"): # Updated default filename
     """Saves the comparison results to a CSV file."""
     if not results:
         print("No results to save.")
@@ -380,7 +342,7 @@ def print_parameter_comparison(results: list[OptimizerResult], true_params: DFSV
 
     for res in sorted(results, key=lambda x: (x.prior_config_name, x.optimizer_name, x.uses_transformations)):
         if res.final_params is not None:
-            print(f"\n-- Run: Prior='{res.prior_config_name}' | Optimizer='{res.optimizer_name}' | Success='{'Yes' if res.success else 'No'}' --")
+            print(f"\n-- Run: Config='{res.prior_config_name}' | Optimizer='{res.optimizer_name}' | Success='{'Yes' if res.success else 'No'}' --") # Updated print
             print("-" * 80)
             print(f"{'Parameter':<10} | {'True Value':<35} | {'Estimated Value'}")
             print("-" * 80)
@@ -408,7 +370,7 @@ def print_parameter_comparison(results: list[OptimizerResult], true_params: DFSV
                     print(f"{'':<10} | {true_line:<35} | {est_line}")
             print("-" * 80)
         else:
-            print(f"\n-- Run: Prior='{res.prior_config_name}' | Optimizer='{res.optimizer_name}' --")
+            print(f"\n-- Run: Config='{res.prior_config_name}' | Optimizer='{res.optimizer_name}' --") # Updated print
             print("  No final parameters available for comparison (likely failed early).")
 
     # Reset numpy print options to default if desired
@@ -418,37 +380,74 @@ def print_parameter_comparison(results: list[OptimizerResult], true_params: DFSV
 
 def main():
     """Run the optimizer and prior comparison study."""
-    print("Starting BIF Optimizer and Prior Comparison Study...")
+    print("Starting BIF Strong Mu Prior + Fixed Lambda_f (K=1) Evaluation...")
 
-    # 1. Create Model Parameters
-    true_params = create_simple_model(N=5, K=2) # Example: 5 series, 2 factors
+    # 1. Create Model Parameters (Use K=1)
+    true_params = create_simple_model(N=3, K=1) # Set K=1 for this experiment
     print(f"Using model N={true_params.N}, K={true_params.K}")
     # Ensure true params are also JAX arrays for consistency if needed later
     true_params = DFSVBellmanInformationFilter(true_params.N, true_params.K)._process_params(true_params)
+    # true_mu = true_params.mu # Extract the true mu vector (K=1) - Not needed directly here
+    true_lambda_r = true_params.lambda_r # Extract the true lambda_r (K=1)
+    print("True Parameters (K=1, Constrained lambda_r):")
+    print(true_params)
+    print(f"True lambda_r (fixed): {true_lambda_r}")
 
     # 2. Generate Simulation Data
-    T = 1500 # Shorter time series for faster testing
-    print(f"Generating {T} time steps of simulation data...")
+    T = 1500 # Set T
+    print(f"\nGenerating {T} time steps of simulation data...")
     returns = create_training_data(true_params, T=T, seed=123)
     print("Simulation data generated.")
 
-    # Calculate objective at true parameters (no priors) for reference
-    print("Calculating objective function at true parameters...")
+    # Define Strong Prior for mu
+    prior_mu_mean = jnp.array([-1.0]) # K=1
+    prior_mu_var = jnp.array([0.01])  # K=1
+    # Correctly format priors_dict for bellman_objective
+    priors_dict = {'prior_mu_mean': prior_mu_mean, 'prior_mu_var': prior_mu_var}
+    print(f"\nUsing Strong Prior for mu: mean={prior_mu_mean}, var={prior_mu_var}")
+
+    # Calculate objective at true parameters (with priors, fixed lambda_r) for reference
+    print("\nCalculating objective function at true parameters (with prior, fixed lambda_r)...")
     try:
         filter_instance_for_true = DFSVBellmanInformationFilter(true_params.N, true_params.K)
-        true_objective_value = bellman_objective(true_params, returns, filter_instance_for_true)
+        # Need to transform true params to use the objective wrapper
+        true_params_transformed = transform_params(true_params)
+        # Define the objective wrapper locally for this calculation (similar to the one in run_comparison)
+        @eqx.filter_jit # Use filter_jit, not value_and_grad here
+        def temp_objective_wrapper_fixed_lambda(t_params, args_tuple):
+            obs, filt, fixed_lambda_r_val, priors_val = args_tuple
+            params_iter = untransform_params(t_params)
+            # Fix lambda_r, keep other params (including mu) from optimization state
+            params_fixed = eqx.tree_at(lambda p: p.lambda_r, params_iter, fixed_lambda_r_val)
+            # Apply constraint just in case (should already be correct for true params)
+            params_fixed = apply_identification_constraint(params_fixed)
+            loss = bellman_objective(params_fixed, obs, filt, priors=priors_val)
+            return loss
+
+        true_objective_value = temp_objective_wrapper_fixed_lambda(
+            true_params_transformed,
+            (returns, filter_instance_for_true, true_lambda_r, priors_dict)
+        )
+
         if jnp.isfinite(true_objective_value):
-            print(f"Objective function value at TRUE parameters (no priors): {true_objective_value:.4f}")
+            print(f"Objective function value at TRUE parameters (Strong Mu Prior, Fixed Lambda_f): {true_objective_value:.4f}")
         else:
-            print("Objective function value at TRUE parameters is non-finite.")
+            print("Objective function value at TRUE parameters (Strong Mu Prior, Fixed Lambda_f) is non-finite.")
     except Exception as e:
         print(f"ERROR calculating objective at true parameters: {e}")
 
 
     # 3. Run Comparison
-    max_opt_steps = 200 # Keep max steps relatively low for comparison speed
-    print(f"Running optimizer comparison (max_steps={max_opt_steps})...")
-    results = run_comparison(true_params, returns, max_steps=max_opt_steps)
+    max_opt_steps = 500 # Set max steps for this experiment
+    print(f"\nRunning optimizer comparison (max_steps={max_opt_steps})...")
+    results = run_comparison(
+        true_params=true_params,
+        returns=returns,
+        true_lambda_r=true_lambda_r, # Pass true lambda_r
+        prior_mu_mean=prior_mu_mean, # Pass prior mean
+        prior_mu_var=prior_mu_var,   # Pass prior variance
+        max_steps=max_opt_steps
+    )
 
     # 4. Print Results
 
@@ -458,18 +457,19 @@ def main():
         if res.final_params is not None:
             status_str = 'Success' if res.success else 'Failure'
             opt_name = res.optimizer_name.replace(' ', '_')
-            prior_name = res.prior_config_name.replace(' ', '_')
-            filename = f"estimated_params_{opt_name}_{prior_name}_{status_str}.pkl"
+            # Update config_name_safe to reflect "Strong Mu Prior, Fixed Lambda_f"
+            config_name_safe = res.prior_config_name.replace(' ', '_').replace('(','').replace(')','').replace('+','_plus_').replace(',','').replace('=','_') # Make filename safe
+            filename = f"estimated_params_{opt_name}_{config_name_safe}_{status_str}.pkl"
             try:
                 with open(filename, 'wb') as f:
                     cloudpickle.dump(res.final_params, f)
                 print(f"  Saved parameters to {filename}")
             except Exception as e:
-                print(f"  ERROR saving parameters for {opt_name}/{prior_name} to {filename}: {e}")
+                print(f"  ERROR saving parameters for {opt_name}/{config_name_safe} to {filename}: {e}")
         else:
             opt_name = res.optimizer_name.replace(' ', '_')
-            prior_name = res.prior_config_name.replace(' ', '_')
-            print(f"  Skipping parameter saving for {opt_name}/{prior_name} (final_params is None)")
+            config_name_safe = res.prior_config_name.replace(' ', '_').replace('(','').replace(')','').replace('+','_plus_').replace(',','').replace('=','_') # Make filename safe
+            print(f"  Skipping parameter saving for {opt_name}/{config_name_safe} (final_params is None)")
 
     # 7. Print Parameter Comparison Table
     print_parameter_comparison(results, true_params) # Added call
@@ -477,9 +477,11 @@ def main():
     print_results_table(results)
 
     # 5. Save Results to CSV
-    save_results_to_csv(results)
+    # Update filename for CSV results
+    csv_filename = "bif_strong_mu_prior_fixed_lambda_results.csv"
+    save_results_to_csv(results, filename=csv_filename)
 
-    print("\nOptimizer and prior comparison study finished.")
+    print(f"\nBIF Strong Mu Prior + Fixed Lambda_f (K=1) Evaluation finished.")
 
 
 if __name__ == "__main__":

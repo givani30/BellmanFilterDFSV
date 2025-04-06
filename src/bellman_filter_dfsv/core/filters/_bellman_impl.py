@@ -301,7 +301,6 @@ def bif_likelihood_penalty_impl(
     # Calculate quadratic term: diff^T @ Omega_pred @ diff
     diff = a_updated_flat - a_pred_flat
     quad_term = diff.T @ Omega_pred @ diff
-
     # Compute penalty
     penalty = 0.5 * (log_det_Omega_post - log_det_Omega_pred + quad_term)
 

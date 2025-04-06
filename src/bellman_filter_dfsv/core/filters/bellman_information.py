@@ -340,9 +340,13 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
         jax_observation = observation.flatten()
 
+        # --- DEBUG PRINTS (Phase 1.3) ---
         # --- State Update ---
-        # Initial guess for optimization is the predicted state
+        # jax.debug.print("--- BIF Update Step ---")
+        # # Initial guess for optimization is the predicted state
+        # jax.debug.print("a_pred (predicted_state): {x}", x=predicted_state.flatten())
         alpha_init_guess = predicted_state.flatten()
+        # jax.debug.print("Omega_pred (predicted_info): {x}", x=predicted_info)
 
         # Run block coordinate update (using the passed JITted function)
         # Note: block_coord_update_fn has h_solver, build_cov_fn, log_post_fn bound
@@ -357,10 +361,15 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         )
 
         # --- Information Update ---
+        # --- DEBUG PRINTS (Phase 1.4) ---
         # Calculate Observed Fisher Information J_observed = -Hessian(log p(y_t|alpha_t))
+        # jax.debug.print("a_updated (alpha_updated): {x}", x=alpha_updated)
         J_observed = fisher_info_fn(lambda_r, sigma2, alpha_updated, observation)
+        diff = alpha_updated - predicted_state.flatten()
 
+        # jax.debug.print("diff (a_updated - a_pred): {x}", x=diff)
         # --- Regularize J_observed to ensure PSD ---
+        # jax.debug.print("diff_h (h component): {x}", x=diff[K:])
         evals_j, evecs_j = jnp.linalg.eigh(J_observed)
         min_eigenvalue = 1e-8 # Small positive floor
         evals_j_clipped = jnp.maximum(evals_j, min_eigenvalue)
@@ -389,7 +398,8 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         log_lik_contrib = log_lik_fit - kl_penalty
 
         # Return results as JAX arrays (reshaped state), keep log_lik as JAX scalar
-        return alpha_updated.reshape(-1, 1), updated_info, log_lik_contrib
+        # Always return components for potential use in scan
+        return alpha_updated.reshape(-1, 1), updated_info, log_lik_contrib, log_lik_fit, kl_penalty
 
     # --- Public API Methods (NumPy In/Out) ---
 
@@ -871,66 +881,83 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
 
     def _log_likelihood_wrt_params_impl(
-        self, params: DFSVParamsDataclass, observations: jnp.ndarray
-    ) -> jnp.ndarray:
+        self, params: DFSVParamsDataclass, observations: jnp.ndarray, return_components: bool = False
+    ) -> Union[jnp.ndarray, Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
         """Internal JAX implementation for BIF log-likelihood using scan.
 
-        Designed to be JIT-compiled. Assumes inputs are JAX arrays. Only returns
-        the final log-likelihood sum, discarding intermediate filter states.
+        Designed to be JIT-compiled. Assumes inputs are JAX arrays. Can optionally
+        return the sum of fit and penalty terms separately.
 
         Args:
             params: DFSVParamsDataclass instance with JAX arrays.
             observations: Observed returns (T, N) as JAX array.
+            return_components: If True, return (total_lik, fit_sum, penalty_sum).
+                               Otherwise, return only total_lik.
 
         Returns:
-            Total pseudo log-likelihood (JAX scalar). Returns -inf if NaN/Inf.
+            Total pseudo log-likelihood (JAX scalar), or a tuple containing
+            (total_lik, fit_sum, penalty_sum) if return_components is True.
+            Returns -inf components if NaN/Inf encountered.
         """
         T = observations.shape[0]
 
         # Initialization (use BIF JAX arrays)
-        initial_state_jax, initial_info_jax = self.initialize_state(params) # Use renamed method
-        # Ensure carry types are JAX compatible
-        initial_carry = (initial_state_jax, initial_info_jax, jnp.array(0.0, dtype=jnp.float64)) # state, info, log_lik_sum
+        initial_state_jax, initial_info_jax = self.initialize_state(params)
+        # Ensure carry types are JAX compatible: state, info, total_lik_sum, fit_sum, penalty_sum
+        initial_carry = (initial_state_jax, initial_info_jax, jnp.array(0.0), jnp.array(0.0), jnp.array(0.0))
 
         # Define the step function for lax.scan (operates purely on JAX types)
         def filter_step(carry, obs_t):
-            state_t_minus_1_jax, info_t_minus_1_jax, log_lik_sum_t_minus_1 = carry
+            state_t_minus_1_jax, info_t_minus_1_jax, total_lik_sum, fit_sum, penalty_sum = carry
             # Predict step -> returns JAX arrays
             pred_state_t_jax, pred_info_t_jax = self.predict_jax_info_jit(
                 params, state_t_minus_1_jax, info_t_minus_1_jax
             )
-            # Update step -> returns JAX arrays
-            updated_state_t_jax, updated_info_t_jax, log_lik_t_jax = self.update_jax_info_jit(
+            # Update step -> returns JAX arrays (state, info, total_lik, fit_lik, penalty_lik)
+            updated_state_t_jax, updated_info_t_jax, log_lik_t_jax, log_lik_fit_t, kl_penalty_t = self.update_jax_info_jit(
                 params, pred_state_t_jax, pred_info_t_jax, obs_t
             )
             # Prepare carry for next step
-            next_carry = (updated_state_t_jax, updated_info_t_jax, log_lik_sum_t_minus_1 + log_lik_t_jax)
-            # We only need the carry for the final likelihood
+            next_carry = (updated_state_t_jax, updated_info_t_jax,
+                          total_lik_sum + log_lik_t_jax,
+                          fit_sum + log_lik_fit_t,
+                          penalty_sum + kl_penalty_t) # Note: penalty is subtracted later in update, so we sum it here
+            # We only need the carry for the final likelihood(s)
             return next_carry, None # Don't store intermediate results
 
         # Run the scan
         final_carry, _ = jax.lax.scan(filter_step, initial_carry, observations)
 
-        total_log_lik = final_carry[2] # JAX scalar
+        total_log_lik, fit_sum, penalty_sum = final_carry[2], final_carry[3], final_carry[4] # JAX scalars
 
         # Replace NaN/Inf with -inf for optimization stability
-        return jnp.where(jnp.isnan(total_log_lik) | jnp.isinf(total_log_lik), -jnp.inf, total_log_lik)
+        # Note: penalty_sum is the sum of KL terms, which are subtracted from fit_sum.
+        # A large positive penalty sum means a large negative contribution to total likelihood.
+        safe_total_log_lik = jnp.where(jnp.isnan(total_log_lik) | jnp.isinf(total_log_lik), -jnp.inf, total_log_lik)
+        safe_fit_sum = jnp.where(jnp.isnan(fit_sum) | jnp.isinf(fit_sum), -jnp.inf, fit_sum)
+        safe_penalty_sum = jnp.where(jnp.isnan(penalty_sum) | jnp.isinf(penalty_sum), jnp.inf, penalty_sum) # Large penalty is positive inf
+
+        if return_components:
+            # Return the safe versions
+            return safe_total_log_lik, safe_fit_sum, safe_penalty_sum
+        else:
+            return safe_total_log_lik
 
 
     def jit_log_likelihood_wrt_params(self) -> Callable:
         """Returns a JIT-compiled version of the BIF log-likelihood function w.r.t parameters.
 
-        Ensures internal JAX functions are set up and returns a JIT-compiled
-        version of `_log_likelihood_wrt_params_impl`. Suitable for use in
-        gradient-based optimization.
+        The returned function accepts an optional `return_components` argument (default False).
+        If True, it returns (total_log_lik, fit_sum, penalty_sum).
+        If False, it returns only total_log_lik.
 
         Returns:
-            A JIT-compiled function `likelihood_fn(params, observations)`.
+            A JIT-compiled function `likelihood_fn(params, observations, return_components=False)`.
         """
         # Ensure JIT functions are set up before returning the JITted likelihood function
         self._setup_jax_functions()
-        # JIT the implementation method directly
-        return eqx.filter_jit(self._log_likelihood_wrt_params_impl) # Use renamed method
+        # JIT the implementation method directly. return_components is a runtime arg.
+        return eqx.filter_jit(self._log_likelihood_wrt_params_impl)
 
     # _get_transition_matrix is inherited from DFSVFilter base class
 
