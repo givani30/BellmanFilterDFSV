@@ -1,5 +1,3 @@
-
-
 ---
 
 
@@ -11,7 +9,7 @@ This file records architectural and implementation decisions using a structured 
 
 ---
 
-**Decision [2025-04-01 01:32:03]:** Pause expansion of simulation study (`scripts/simulation_study.py`) and shift focus to investigating/fixing potential issues in the Bellman filter implementation.
+**Decision [01-04-2025 01:32:03]:** Pause expansion of simulation study (`scripts/simulation_study.py`) and shift focus to investigating/fixing potential issues in the Bellman filter implementation.
 
 **Rationale:** User identified potential problems with the Bellman filter that need addressing before proceeding with large-scale simulations.
 
@@ -19,7 +17,7 @@ This file records architectural and implementation decisions using a structured 
 
 ---
 
-**Decision [2025-04-01 02:27:00]:** Correct `Q_f` calculation in `src/bellman_filter_dfsv/core/filters/bellman.py::_predict_jax`.
+**Decision [01-04-2025 02:27:00]:** Correct `Q_f` calculation in `src/bellman_filter_dfsv/core/filters/bellman.py::_predict_jax`.
 
 **Rationale:** The original code used `h_{t-1|t-1}` instead of the predicted `h_{t|t-1}` to calculate the factor process noise `Q_f`. This was incorrect according to the model dynamics.
 
@@ -27,7 +25,7 @@ This file records architectural and implementation decisions using a structured 
 
 ---
 
-**Decision [2025-04-01 02:47:00]:** Accept Bellman filter sensitivity to small `Q_h` and proceed using a larger `Q_h` scaling factor (1.0) in `scripts/simulation_study.py::create_sim_parameters`.
+**Decision [01-04-2025 02:47:00]:** Accept Bellman filter sensitivity to small `Q_h` and proceed using a larger `Q_h` scaling factor (1.0) in `scripts/simulation_study.py::create_sim_parameters`.
 
 **Rationale:** Extensive debugging confirmed numerical dominance of the prior term when `Q_h` is small, hindering `h` estimation. While the root cause of potential past success with small `Q_h` remains elusive, increasing `Q_h` provides the most stable performance for the current implementation. This is necessary for proceeding, but the sensitivity should be noted for future work. Initial attempts to improve convergence included changing the h-update optimizer (BFGS -> NonlinearCG -> BFGS) and increasing `inner_max_steps` (15 -> 100), but increasing `Q_h` scaling (0.1 -> 1.0) proved most effective.
 
@@ -35,7 +33,7 @@ This file records architectural and implementation decisions using a structured 
 
 ---
 
-**Decision [2025-04-01 03:37:00]:** Refactor `DFSVParticleFilter` class to accept model parameters externally via method arguments instead of storing them internally.
+**Decision [01-04-2025 03:37:00]:** Refactor `DFSVParticleFilter` class to accept model parameters externally via method arguments instead of storing them internally.
 
 **Rationale:** To enable the reuse of a single `DFSVParticleFilter` instance across multiple simulation replicates with varying parameters and to maximize JAX JIT compilation benefits for the particle filtering logic, improving performance in `scripts/simulation_study.py`.
 
@@ -43,7 +41,7 @@ This file records architectural and implementation decisions using a structured 
 
 ---
 
-**Decision [2025-04-01 05:13:00]:** Optimize particle filter likelihood calculation (`compute_log_likelihood_particle`) to exploit known diagonal structure of observation noise covariance `R_t`.
+**Decision [01-04-2025 05:13:00]:** Optimize particle filter likelihood calculation (`compute_log_likelihood_particle`) to exploit known diagonal structure of observation noise covariance `R_t`.
 
 **Rationale:** The original implementation performed redundant Cholesky decompositions and log-determinant calculations inside a `vmap` over particles. Since `R_t` is diagonal and constant for all particles at time `t`, pre-calculating the log-determinant and using direct variance division for the quadratic form significantly reduces computation.
 
@@ -51,7 +49,7 @@ This file records architectural and implementation decisions using a structured 
 
 ---
 
-**Decision [2025-04-01 05:13:00]:** Test particle filter implementation and benchmark using `float32` precision.
+**Decision [01-04-2025 05:13:00]:** Test particle filter implementation and benchmark using `float32` precision.
 
 **Rationale:** Explore potential performance gains from lower precision, especially relevant for GPU execution.
 
@@ -59,7 +57,7 @@ This file records architectural and implementation decisions using a structured 
 
 ---
 
-**Decision [2025-04-01 11:28:32]:** Implement resume capability for `scripts/simulation_study.py`.
+**Decision [01-04-2025 11:28:32]:** Implement resume capability for `scripts/simulation_study.py`.
 
 **Rationale:** Long-running simulations are prone to interruption. A resume mechanism prevents loss of progress and avoids redundant computation.
 
@@ -67,18 +65,18 @@ This file records architectural and implementation decisions using a structured 
 
 ---
 
-**Decision [2025-04-01 12:05:00]:** Optimize Bellman filter update step (`_bellman_impl.py`) using Woodbury Identity and Rank-1 FIM Reformulation.
+**Decision [01-04-2025 12:05:00]:** Optimize Bellman filter update step (`_bellman_impl.py`) using Woodbury Identity and Rank-1 FIM Reformulation.
 
 **Rationale:** Profiling identified O(N^3) Cholesky decomposition in `log_posterior_impl` and O(N^3) + O(K^2*N^2) operations in `fisher_information_impl` as major bottlenecks. Applying Woodbury Identity avoids the N^3 inversion/decomposition. Rank-1 reformulation avoids the expensive O(K^2*N^2) `einsum` in FIM calculation.
 
 **Implementation Details:**
-1.  Applied Woodbury Matrix Identity and Matrix Determinant Lemma in `log_posterior_impl` (Decision [2025-04-01 11:46:00]).
-2.  Applied Woodbury Identity for `A_inv` applications and Rank-1 reformulation (`I_hh[k, l] = 0.5 * exp(h_k + h_l) * (I_ff[k, l])^2`) in `fisher_information_impl` (Decision [2025-04-01 12:05:00]).
+1.  Applied Woodbury Matrix Identity and Matrix Determinant Lemma in `log_posterior_impl` (Decision [01-04-2025 11:46:00]).
+2.  Applied Woodbury Identity for `A_inv` applications and Rank-1 reformulation (`I_hh[k, l] = 0.5 * exp(h_k + h_l) * (I_ff[k, l])^2`) in `fisher_information_impl` (Decision [01-04-2025 12:05:00]).
 Reduced complexity significantly, achieving large speedups verified by profiling and tests (`test_bellman_unified.py`).
 
 ---
 
-**Decision [2025-04-01 12:22:00]:** Implement minor optimizations for Particle Filter (`particle.py`).
+**Decision [01-04-2025 12:22:00]:** Implement minor optimizations for Particle Filter (`particle.py`).
 
 **Rationale:** Explore potential minor performance gains based on profiling insights and user feedback.
 
@@ -88,13 +86,13 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 
 ---
 
-**Decision [2025-04-02 00:17:00]:** Switch Bellman filter implementation in `scripts/simulation_study.py` from `filter_scan` (using `jax.lax.scan`) to `filter` (using Python loop).
+**Decision [02-04-2025 00:17:00]:** Switch Bellman filter implementation in `scripts/simulation_study.py` from `filter_scan` (using `jax.lax.scan`) to `filter` (using Python loop).
 
 **Rationale:** Debugging revealed a significant memory leak (RAM growth over replicates) when using `filter_scan`. Profiling (`memory_profiler`, JAX device profiler via `pprof`) indicated memory accumulation during the `lax.scan` execution, likely due to JAX/XLA retaining intermediate arrays from the complex update step across iterations. Explicit GC and `jax.remat` did not resolve the issue. Switching to the Python-loop based `filter` method was confirmed to prevent this memory leak, although it might be computationally slower. Modified `scripts/simulation_study.py` (line ~175) to call `bf_instance.filter(params, returns)`.
 
 ---
 
-**Decision [2025-04-02 01:50:00]:** Use Google Cloud Batch for running the simulation study.
+**Decision [02-04-2025 01:50:00]:** Use Google Cloud Batch for running the simulation study.
 
 **Rationale:**
 *   The study involves a large number (13,500) of independent replicates, making it suitable for parallel execution.
@@ -105,7 +103,7 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 
 ---
 
-**Decision [2025-04-02 19:13:00]:** Refine debugging strategy for NaN errors in Bellman filter update step based on detailed feedback.
+**Decision [02-04-2025 19:13:00]:** Refine debugging strategy for NaN errors in Bellman filter update step based on detailed feedback.
 
 **Rationale:** Tests failed with NaNs after implementing the Observed FIM (`J_observed`). Debug prints indicated NaN propagation starting from `I_pred`, likely due to unstable inversion of `I_updated = I_pred + J_observed` in the previous step. User feedback provided a comprehensive list of potential numerical instability sources within the Woodbury/Hessian calculations.
 **Implementation Details:** The refined plan focuses on adding checks within `observed_fim_impl` and `__update_jax`:
@@ -118,7 +116,7 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 
 ---
 
-**Decision [2025-04-02 19:57:00]:** Stop debugging the current covariance-based Bellman filter implementation (`bellman.py`, `_bellman_impl.py`) for the NaN issue observed in `bf_optimization.py`.
+**Decision [02-04-2025 19:57:00]:** Stop debugging the current covariance-based Bellman filter implementation (`bellman.py`, `_bellman_impl.py`) for the NaN issue observed in `bf_optimization.py`.
 
 **Rationale:** Despite implementing the mathematically correct Observed Fisher Information (negative Hessian), persistent NaN propagation indicates deep numerical instability in the precision matrix update (`I_updated = I_pred + J`) and inversion (`updated_cov = I_updated^-1`) cycle. Further stabilization within the current framework seems unlikely to succeed robustly.
 
@@ -126,13 +124,13 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 
 ---
 
-**Decision [2025-04-02 20:26:00]:** Proceed with implementing a Bellman Information Filter (BIF) as specified in `bif_implementation_plan.md`.
+**Decision [02-04-2025 20:26:00]:** Proceed with implementing a Bellman Information Filter (BIF) as specified in `bif_implementation_plan.md`.
 
 **Rationale:** The existing covariance-based Bellman filter (`DFSVBellmanFilter`) exhibits numerical instability (NaN propagation) during optimization runs, particularly in the precision matrix update/inversion cycle. The BIF formulation, which directly propagates information matrices, is expected to be more numerically robust. The BIF will be implemented in `src/bellman_filter_dfsv/core/filters/bellman_information.py`, inheriting from `DFSVFilter` and reusing components like `observed_fim_impl`, `log_posterior_impl`, and optimization helpers where possible. It will propagate the information state (`alpha`, `Omega`) and store filtered information matrices.
 
 ---
 
-**Decision [2025-04-02 20:26:00]:** Implement a specific KL-type penalty term for the BIF based on Eq. (40) from Lange (2024) paper image provided, instead of reusing the standard KL divergence function (`kl_penalty_impl`).
+**Decision [02-04-2025 20:26:00]:** Implement a specific KL-type penalty term for the BIF based on Eq. (40) from Lange (2024) paper image provided, instead of reusing the standard KL divergence function (`kl_penalty_impl`).
 
 **Rationale:** Eq. (40) represents the specific penalty used in the augmented likelihood for parameter estimation within the Bellman filter context. While it uses information matrices as input, its formula differs from the standard KL divergence (lacking trace and dimension terms). Using the correct formula is crucial for consistency with the paper's methodology.
 
@@ -140,13 +138,13 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 
 ---
 
-**Decision [2025-04-02 20:35:00]:** Formally adopt the Bellman filter methodology described in Lange (2024) as the core approach for state estimation and hyperparameter estimation for the specific DFSV model defined in the thesis proposal (Boekestijn, 2025).
+**Decision [02-04-2025 20:35:00]:** Formally adopt the Bellman filter methodology described in Lange (2024) as the core approach for state estimation and hyperparameter estimation for the specific DFSV model defined in the thesis proposal (Boekestijn, 2025).
 
 **Rationale:** This project aims to implement and evaluate the Bellman filter for a specific DFSV model. Explicitly referencing both the source methodology (Lange, 2024) and the target model specification (Boekestijn, 2025) provides clear context and aligns the project's implementation with its stated goals. Memory Bank files (`productContext.md`, `systemPatterns.md`) were updated to reflect the specific model equations and estimation approach based on both documents. Future development should adhere to this chosen methodology.
 
 ---
 
-**Decision [2025-04-02 23:26:45]:** Use Joseph form / Woodbury identity for BIF prediction step (`__predict_jax_info`).
+**Decision [02-04-2025 23:26:45]:** Use Joseph form / Woodbury identity for BIF prediction step (`__predict_jax_info`).
 
 **Rationale:** Standard KF information prediction requires inverting the posterior information matrix, which can be unstable. The Joseph form avoids this inversion, improving numerical stability, although it requires inverting the process noise `Q_t` and an intermediate matrix `M`.
 
@@ -154,7 +152,7 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 
 ---
 
-**Decision [2025-04-02 23:26:45]:** Remove `try/except` blocks around JAX operations (`vmap`, `_invert_info_matrix`) in BIF getter methods.
+**Decision [02-04-2025 23:26:45]:** Remove `try/except` blocks around JAX operations (`vmap`, `_invert_info_matrix`) in BIF getter methods.
 
 **Rationale:** Catching generic exceptions around JAX operations can mask underlying errors and is generally discouraged. Stable inversion logic is handled within `_invert_info_matrix`. Let JAX handle propagation of errors from `vmap` or inversion failures.
 
@@ -162,7 +160,7 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 
 ---
 
-**Decision [2025-04-02 23:26:45]:** Modify BIF comparison test (`test_bif_vs_bf_comparison`) to exclude log-likelihood comparison.
+**Decision [02-04-2025 23:26:45]:** Modify BIF comparison test (`test_bif_vs_bf_comparison`) to exclude log-likelihood comparison.
 
 **Rationale:** The BIF uses a specific pseudo log-likelihood (Lange Eq. 40) involving a KL-type penalty, which differs from the likelihood calculation in the original BF implementation. Comparing them directly is invalid. The test should focus on comparing state estimates under stable conditions.
 
@@ -170,7 +168,7 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 
 ---
 
-**Decision [2025-04-02 23:26:45]:** Correct argument passing and status checking in BIF stability test (`test_bif_stability_during_optimization`).
+**Decision [02-04-2025 23:26:45]:** Correct argument passing and status checking in BIF stability test (`test_bif_stability_during_optimization`).
 
 **Rationale:** Initial test versions had `TypeError` due to incorrect keyword arguments (`prior_mu_mean` vs `prior_mean`, `returns` vs `y`) passed to the objective function via `partial`/`optimistix`, and `AttributeError` accessing `result.status` instead of `result.result`. Also, the expected success status needed to include `nonlinear_max_steps_reached` for short test runs.
 
@@ -178,7 +176,7 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 
 ---
 
-**Decision [2025-04-04 15:25:00]:** Pause parameter transformation experiments and investigate the BIF state update logic, specifically `update_h_bfgs`, as the root cause of optimization instability.
+**Decision [04-04-2025 15:25:00]:** Pause parameter transformation experiments and investigate the BIF state update logic, specifically `update_h_bfgs`, as the root cause of optimization instability.
 
 **Rationale:** Debugging `scripts/bif_optimizer_stability.py` using `EQX_ON_ERROR=breakpoint` and `eqx.error_if` checks revealed that the optimization fails due to `jnp.exp(h)` overflowing to `inf`. This occurs because the log-volatility state vector `h` reaches extremely large positive values (e.g., > 3000) during the optimization process (likely within the gradient calculation's intermediate steps or the optimizer update). This points to an issue within the state update mechanism rather than the parameter transformations themselves.
 
@@ -186,7 +184,7 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 
 ---
 
-**Decision [2025-04-04 16:59:00]:** Conclude initial BIF optimization stability debugging phase. Adopt strategy of using priors to guide optimization.
+**Decision [04-04-2025 16:59:00]:** Conclude initial BIF optimization stability debugging phase. Adopt strategy of using priors to guide optimization.
 
 **Rationale:** Investigation revealed optimization instability (NaN/Inf errors) stemmed from the optimizer exploring regions with unrealistically large `sigma2` values. This destabilized the BIF state update, causing the log-volatility state `h` to explode and `exp(h)` to overflow. Adding an Inverse-Gamma prior on `sigma2` prevented the Adam optimizer from crashing by penalizing large `sigma2` values, although convergence to a meaningful optimum was not confirmed (terminated in 2 steps). BFGS still failed during gradient calculation, suggesting further numerical sensitivity potentially related to second-order information. Parameter transformations alone were insufficient. Adding priors is deemed essential for stabilizing the BIF pseudo-MLE approach.
 
@@ -194,7 +192,7 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 
 ---
 
-**Decision [2025-04-04 17:43:01]:** Implement a comprehensive prior regularization framework in `src/bellman_filter_dfsv/core/likelihood.py`.
+**Decision [04-04-2025 17:43:01]:** Implement a comprehensive prior regularization framework in `src/bellman_filter_dfsv/core/likelihood.py`.
 
 **Rationale:** To improve numerical stability during optimization (especially for BIF) by penalizing unrealistic parameter values. This centralizes prior management and allows for flexible configuration.
 
@@ -202,30 +200,30 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 
 ---
 
-**Decision [2025-05-04 16:00:00]:** Stabilize Bellman Information Filter (BIF) by regularizing the Expected FIM (`J_observed`) calculation.
+**Decision [04-05-2025 16:00:00]:** Stabilize Bellman Information Filter (BIF) by regularizing the Expected FIM (`J_observed`) calculation.
 
 **Rationale:** Debugging (`scripts/debug_bif_true_params.py`) revealed that the BIF failed when run with true parameters because the calculated Expected FIM (`J_observed`, computed via `fisher_information_impl`) occasionally produced non-positive semi-definite (non-PSD) matrices (negative eigenvalues) when evaluated at the updated state `alpha_updated`. Adding this non-PSD matrix in the information update step (`updated_info = predicted_info + J_observed + jitter`) corrupted the filter state, leading to cascading failures. While the Expected FIM should theoretically be PSD, numerical issues likely triggered by specific state values caused this failure.
 
 **Implementation Details:** Modified `src/bellman_filter_dfsv/core/filters/bellman_information.py::__update_jax_info`. After calculating `J_observed`, perform an eigenvalue decomposition. Clip any negative eigenvalues to a small positive value (`1e-8`) and reconstruct the matrix (`J_observed_psd`) using the clipped eigenvalues and original eigenvectors. Use this guaranteed PSD matrix `J_observed_psd` in the information update step: `updated_info = predicted_info + J_observed_psd + jitter`. This successfully stabilized the filter run with true parameters.
 
 
-[2025-05-04 21:12:00] - **Decision:** Implemented lower-triangular constraint with positive diagonal on `lambda_r` to address identifiability issues in BIF estimation. **Finding:** Tested in `scripts/test_bif_identifiability_fix.py` without priors. While constraints were enforced and other parameters estimated reasonably, `mu` estimation remained significantly inaccurate (estimated `[2.2689 3.4034]` vs. true `[-1. -1.]`). **Implication:** Structural constraints on `lambda_r` alone are insufficient to identify `mu` in this BIF context; priors (especially on `mu`) or alternative approaches are likely necessary.
+[04-05-2025 21:12:00] - **Decision:** Implemented lower-triangular constraint with positive diagonal on `lambda_r` to address identifiability issues in BIF estimation. **Finding:** Tested in `scripts/test_bif_identifiability_fix.py` without priors. While constraints were enforced and other parameters estimated reasonably, `mu` estimation remained significantly inaccurate (estimated `[2.2689 3.4034]` vs. true `[-1. -1.]`). **Implication:** Structural constraints on `lambda_r` alone are insufficient to identify `mu` in this BIF context; priors (especially on `mu`) or alternative approaches are likely necessary.
 
 
-[2025-05-04 21:14:00] - **Decision:** Implemented lower-triangular constraint with **diagonal fixed to 1.0** on `lambda_r` to address identifiability issues in BIF estimation. **Finding:** Tested in `scripts/test_bif_identifiability_fix.py` without priors. While constraints were enforced and other parameters estimated reasonably, `mu` estimation remained significantly inaccurate (estimated `[2.2689 3.4034]` vs. true `[-1. -1.]`). **Implication:** Structural constraints on `lambda_r` (tril, diag=1) alone are insufficient to identify `mu` in this BIF context; priors (especially on `mu`) or alternative approaches are likely necessary.
+[04-05-2025 21:14:00] - **Decision:** Implemented lower-triangular constraint with **diagonal fixed to 1.0** on `lambda_r` to address identifiability issues in BIF estimation. **Finding:** Tested in `scripts/test_bif_identifiability_fix.py` without priors. While constraints were enforced and other parameters estimated reasonably, `mu` estimation remained significantly inaccurate (estimated `[2.2689 3.4034]` vs. true `[-1. -1.]`). **Implication:** Structural constraints on `lambda_r` (tril, diag=1) alone are insufficient to identify `mu` in this BIF context; priors (especially on `mu`) or alternative approaches are likely necessary.
 
 
 ---
 
-**Decision [2025-05-04 23:05:00]:** Revive and update the covariance-based Bellman filter (`bellman.py`) as part of the `src` cleanup task.
+**Decision [04-05-2025 23:05:00]:** Revive and update the covariance-based Bellman filter (`bellman.py`) as part of the `src` cleanup task.
 
-**Rationale:** Although previously halted due to instability (Decision [2025-04-02 19:57:00]), the BIF pseudo-likelihood (Lange Eq. 40) provides a potentially more stable objective function. Implementing this within the original covariance-based structure allows for comparison and leverages existing code.
+**Rationale:** Although previously halted due to instability (Decision [02-04-2025 19:57:00]), the BIF pseudo-likelihood (Lange Eq. 40) provides a potentially more stable objective function. Implementing this within the original covariance-based structure allows for comparison and leverages existing code.
 
 **Implementation Details:** Modified `bellman.py` and helpers (`_bellman_impl.py`, `_bellman_optim.py`) to use the BIF pseudo-likelihood calculation (similar to `_kl_penalty_pseudo_lik_impl` in BIF) within its optimization step. Updated documentation and tests (`test_bellman_unified.py`).
 
 ---
 
-**Decision [2025-05-04 23:05:00]:** Address test failures identified after `src` cleanup.
+**Decision [04-05-2025 23:05:00]:** Address test failures identified after `src` cleanup.
 
 **Rationale:** `uv run pytest` revealed errors/failures in `bellman_information.py`, `particle.py`, and `transformations.py`, indicating issues introduced or exposed by the cleanup/refactoring.
 
@@ -237,7 +235,7 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 
 ---
 
-**Decision [2025-06-04 00:01:00]:** Complete refactoring of filter implementations (`bellman_information.py`, `_bellman_impl.py`, `bellman.py`, `particle.py`) for JAX JIT compatibility.
+**Decision [04-06-2025 00:01:00]:** Complete refactoring of filter implementations (`bellman_information.py`, `_bellman_impl.py`, `bellman.py`, `particle.py`) for JAX JIT compatibility.
 
 **Rationale:** To improve JAX JIT performance and robustness by removing Python control flow (`try...except`, dynamic `if` statements) from JIT-compiled code paths, as outlined in `jit_refactoring_plan.md`.
 
@@ -248,7 +246,7 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 
 ---
 
-**Decision [2025-06-04 01:24:00]:** Refactor filter classes (`DFSVFilter`, `DFSVBellmanFilter`, `DFSVBellmanInformationFilter`, `DFSVParticleFilter`) for API consistency.
+**Decision [04-06-2025 01:24:00]:** Refactor filter classes (`DFSVFilter`, `DFSVBellmanFilter`, `DFSVBellmanInformationFilter`, `DFSVParticleFilter`) for API consistency.
 
 **Rationale:** To improve code consistency, maintainability, and adherence to the base class interface across different filter implementations.
 
@@ -263,14 +261,14 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 *   Modified `smooth` and helpers during testing to require `params` explicitly for correct operation.
 *   Confirmed all tests pass post-refactoring.
 *   Plan documented in `filter_api_alignment_plan.md`.
-**Decision [2025-06-04 03:41:00]:** Modify `tests/test_particle_filter.py::test_log_likelihood_wrt_params_calculation` to remove direct comparison between `filter` and `log_likelihood_wrt_params` likelihoods.
+**Decision [04-06-2025 03:41:00]:** Modify `tests/test_particle_filter.py::test_log_likelihood_wrt_params_calculation` to remove direct comparison between `filter` and `log_likelihood_wrt_params` likelihoods.
 
 **Rationale:** Despite extensive efforts to align the internal logic, JIT strategy (`@eqx.filter_jit` on static helpers), parameter precision handling (`float32`), and accumulator precision (`float32`) between the `DFSVParticleFilter.filter` and `DFSVParticleFilter.log_likelihood_wrt_params` methods, a significant numerical discrepancy persists in the calculated total log-likelihood (-530.7 vs -397.8). This difference is particularly evident when JAX float64 precision is enabled. The root cause is likely subtle numerical effects arising from JIT compilation differences on the slightly different overall code paths, even with identical core scan logic. Since `log_likelihood_wrt_params` is primarily for optimization where relative values matter most, and it still produces finite scalar results, comparing its absolute value against the `filter` method is deemed unnecessary and overly strict for testing purposes.
 
 
 ---
 
-**Decision [2025-06-04 03:45:00]:** Relax assertion threshold for factor RMSE in `tests/test_bellman.py::test_bellman_filter_estimation`.
+**Decision [04-06-2025 03:45:00]:** Relax assertion threshold for factor RMSE in `tests/test_bellman.py::test_bellman_filter_estimation`.
 
 **Rationale:** The original threshold (`< 0.6`) was failing after recent changes, potentially due to modifications in simulation parameters (`Q_h`, `sigma2`) affecting filter performance or inherent variability. Relaxing the threshold (`< 0.9`) allows the test to pass while still providing a basic check on estimation accuracy.
 
@@ -282,7 +280,7 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 
 ---
 
-**Decision [2025-06-04 15:41:00]:** Conclude Phase 1 diagnostics for `mu` identifiability.
+**Decision [04-06-2025 15:41:00]:** Conclude Phase 1 diagnostics for `mu` identifiability.
 
 **Rationale:** Static gradient analysis, gradient decomposition, dynamic analysis, penalty ablation, and strong prior tests consistently indicate that the BIF pseudo-likelihood's penalty term introduces a significant upward bias in the gradient for `mu`. This bias makes accurate estimation via direct pseudo-likelihood maximization highly challenging with current methods/settings.
 
@@ -291,7 +289,7 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 
 ---
 
-**Decision [2025-06-04 16:55:00]:** Document successful `mu` ID restriction test (Phase 2.3 variant: fix `mu[0]=-1.0`).
+**Decision [04-06-2025 16:55:00]:** Document successful `mu` ID restriction test (Phase 2.3 variant: fix `mu[0]=-1.0`).
 
 **Rationale:** Task initially planned as Phase 2.2 was executed as Phase 2.3 variant (fix `mu[0]`, estimate `mu[1]`). This succeeded, completing a sub-task of Phase 2.3.
 
@@ -301,7 +299,7 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 
 ---
 
-**Decision [2025-06-04 17:10:00]:** Evaluate fixing both `mu` elements during BIF optimization (Phase 2.2).
+**Decision [04-06-2025 17:10:00]:** Evaluate fixing both `mu` elements during BIF optimization (Phase 2.2).
 
 **Rationale:** Following Phase 1 diagnostics which confirmed a strong upward gradient bias for `mu` from the BIF penalty term, and successful completion of Phase 2.3 variant (fixing only `mu[0]`), this task evaluates the stricter strategy of fixing both `mu` elements as per the `mu_identifiability_investigation_plan.md`.
 
@@ -313,7 +311,7 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 
 ---
 
-**Decision [2025-06-04 17:40:11]:** Adopt fixing the long-run mean log-volatility parameter (`mu`) as the standard strategy for Bellman Information Filter (BIF) hyperparameter estimation.
+**Decision [04-06-2025 17:40:11]:** Adopt fixing the long-run mean log-volatility parameter (`mu`) as the standard strategy for Bellman Information Filter (BIF) hyperparameter estimation.
 
 **Rationale:** The decision follows the completion of the `mu` identifiability investigation (Phases 1 & 2, see `memory-bank/plans/mu_identifiability_investigation_plan.md`).
 *   **Phase 1 Findings:** Diagnostics confirmed that the BIF pseudo-likelihood penalty term introduces a significant upward gradient bias for `mu`, making its direct estimation via pseudo-likelihood maximization unreliable.
