@@ -4,18 +4,38 @@ This repository contains the Python code for a Quantitative Finance thesis proje
 
 ## Project Purpose
 
-DFSV models are used in finance to model the time-varying volatility and correlation of multiple asset returns by relating them to a smaller set of unobserved latent factors, each with its own stochastic volatility process. This project provides tools to:
+DFSV models are used in finance to model the time-varying volatility and correlation of multiple asset returns by relating them to a smaller set of unobserved latent factors, each with its own stochastic volatility process. This project focuses on the specific DFSV model outlined in Boekestijn (2025) and provides tools to:
 
-*   Define DFSV model parameters.
-*   Simulate realistic financial time series data based on DFSV models.
-*   Implement and compare filtering techniques (e.g., Particle Filter, Bellman Filter approximations) to estimate the latent states (factors and volatilities) from observed returns.
-*   Leverage JAX for automatic differentiation, JIT compilation, and hardware acceleration (CPU/GPU/TPU), making simulations and potentially complex estimation procedures more efficient.
+*   Define the DFSV model parameters using a JAX-compatible structure (`DFSVParamsDataclass`).
+*   Simulate realistic financial time series data based on the specified DFSV model.
+*   Implement and compare filtering techniques for estimating latent states (factors and log-volatilities):
+    *   **Bellman Information Filter (BIF):** Based on Lange (2024), numerically stabilized.
+    *   **Particle Filter (PF):** A standard Bootstrap/SISR filter for benchmarking.
+*   Estimate static model hyperparameters by maximizing the BIF-implied pseudo log-likelihood.
+*   Leverage JAX (`@equinox.filter_jit`, `scan`, `vmap`, pytrees) for performance via automatic differentiation, JIT compilation, and hardware acceleration.
 
 ## Project Status
 
-**Status:** Active Development
+**Status:** Core Implementation Complete, Analysis Phase
 
-This project is currently under active development. Features and APIs might change.
+The core implementations of the DFSV model, Bellman Information Filter (BIF), and Particle Filter (PF) are stable and functional, supported by a robust `pytest` test suite. Simulation runs for BIF and PF have been completed.
+
+Current work focuses on:
+*   Analyzing simulation results (BIF vs. PF performance).
+*   Investigating hyperparameter estimation challenges (specifically `mu` identifiability with BIF).
+
+## Key Features
+
+*   **DFSV Model:** Definition (`DFSVParamsDataclass`) and simulation for the specific model (Boekestijn, 2025).
+*   **Bellman Information Filter (BIF):** Implementation (`DFSVBellmanInformationFilter`) based on Lange (2024), including numerical stability enhancements (eigenvalue clipping).
+*   **Particle Filter (PF):** Benchmark Bootstrap/SISR implementation (`DFSVParticleFilter`).
+*   **Hyperparameter Estimation:** Framework using JAX optimization (`jaxopt`/`optimistix`) to maximize the BIF pseudo log-likelihood, including a prior regularization system.
+*   **Consistent API:** Filters inherit from a base class (`DFSVFilter`) defining a common interface.
+*   **JAX Integration:** Extensive use of JAX (`@equinox.filter_jit`, `scan`, `vmap`, pytrees) for performance and automatic differentiation.
+*   **Testing:** Robust test suite using `pytest` with unified tests and common fixtures.
+
+*   Applying the filters to real financial data.
+*   Following the detailed thesis completion plan (`memory-bank/plans/thesis_completion_plan_apr2025_v3.md`).
 
 ## Installation and Setup
 
