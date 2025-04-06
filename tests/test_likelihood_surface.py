@@ -10,9 +10,9 @@ import jax.numpy as jnp # Add JAX numpy import
 import matplotlib.pyplot as plt
 import copy
 
-from bellman_filter_dfsv.core.simulation import simulate_DFSV
+from bellman_filter_dfsv.models.simulation import simulate_DFSV
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass, dfsv_params_to_dict # Removed DFSV_params
-from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
 
 def create_test_model():
     """Create a simple test model (DFSVParamsDataclass)."""

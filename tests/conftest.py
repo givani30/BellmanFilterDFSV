@@ -9,12 +9,12 @@ from jaxtyping import Float, Array, PRNGKeyArray, Int, PyTree
 from typing import Dict, Any, Callable
 
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.core.simulation import simulate_DFSV
-from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
-from bellman_filter_dfsv.core.filters.bellman_information import (
+from bellman_filter_dfsv.models.simulation import simulate_DFSV
+from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.filters.bellman_information import (
     DFSVBellmanInformationFilter,
 )
-from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
+from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
 
 
 @pytest.fixture(scope="session")

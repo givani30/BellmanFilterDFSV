@@ -2,9 +2,9 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 # Updated imports to use the installed package
-from bellman_filter_dfsv.core.simulation import simulate_DFSV
+from bellman_filter_dfsv.models.simulation import simulate_DFSV
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Import the JAX dataclass
-from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
 
 # Set random seed for reproducibility
 np.random.seed(42)

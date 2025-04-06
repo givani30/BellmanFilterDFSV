@@ -22,9 +22,9 @@ import jax.numpy as jnp
 # Assuming 'bellman_filter_dfsv' is installed and accessible in the environment
 try:
     from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-    from bellman_filter_dfsv.core.simulation import simulate_DFSV
-    from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
-    from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
+    from bellman_filter_dfsv.models.simulation import simulate_DFSV
+    from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
+    from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
 except ImportError as e:
     print(f"Error importing bellman_filter_dfsv package: {e}")
     print("Please ensure the package is installed correctly (e.g., 'pip install -e .')")

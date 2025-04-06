@@ -14,10 +14,10 @@ import numpy as np
 import dataclasses
 
 # Project specific imports (adjust paths if necessary)
-from bellman_filter_dfsv.core.filters.bellman_information import DFSVBellmanInformationFilter
+from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformationFilter
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.core.simulation import simulate_DFSV
-from bellman_filter_dfsv.core.likelihood import bellman_objective
+from bellman_filter_dfsv.models.simulation import simulate_DFSV
+from bellman_filter_dfsv.filters.objectives import bellman_objective
 # from bellman_filter_dfsv.utils.jax_helpers import safe_slogdet, safe_solve, safe_norm # Removed unused import causing error
 
 # Enable 64-bit precision

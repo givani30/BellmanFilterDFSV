@@ -11,8 +11,8 @@ from pathlib import Path
 
 # Assuming the script is run from the project root
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.core.simulation import simulate_DFSV
-from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.models.simulation import simulate_DFSV
+from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
 # Import helper functions from simulation_study (or redefine if needed)
 #go up one directory
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))

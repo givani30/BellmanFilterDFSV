@@ -15,8 +15,8 @@ jax.config.update("jax_enable_x64", False)
 
 # Project imports
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.core.simulation import simulate_DFSV
-from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
+from bellman_filter_dfsv.models.simulation import simulate_DFSV
+from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
 from simulation_study import create_sim_parameters # Import from sibling script
 
 # --- Configuration ---

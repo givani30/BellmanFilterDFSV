@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import jax.numpy as jnp # Add JAX numpy import
 # Updated imports
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Import the JAX dataclass
-from bellman_filter_dfsv.core.simulation import simulate_DFSV
+from bellman_filter_dfsv.models.simulation import simulate_DFSV
 
 # Set random seed for reproducibility
 np.random.seed(42)

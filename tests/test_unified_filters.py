@@ -10,12 +10,12 @@ from typing import Dict, Any, Callable
 # Fixtures are automatically discovered by pytest from tests/conftest.py
 
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.core.filters.base import DFSVFilter
-from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
-from bellman_filter_dfsv.core.filters.bellman_information import (
+from bellman_filter_dfsv.filters.base import DFSVFilter
+from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.filters.bellman_information import (
     DFSVBellmanInformationFilter,
 )
-from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
+from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
 
 # Define filter types to parametrize over
 FILTER_TYPES = ["bellman", "bellman_information", "particle"]

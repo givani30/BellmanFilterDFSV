@@ -22,9 +22,9 @@ import time
 
 # Updated imports
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Import the JAX dataclass
-from bellman_filter_dfsv.core.simulation import simulate_DFSV
-from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
-from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
+from bellman_filter_dfsv.models.simulation import simulate_DFSV
+from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
 
 # Added imports
 from typing import Dict, Any, Tuple, Optional

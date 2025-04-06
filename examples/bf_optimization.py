@@ -28,14 +28,14 @@ from jaxtyping import Array, Bool, Int, PyTree, Scalar
 import optax
 from jaxopt import OptaxSolver
 
-from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
-from bellman_filter_dfsv.core.filters.bellman_information import DFSVBellmanInformationFilter
+from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformationFilter
 # Update imports to use models.dfsv directly
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Removed DFSV_params
 from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params
-from bellman_filter_dfsv.core.likelihood import bellman_objective, transformed_bellman_objective
+from bellman_filter_dfsv.filters.objectives import bellman_objective, transformed_bellman_objective
 # from utils.plotting import plot_variance_comparison # Module seems missing, commented out
-from bellman_filter_dfsv.core.simulation import simulate_DFSV
+from bellman_filter_dfsv.models.simulation import simulate_DFSV
 
 # Enable 64-bit precision for better numerical stability
 jax.config.update("jax_enable_x64", True)

@@ -19,9 +19,9 @@ from collections import namedtuple
 import dataclasses
 
 # Project specific imports
-from bellman_filter_dfsv.core.filters.bellman_information import DFSVBellmanInformationFilter
+from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformationFilter
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.core.simulation import simulate_DFSV
+from bellman_filter_dfsv.models.simulation import simulate_DFSV
 
 # Enable 64-bit precision for better numerical stability
 jax.config.update("jax_enable_x64", True)
