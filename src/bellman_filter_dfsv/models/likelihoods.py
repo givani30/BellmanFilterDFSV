@@ -1,22 +1,15 @@
 """
-Likelihood functions for Dynamic Factor Stochastic Volatility models.
+Likelihood and prior density functions for Dynamic Factor Stochastic Volatility models.
 
-This module provides functions to compute the log-likelihood for DFSV models,
-with special attention to proper expansion of expressions containing logarithms
-of exponential terms. Also includes objective functions for optimization.
+This module provides functions to compute the log-likelihood and log-prior density
+for DFSV models.
 """
-import jax # <-- Add import
+import jax
 from jax.scipy.special import gammaln
 import equinox as eqx
-import numpy as np
+import numpy as np # Keep np for original likelihood funcs for now
 import jax.numpy as jnp
-from jax import lax
-from functools import partial
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Removed DFSV_params
-from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
-from bellman_filter_dfsv.utils.transformations import untransform_params
-from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter # Added for type hints
-# Assuming safe versions exist based on prior diff attempt
+from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.utils.jax_helpers import safe_norm_logpdf, safe_inverse_gamma_logpdf
 
 
@@ -33,7 +26,7 @@ def log_likelihood_observation(y_t: np.ndarray, f_t: np.ndarray,
         Observation vector at time t with shape (N, 1)
     f_t : np.ndarray
         Factor vector at time t with shape (K, 1)
-    params : DFSV_params
+    params : DFSVParamsDataclass
         Model parameters
 
     Returns
@@ -76,7 +69,7 @@ def log_likelihood_factor_transition(f_t: np.ndarray, f_prev: np.ndarray,
         Previous factor vector with shape (K, 1)
     h_t : np.ndarray
         Current log-volatility vector with shape (K, 1)
-    params : DFSV_params
+    params : DFSVParamsDataclass
         Model parameters
 
     Returns
@@ -127,7 +120,7 @@ def log_likelihood_volatility_transition(h_t: np.ndarray, h_prev: np.ndarray,
         Current log-volatility vector with shape (K, 1)
     h_prev : np.ndarray
         Previous log-volatility vector with shape (K, 1)
-    params : DFSV_params
+    params : DFSVParamsDataclass
         Model parameters
 
     Returns
@@ -169,7 +162,7 @@ def compute_joint_log_likelihood(y: np.ndarray, f: np.ndarray, h: np.ndarray,
         Factors with shape (K, T)
     h : np.ndarray
         Log-volatilities with shape (K, T)
-    params : DFSV_params
+    params : DFSVParamsDataclass
         Model parameters
 
     Returns
@@ -202,190 +195,6 @@ def compute_joint_log_likelihood(y: np.ndarray, f: np.ndarray, h: np.ndarray,
             )
 
     return ll_total
-
-
-
-# Note: Using eqx.filter_jit which should handle non-JAX types like dicts as static by default.
-# If JIT errors persist with priors, add static_argnames=['priors'] to the decorator.
-@eqx.filter_jit
-def bellman_objective(
-    params: DFSVParamsDataclass,
-    y: jnp.ndarray,
-    filter: DFSVBellmanFilter,
-    priors: dict | None = None
-) -> float:
-    """
-    Compute the negative log-likelihood using the Bellman filter plus log-prior density.
-
-    Parameters
-    ----------
-    params : DFSVParamsDataclass
-        Model parameters in the original constrained space.
-    y : jnp.ndarray
-        Observed data.
-    filter : DFSVBellmanFilter
-        Filter object.
-    priors : dict | None, optional
-        A dictionary containing prior hyperparameters. Keys should match the
-        arguments of `log_prior_density`. If None, prior density is not added.
-        Defaults to None.
-
-    Returns
-    -------
-    float
-        Negative log-likelihood, potentially minus log-prior density.
-    """
-    # Original negative log-likelihood from the filter
-    # Note: The filter's likelihood method does NOT receive priors.
-    jit_ll_func = filter.jit_log_likelihood_wrt_params() # Corrected method name
-    log_lik = jit_ll_func(params, y)
-    safe_neg_ll = jnp.nan_to_num(-log_lik, nan=1e10, posinf=1e10, neginf=1e10)
-
-    # Calculate the log-prior density if priors are provided
-    log_prior = 0.0
-    if priors is not None:
-        # Ensure priors is treated as static for JIT compilation if it contains arrays
-        # However, eqx.filter_jit usually handles dicts passed as args correctly.
-        log_prior = log_prior_density(params, **priors)
-        log_prior = jnp.nan_to_num(log_prior, nan=-1e10, posinf=-1e10, neginf=-1e10) # Safety check
-
-    # Total objective: Negative Log Likelihood - Log Prior
-    # We subtract the log prior because we want to maximize posterior = likelihood * prior
-    # Maximizing log(posterior) = log(likelihood) + log(prior)
-    # Minimizing -log(posterior) = -log(likelihood) - log(prior) = neg_ll - log_prior
-    total_objective = safe_neg_ll - log_prior
-    return total_objective
-
-
-# Note: Using eqx.filter_jit which should handle non-JAX types like dicts as static by default.
-# If JIT errors persist with priors, add static_argnames=['priors'] to the decorator.
-@eqx.filter_jit
-def transformed_bellman_objective(
-    transformed_params: DFSVParamsDataclass,
-    y: jnp.ndarray,
-    filter: DFSVBellmanFilter,
-    priors: dict | None = None
-) -> float:
-    """
-    Compute the objective function with transformed parameters.
-
-    Untransforms parameters, then calls `bellman_objective` which computes
-    negative log-likelihood minus log-prior density.
-
-    Parameters
-    ----------
-    transformed_params : DFSVParamsDataclass
-        Model parameters in transformed (unconstrained) space.
-    y : jnp.ndarray
-        Observed data.
-    filter : DFSVBellmanFilter
-        Filter object.
-    priors : dict | None, optional
-        A dictionary containing prior hyperparameters, passed to `bellman_objective`.
-        If None, prior density is not added. Defaults to None.
-
-    Returns
-    -------
-    float
-        Negative log-likelihood, potentially minus log-prior density.
-    """
-    # Transform parameters back to original space
-    original_params = untransform_params(transformed_params)
-    # --- Add Debug Print for Untransformed Params ---
-    # jax.debug.print("objective: untransformed params: {p}", p=original_params)
-    # Check finiteness of all leaves in the original_params pytree
-    # leaves = jax.tree_util.tree_leaves(original_params)
-    # is_params_finite = jnp.all(jnp.array([jnp.all(jnp.isfinite(leaf)) for leaf in leaves]))
-    # jax.debug.print("objective: untransformed params finite: {finite}", finite=is_params_finite)
-    # --- End Debug Print ---
-
-    # Run the bellman objective with original parameters and pass the priors dictionary
-    return bellman_objective(
-        original_params,
-        y,
-        filter,
-        priors=priors # Pass the dictionary directly
-    )
-
-
-# -------------------------------------------------------------------------
-# Particle Filter Objective Functions
-# -------------------------------------------------------------------------
-
-# Note: This function is NOT JITted by default, but calls a potentially JITted
-# filter method. Priors are handled similarly to bellman_objective.
-def pf_objective(
-    params: DFSVParamsDataclass,
-    observations: jnp.ndarray,
-    filter_instance: DFSVParticleFilter, # Use imported class
-    priors: dict | None = None
-) -> float:
-    """
-    Objective function for standard parameter space using Particle Filter.
-
-    Calculates the negative log-likelihood based on the particle filter's
-    estimation, potentially minus the log-prior density.
-
-    Args:
-        params: Model parameters as a DFSVParamsDataclass Pytree.
-        observations: Observation data.
-        filter_instance: An instance of DFSVParticleFilter.
-        priors : dict | None, optional
-            A dictionary containing prior hyperparameters. Keys should match the
-            arguments of `log_prior_density`. If None, prior density is not added.
-            Defaults to None.
-
-    Returns:
-        float: Negative log-likelihood, potentially minus log-prior density.
-    """
-    # Calculate log-likelihood using the particle filter method
-    # Note: The filter's likelihood method does NOT receive priors.
-    log_lik = filter_instance.log_likelihood_of_params(params, observations)
-    safe_neg_ll = jnp.nan_to_num(-log_lik, nan=1e10, posinf=1e10, neginf=1e10) # Add safety
-
-    # Calculate the log-prior density if priors are provided
-    log_prior = 0.0
-    if priors is not None:
-        log_prior = log_prior_density(params, **priors)
-        log_prior = jnp.nan_to_num(log_prior, nan=-1e10, posinf=-1e10, neginf=-1e10) # Safety check
-
-    # Return negative log-likelihood minus log prior
-    return safe_neg_ll - log_prior
-
-# Note: This function is NOT JITted by default.
-def transformed_pf_objective(
-    transformed_params: DFSVParamsDataclass,
-    observations: jnp.ndarray,
-    filter_instance: DFSVParticleFilter,
-    priors: dict | None = None
-) -> float:
-    """
-    Objective function for transformed parameter space using Particle Filter.
-
-    Untransforms parameters, then calls `pf_objective` which computes
-    negative log-likelihood, potentially minus log-prior density.
-
-    Args:
-        transformed_params: Model parameters in transformed space.
-        observations: Observation data.
-        filter_instance: An instance of DFSVParticleFilter.
-        priors : dict | None, optional
-            A dictionary containing prior hyperparameters, passed to `pf_objective`.
-            If None, prior density is not added. Defaults to None.
-
-    Returns:
-        float: Negative log-likelihood, potentially minus log-prior density.
-    """
-    # Untransform parameters
-    params_original = untransform_params(transformed_params)
-
-    # Call the standard pf_objective with original parameters and pass the priors dictionary
-    return pf_objective(
-        params_original,
-        observations,
-        filter_instance,
-        priors=priors # Pass the dictionary directly
-    )
 
 
 # -------------------------------------------------------------------------
@@ -528,4 +337,3 @@ def log_prior_density(
     # Return total log prior (JAX scalar)
     # Replace NaN/Inf with large negative number for stability
     return jnp.where(jnp.isnan(total_log_prior) | jnp.isinf(total_log_prior), -1e10, total_log_prior)
-

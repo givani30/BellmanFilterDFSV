@@ -25,12 +25,12 @@ import dataclasses # Added import
 import equinox as eqx # Added for tree_at
 
 # Project specific imports
-from bellman_filter_dfsv.core.filters.bellman_information import DFSVBellmanInformationFilter
+from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformationFilter
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params
-from bellman_filter_dfsv.core.simulation import simulate_DFSV
+from bellman_filter_dfsv.models.simulation import simulate_DFSV
 # Import the objective functions from likelihood.py
-from bellman_filter_dfsv.core.likelihood import bellman_objective, transformed_bellman_objective
+from bellman_filter_dfsv.filters.objectives import bellman_objective, transformed_bellman_objective
 
 # Enable 64-bit precision for better numerical stability
 jax.config.update("jax_enable_x64", True)

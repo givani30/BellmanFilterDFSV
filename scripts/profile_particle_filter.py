@@ -13,7 +13,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 try:
-    from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
+    from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
     from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 except ImportError as e:
     print(f"Error importing project modules: {e}")

@@ -24,13 +24,13 @@ from jaxtyping import Array, Bool, Int, PyTree, Scalar
 # Import parameter classes and PF
 import optax
 from jaxopt import OptaxSolver
-from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter # Import Particle Filter
+from bellman_filter_dfsv.filters.particle import DFSVParticleFilter # Import Particle Filter
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Removed DFSV_params
 from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params
 # Import PF specific objectives
-from bellman_filter_dfsv.core.likelihood import pf_objective, transformed_pf_objective
+from bellman_filter_dfsv.filters.objectives import pf_objective, transformed_pf_objective
 # from utils.plotting import plot_variance_comparison # Commented out plotting import
-from bellman_filter_dfsv.core.simulation import simulate_DFSV
+from bellman_filter_dfsv.models.simulation import simulate_DFSV
 
 # Enable 64-bit precision for better numerical stability
 jax.config.update("jax_enable_x64", True)

@@ -21,15 +21,11 @@ This file provides a high-level overview of the project and the expected product
 ## Overall Architecture
 
 *   The project is structured as a Python package (`src/bellman_filter_dfsv/`) built heavily on the JAX library.
-*   **Core Components:**
-    *   `core/`: Contains the main filtering logic.
-        *   `filters/`: Implements different state estimation algorithms (Bellman, Particle) inheriting from a base class (`base.py`). Mathematical details are often separated into internal modules (e.g., `_bellman_impl.py`).
-
-        *   **API Consistency:** Filter classes now adhere to a more consistent API defined by the base class (`DFSVFilter`), including standardized methods for initialization, filtering, smoothing, and likelihood calculation (`log_likelihood_wrt_params`, `jit_log_likelihood_wrt_params`).
-        *   `likelihood.py`: Handles likelihood calculations.
-        *   `simulation.py`: Provides simulation capabilities.
-    *   `models/`: Defines the model structure, primarily the Dynamic Factor Stochastic Volatility (DFSV) model parameters using a JAX-compatible dataclass (`dfsv.py`).
-    *   `utils/`: Contains utility functions (e.g., `transformations.py`).
+*   **Main Components:**
+    *   `filters/`: Implements state estimation algorithms (Bellman, Particle) inheriting from `base.py`. Includes optimization objective functions (`objectives.py`) and internal helpers (e.g., `_bellman_impl.py`).
+        *   **API Consistency:** Filter classes adhere to a consistent API defined by `DFSVFilter` (in `base.py`), including standardized methods (`log_likelihood_wrt_params`, `jit_log_likelihood_wrt_params`, etc.).
+    *   `models/`: Defines the model structure (`dfsv.py`), simulation logic (`simulation.py`), and model-specific likelihood/prior functions (`likelihoods.py`).
+    *   `utils/`: Contains utility functions (e.g., `transformations.py`, `jax_helpers.py`).
 *   **Parameterization:** Uses `DFSVParamsDataclass` (a JAX Pytree) for consistent parameter handling across JAX-based components.
 
 ### DFSV Model Specification (Boekestijn, 2025, Ch. 3)
@@ -110,10 +106,10 @@ The optimization process targets the pseudo log-likelihood derived from the Bell
 ---
 **Update Log:**
 
-*   [2025-04-01 01:06:28] - Initial Memory Bank setup.
-*   [2025-04-01 01:12:01] - Added initial architecture summary based on `src/` directory analysis.
-*   [2025-04-01 01:13:06] - Added mathematical specification of the DFSV model under Overall Architecture based on simulation code.
+*   [01-04-2025 01:06:28] - Initial Memory Bank setup.
+*   [01-04-2025 01:12:01] - Added initial architecture summary based on `src/` directory analysis.
+*   [01-04-2025 01:13:06] - Added mathematical specification of the DFSV model under Overall Architecture based on simulation code.
 
-*   [2025-06-04 01:26:00] - Added note about standardized filter API consistency to Overall Architecture.
-*   [2025-04-01 02:47:00] - Added Model Specification and Estimation Approach details from Thesis Proposal & Lange (2024).
-*   [2025-04-01 21:57:48] - Consolidated architecture description, model specification, and moved log entries to footnotes during Memory Bank cleanup.
+*   [04-06-2025 01:26:00] - Added note about standardized filter API consistency to Overall Architecture.
+*   [01-04-2025 02:47:00] - Added Model Specification and Estimation Approach details from Thesis Proposal & Lange (2024).
+*   [01-04-2025 21:57:48] - Consolidated architecture description, model specification, and moved log entries to footnotes during Memory Bank cleanup.

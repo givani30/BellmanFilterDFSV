@@ -17,9 +17,9 @@ import matplotlib.pyplot as plt
 import copy
 
 # Import the necessary functions
-from bellman_filter_dfsv.core.simulation import simulate_DFSV
+from bellman_filter_dfsv.models.simulation import simulate_DFSV
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass, dfsv_params_to_dict # Removed DFSV_params
-from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
 
 # Enable 64-bit precision for numerical stability
 jax.config.update("jax_enable_x64", True)

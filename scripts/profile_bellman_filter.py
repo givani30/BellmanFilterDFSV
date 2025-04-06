@@ -14,7 +14,7 @@ if project_root not in sys.path:
 
 try:
     # Use standard package imports, assuming project root is in path
-    from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+    from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
     from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 except ImportError as e:
     print(f"Error importing project modules: {e}")

@@ -7,11 +7,11 @@ import numpy as np
 
 
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.core.filters.bellman_information import DFSVBellmanInformationFilter
+from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformationFilter
 # Import the original filter for comparison tests later
-from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
 from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params
-from bellman_filter_dfsv.core.likelihood import transformed_bellman_objective # Using transformed objective for stability test
+from bellman_filter_dfsv.filters.objectives import transformed_bellman_objective # Using transformed objective for stability test
 import optimistix as optx # For the optimizer
 
 # Enable float64 for tests

@@ -10,8 +10,8 @@ import os
 
 # Updated imports
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Import the JAX dataclass
-from bellman_filter_dfsv.core.simulation import simulate_DFSV
-from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.models.simulation import simulate_DFSV
+from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
 
 
 # Removed TestDFSVParams class as it tested the deleted DFSV_params class
