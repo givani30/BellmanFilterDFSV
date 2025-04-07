@@ -5,11 +5,12 @@ Maps constrained parameters (e.g., variances > 0, correlations in [-1, 1])
 to unconstrained space for optimization, and back.
 """
 import copy
+import jax
 import jax.numpy as jnp
 from jax.nn import softplus
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 
-# Epsilon for numerical stability near boundaries (e.g., 0 or 1) #TODO: exten
+# Epsilon for numerical stability near boundaries (e.g., 0 or 1)
 EPS = 1e-6
 
 def inverse_softplus(x):
@@ -35,48 +36,138 @@ def inverse_softplus(x):
                      jnp.log(x_safe),  # Approximation for small values
                      jnp.log(jnp.exp(x_safe) - 1.0))
 
+def safe_arctanh(x):
+    """
+    Computes arctanh(x) with clipping to avoid +/- inf for x near +/- 1.
+
+    Parameters:
+    -----------
+    x : array_like
+        Input values, expected to be in [-1, 1].
+
+    Returns:
+    --------
+    array_like
+        arctanh(x) after clipping x to [-1 + EPS, 1 - EPS].
+    """
+    x_clipped = jnp.clip(x, -1.0 + EPS, 1.0 - EPS)
+    return jnp.arctanh(x_clipped)
+
+# """ REMOVED based on plan 'full_phi_hybrid_plan_07-04-2025.md'
+# def stabilize_matrix(matrix_unc: jnp.ndarray) -> jnp.ndarray:
+#     """Stabilizes a matrix by transforming its eigenvalues to have magnitude < 1.
+#
+#     Uses eigenvalue decomposition and maps eigenvalue magnitudes using tanh.
+#
+#     Args:
+#         matrix_unc: An unconstrained KxK JAX array.
+#
+#     Returns:
+#         A stabilized KxK JAX array (real-valued) with eigenvalues inside the
+#         unit circle. Returns 0.95 * I if input contains NaN/Inf.
+#     """
+#     K = matrix_unc.shape[0]
+#     default_stable_matrix = jnp.eye(K) * 0.95
+#
+#     def _stabilize(mat):
+#         eigvals, eigvecs = jnp.linalg.eig(mat)
+#         magnitudes = jnp.abs(eigvals)
+#         transformed_magnitudes = jnp.tanh(magnitudes)
+#         # Handle potential division by zero for zero eigenvalues
+#         phases = jnp.where(magnitudes == 0, 1.0, eigvals / magnitudes)
+#         new_eigvals = transformed_magnitudes * phases
+#         stable_matrix = (eigvecs @ jnp.diag(new_eigvals) @ jnp.linalg.inv(eigvecs)).real
+#         return jnp.nan_to_num(stable_matrix, nan=0.0, posinf=0.0, neginf=0.0) # Use nan_to_num on output
+#
+#     # Check for NaN/Inf in the input matrix
+#     has_invalid_values = jnp.any(jnp.isnan(matrix_unc) | jnp.isinf(matrix_unc))
+#
+#     # Conditionally apply stabilization or return default
+#     stable_matrix = jax.lax.cond(
+#         has_invalid_values,
+#         lambda _: default_stable_matrix,
+#         _stabilize,
+#         matrix_unc
+#     )
+#     return stable_matrix
+# """
+
+# """ REMOVED based on plan 'full_phi_hybrid_plan_07-04-2025.md'
+# def get_unconstrained_matrix(stable_matrix: jnp.ndarray) -> jnp.ndarray:
+#     """Transforms a stable matrix (eigenvalues < 1) back to unconstrained space.
+#
+#     Uses eigenvalue decomposition and maps eigenvalue magnitudes using arctanh.
+#
+#     Args:
+#         stable_matrix: A stable KxK JAX array (eigenvalues inside unit circle).
+#
+#     Returns:
+#         An unconstrained KxK JAX array (real-valued). Returns a zero matrix
+#         if input contains NaN/Inf.
+#     """
+#     K = stable_matrix.shape[0]
+#     default_unc_matrix = jnp.zeros((K, K)) # Default to zero matrix on invalid input
+#
+#     def _get_unconstrained(mat):
+#         eigvals, eigvecs = jnp.linalg.eig(mat)
+#         magnitudes = jnp.abs(eigvals)
+#         # Clip magnitudes slightly away from 1 for numerical stability of arctanh
+#         magnitudes_clipped = jnp.clip(magnitudes, 0, 1.0 - EPS)
+#         unconstrained_magnitudes = jnp.arctanh(magnitudes_clipped)
+#         # Handle potential division by zero for zero eigenvalues
+#         phases = jnp.where(magnitudes == 0, 1.0, eigvals / magnitudes)
+#         unc_eigvals = unconstrained_magnitudes * phases
+#         unc_matrix = (eigvecs @ jnp.diag(unc_eigvals) @ jnp.linalg.inv(eigvecs)).real
+#         return jnp.nan_to_num(unc_matrix, nan=0.0, posinf=0.0, neginf=0.0) # Use nan_to_num on output
+#
+#     # Check for NaN/Inf in the input matrix
+#     has_invalid_values = jnp.any(jnp.isnan(stable_matrix) | jnp.isinf(stable_matrix))
+#
+#     # Conditionally apply inverse transformation or return default
+#     unc_matrix = jax.lax.cond(
+#         has_invalid_values,
+#         lambda _: default_unc_matrix,
+#         _get_unconstrained,
+#         stable_matrix
+#     )
+#     return unc_matrix
+# """
+
+
 def transform_params(params: DFSVParamsDataclass) -> DFSVParamsDataclass:
     """
     Transform bounded parameters to unconstrained space for optimization.
 
+    - Applies element-wise `inverse_softplus` to `Phi_f` and `Phi_h`.
+    - Applies `inverse_softplus` to diagonal elements of `sigma2` and `Q_h`.
+    - Leaves `mu` and `lambda_r` unchanged.
+
     Parameters:
     -----------
     params : DFSVParamsDataclass
-        Model parameters in their natural (constrained) space
+        Model parameters in their natural (constrained) space.
 
     Returns:
     --------
     DFSVParamsDataclass
-        Transformed parameters in unconstrained space
+        Transformed parameters in unconstrained space.
     """
     # Create a copy to avoid modifying the original
     result = copy.deepcopy(params)
 
-    # Apply logit transform to persistence parameters (bounded in 0,1)
-    # logit(p) = log(p/(1-p))
+    # --- Phi_f and Phi_h Transformation (Element-wise inverse_softplus) ---
+    # Ensures Phi_f and Phi_h are positive after untransformation
+    transformed_phi_f = inverse_softplus(params.Phi_f)
+    transformed_phi_h = inverse_softplus(params.Phi_h)
 
-    # Apply logit transform to persistence parameters (bounded in 0,1)
-    # logit(p) = log(p/(1-p))
-
-    # Transform Phi_f (factor persistence) - Assuming diagonal for now
-    diag_phi_f = jnp.diag(params.Phi_f)
-    phi_f_bounded = jnp.clip(diag_phi_f, EPS, 1 - EPS)
-    transformed_diag_phi_f = jnp.log(phi_f_bounded / (1 - phi_f_bounded))
-    transformed_phi_f = jnp.diag(transformed_diag_phi_f) # Keep diagonal structure
-
-    # Transform Phi_h (log-volatility persistence) - Assuming diagonal
-    diag_phi_h = jnp.diag(params.Phi_h)
-    phi_h_bounded = jnp.clip(diag_phi_h, EPS, 1 - EPS)
-    transformed_diag_phi_h = jnp.log(phi_h_bounded / (1 - phi_h_bounded))
-    transformed_phi_h = jnp.diag(transformed_diag_phi_h) # Keep diagonal structure
-
+    # --- Variance/Covariance Transformations ---
     # Transform variance parameters (must be positive) using inverse softplus
     # Only transform diagonal elements of sigma2 (force off-diagonals to zero)
     if params.sigma2.ndim > 1:  # Handle matrix case (already diagonal from validation)
-        diag_indices = jnp.diag_indices_from(params.sigma2)
+        diag_indices_sigma = jnp.diag_indices_from(params.sigma2)
         transformed_sigma2 = jnp.zeros_like(params.sigma2)
         # Apply inverse softplus to get unconstrained values
-        transformed_sigma2 = transformed_sigma2.at[diag_indices].set(
+        transformed_sigma2 = transformed_sigma2.at[diag_indices_sigma].set(
             inverse_softplus(jnp.diag(params.sigma2))
         )
     else: # Should not happen if validation runs, but handle just in case
@@ -106,33 +197,35 @@ def untransform_params(transformed_params: DFSVParamsDataclass) -> DFSVParamsDat
     """
     Transform parameters back from unconstrained to constrained space.
 
+    - Applies element-wise `softplus` to `Phi_f` and `Phi_h`.
+    - Applies `softplus` to diagonal elements of `sigma2` and `Q_h`.
+    - Leaves `mu` and `lambda_r` unchanged.
+
     Parameters:
     -----------
     transformed_params : DFSVParamsDataclass
-        Transformed parameters in unconstrained space
+        Transformed parameters in unconstrained space.
 
     Returns:
     --------
     DFSVParamsDataclass
-        Parameters in their natural (constrained) space
+        Parameters in their natural (constrained) space.
     """
-    # Apply sigmoid to transform back persistence parameters (diagonal)
-    # sigmoid(x) = 1/(1+exp(-x))
-    diag_phi_f_orig = 1.0 / (1.0 + jnp.exp(-jnp.diag(transformed_params.Phi_f)))
-    phi_f_original = jnp.diag(diag_phi_f_orig)
+    # --- Phi_f and Phi_h Untransformation (Element-wise softplus) ---
+    # Ensures Phi_f and Phi_h are positive
+    phi_f_original = softplus(transformed_params.Phi_f)
+    phi_h_original = softplus(transformed_params.Phi_h)
 
-    diag_phi_h_orig = 1.0 / (1.0 + jnp.exp(-jnp.diag(transformed_params.Phi_h)))
-    phi_h_original = jnp.diag(diag_phi_h_orig)
-
+    # --- Variance/Covariance Untransformations ---
     # Apply softplus to transform back variance parameters
     # Handle matrix vs vector case for sigma2 (expecting diagonal matrix)
     if transformed_params.sigma2.ndim > 1:
         # For matrix case, only untransform diagonal elements
-        diag_indices = jnp.diag_indices_from(transformed_params.sigma2)
+        diag_indices_sigma = jnp.diag_indices_from(transformed_params.sigma2)
         sigma2_original = jnp.zeros_like(transformed_params.sigma2)  # Start with zeros
         # Apply softplus to transform from unconstrained to positive values
-        sigma2_original = sigma2_original.at[diag_indices].set(
-            softplus(transformed_params.sigma2[diag_indices])
+        sigma2_original = sigma2_original.at[diag_indices_sigma].set(
+            softplus(transformed_params.sigma2[diag_indices_sigma])
         )
     else: # Should not happen
         sigma2_original = softplus(transformed_params.sigma2)

@@ -4,10 +4,11 @@ Objective functions for optimizing DFSV model parameters using different filters
 import jax
 import equinox as eqx
 import jax.numpy as jnp
+# Removed incorrect import: import jax.linalg
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter # Updated import path
 from bellman_filter_dfsv.filters.particle import DFSVParticleFilter # Updated import path
-from bellman_filter_dfsv.utils.transformations import untransform_params
+from bellman_filter_dfsv.utils.transformations import untransform_params, EPS
 from bellman_filter_dfsv.models.likelihoods import log_prior_density # Updated import path
 
 
@@ -18,10 +19,12 @@ def bellman_objective(
     params: DFSVParamsDataclass,
     y: jnp.ndarray,
     filter: DFSVBellmanFilter,
-    priors: dict | None = None
+    priors: dict | None = None,
+    stability_penalty_weight: float = 0.0
 ) -> float:
     """
-    Compute the negative log-likelihood using the Bellman filter plus log-prior density.
+    Compute the negative log-likelihood using the Bellman filter plus log-prior density,
+    optionally adding a stability penalty.
 
     Parameters
     ----------
@@ -35,14 +38,18 @@ def bellman_objective(
         A dictionary containing prior hyperparameters. Keys should match the
         arguments of `log_prior_density`. If None, prior density is not added.
         Defaults to None.
+    stability_penalty_weight : float, optional
+        Weight for the stability penalty term applied to Phi_f and Phi_h.
+        The penalty is calculated as relu(max(|eigval|) - 1 + EPS)**2.
+        Defaults to 0.0 (no penalty).
 
     Returns
     -------
     float
-        Negative log-likelihood, potentially minus log-prior density.
+        Negative log-likelihood, potentially minus log-prior density, plus stability penalty.
     """
     # Original negative log-likelihood from the filter
-    # Note: The filter's likelihood method does NOT receive priors.
+    # Note: The filter's likelihood method does NOT receive priors or penalty weights.
     jit_ll_func = filter.jit_log_likelihood_wrt_params() # Corrected method name
     log_lik = jit_ll_func(params, y)
     safe_neg_ll = jnp.nan_to_num(-log_lik, nan=1e10, posinf=1e10, neginf=1e10)
@@ -55,11 +62,24 @@ def bellman_objective(
         log_prior = log_prior_density(params, **priors)
         log_prior = jnp.nan_to_num(log_prior, nan=-1e10, posinf=-1e10, neginf=-1e10) # Safety check
 
-    # Total objective: Negative Log Likelihood - Log Prior
+    # Calculate stability penalty if weight > 0
+    stability_penalty = 0.0
+    if stability_penalty_weight > 0:
+        # Calculate max eigenvalue magnitudes for Phi_f and Phi_h using jnp.linalg
+        max_mag_f = jnp.max(jnp.abs(jnp.linalg.eigvals(params.Phi_f)))
+        max_mag_h = jnp.max(jnp.abs(jnp.linalg.eigvals(params.Phi_h)))
+
+        # Calculate penalty using relu
+        penalty_f = jax.nn.relu(max_mag_f - 1.0 + EPS)**2
+        penalty_h = jax.nn.relu(max_mag_h - 1.0 + EPS)**2
+        stability_penalty = penalty_f + penalty_h
+
+    # Total objective: Negative Log Likelihood - Log Prior + Weighted Stability Penalty
     # We subtract the log prior because we want to maximize posterior = likelihood * prior
     # Maximizing log(posterior) = log(likelihood) + log(prior)
     # Minimizing -log(posterior) = -log(likelihood) - log(prior) = neg_ll - log_prior
-    total_objective = safe_neg_ll - log_prior
+    # We add the stability penalty as it's a cost we want to minimize.
+    total_objective = safe_neg_ll - log_prior + stability_penalty_weight * stability_penalty
     return total_objective
 
 
@@ -70,13 +90,14 @@ def transformed_bellman_objective(
     transformed_params: DFSVParamsDataclass,
     y: jnp.ndarray,
     filter: DFSVBellmanFilter,
-    priors: dict | None = None
+    priors: dict | None = None,
+    stability_penalty_weight: float = 0.0
 ) -> float:
     """
     Compute the objective function with transformed parameters.
 
     Untransforms parameters, then calls `bellman_objective` which computes
-    negative log-likelihood minus log-prior density.
+    negative log-likelihood minus log-prior density, plus an optional stability penalty.
 
     Parameters
     ----------
@@ -89,11 +110,14 @@ def transformed_bellman_objective(
     priors : dict | None, optional
         A dictionary containing prior hyperparameters, passed to `bellman_objective`.
         If None, prior density is not added. Defaults to None.
+    stability_penalty_weight : float, optional
+        Weight for the stability penalty term, passed to `bellman_objective`.
+        Defaults to 0.0.
 
     Returns
     -------
     float
-        Negative log-likelihood, potentially minus log-prior density.
+        Negative log-likelihood, potentially minus log-prior density, plus stability penalty.
     """
     # Transform parameters back to original space
     original_params = untransform_params(transformed_params)
@@ -106,11 +130,13 @@ def transformed_bellman_objective(
     # --- End Debug Print ---
 
     # Run the bellman objective with original parameters and pass the priors dictionary
+    # and the stability penalty weight
     return bellman_objective(
         original_params,
         y,
         filter,
-        priors=priors # Pass the dictionary directly
+        priors=priors, # Pass the dictionary directly
+        stability_penalty_weight=stability_penalty_weight # Pass the weight
     )
 
 

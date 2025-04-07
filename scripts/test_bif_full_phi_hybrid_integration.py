@@ -1,15 +1,17 @@
 #!/usr/bin/env python
 """
-Optimizer Comparison for DFSV Bellman Information Filter Hyperparameter Estimation.
+Integration Test for Full Phi Hybrid Transformation in BIF Optimization.
 
-This script compares the performance (stability, convergence, efficiency) of
-various optimizers from Optimistix and Optax, under different prior configurations
-when minimizing the negative pseudo log-likelihood derived from the
-DFSVBellmanInformationFilter.
+This script tests the stability of the Bellman Information Filter (BIF)
+hyperparameter estimation when using the hybrid transformation for full
+Phi_f and Phi_h matrices (tanh on diagonal, unconstrained off-diagonal).
+It runs the optimization for a fixed number of steps without an explicit
+stability penalty and checks the eigenvalues of the final untransformed
+Phi matrices.
 """
 
 import time
-import csv
+import csv # Keep for potential future use, but not strictly needed now
 import cloudpickle
 
 
@@ -27,7 +29,7 @@ import equinox as eqx # Added for tree_at
 # Project specific imports
 from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformationFilter
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params
+from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params, safe_arctanh # Import safe_arctanh
 from bellman_filter_dfsv.models.simulation import simulate_DFSV
 # Import the objective functions from likelihood.py
 from bellman_filter_dfsv.filters.objectives import bellman_objective, transformed_bellman_objective
@@ -112,11 +114,12 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, true_
     # Define Optimizers to Compare
     rtol = 1e-3
     atol = 1e-5
-    # Scheduler to use
-    initial_lr=1e-2
-    peak_lr=1e-1
+    # Scheduler to use (Reduced LR - Attempt 2)
+    initial_lr=1e-3 # Reduced from 1e-2
+    peak_lr=1e-2    # Reduced from 1e-1
     end_lr=1e-6
     # Adjust decay steps based on max_steps
+    print(f"Using reduced learning rate schedule: init={initial_lr}, peak={peak_lr}, end={end_lr}")
     scheduler=optax.warmup_cosine_decay_schedule(init_value=initial_lr, peak_value=peak_lr, end_value=end_lr, warmup_steps=int(max_steps*0.1), decay_steps=max_steps)
     optimizers_to_test = {
         # Only run AdamW for this specific analysis
@@ -131,21 +134,36 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, true_
 
     # Create uninformed initial parameters (K=2)
     data_variance = jnp.var(returns, axis=0)
-    # Generate initial lambda_r guess for K=2 with constraint
-    lambda_r_init_guess = jnp.ones((N, K))
+    # Generate initial lambda_r guess for K=2 with constraint (start with zeros)
+    lambda_r_init_guess = jnp.zeros((N, K)) # Start with zeros
     diag_indices_init = jnp.diag_indices(n=min(N, K), ndim=2)
-    lambda_r_init_guess = lambda_r_init_guess.at[diag_indices_init].set(1.0)
-    lambda_r_init_guess = jnp.tril(lambda_r_init_guess)
+    lambda_r_init_guess = lambda_r_init_guess.at[diag_indices_init].set(1.0) # Set diagonal to 1.0
+    lambda_r_init_guess = jnp.tril(lambda_r_init_guess) # Ensure lower triangular (redundant if starting with zeros, but safe)
+    print(f"Initial lambda_r guess (constrained):\n{lambda_r_init_guess}") # Add print
+
+    # Create initial guess for Phi matrices using hybrid approach
+    # We need the *unconstrained* representation for the optimizer's initial state (y0)
+    # Off-diagonals are unconstrained (start at 0)
+    # Diagonals are arctanh of the desired initial stable value (e.g., 0.95)
+    initial_stable_diag_val = 0.95
+    unconstrained_diag_val = safe_arctanh(initial_stable_diag_val)
+
+    phi_f_init = jnp.zeros((K, K))
+    phi_f_init = phi_f_init.at[jnp.diag_indices(K)].set(unconstrained_diag_val)
+    phi_h_init = jnp.zeros((K, K))
+    phi_h_init = phi_h_init.at[jnp.diag_indices(K)].set(unconstrained_diag_val)
+
+    # Define desired initial constrained diagonal value for Phi
+    initial_stable_diag_val = 0.95
 
     uninformed_params = DFSVParamsDataclass(
         N=N, K=K,
-        # Initial guess for lambda_r (will be optimized, but needs correct shape and constraint)
         lambda_r=lambda_r_init_guess, # Use K=2 constrained guess
-        Phi_f=0.8 * jnp.eye(K),
-        Phi_h=0.8 * jnp.eye(K),
+        Phi_f=initial_stable_diag_val * jnp.eye(K), # Use CONSTRAINED initial value
+        Phi_h=initial_stable_diag_val * jnp.eye(K), # Use CONSTRAINED initial value
         mu=jnp.zeros(K), # Start mu at 0 (will be fixed)
-        sigma2=0.5 * data_variance,
-        Q_h=0.2 * jnp.eye(K)
+        sigma2=jnp.ones(N) * 0.1, # Use smaller fixed initial sigma2
+        Q_h=0.5 * jnp.eye(K) # Increased initial Q_h for stability
     )
     # Apply constraint to initial guess (important for transformation)
     uninformed_params_constrained = apply_identification_constraint(uninformed_params)
@@ -157,13 +175,17 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, true_
         use_transform = True
         print(f"\n--- Running: Config='{config_name}' | Optimizer='{name}' | Transform=Yes ---")
 
+        # Print the initial *constrained* parameter guess (before transformation)
+        print("\nInitial Parameter Guess (Constrained, before transformation):")
+        print(uninformed_params_constrained)
+
         # Transform the constrained initial guess
         initial_y = transform_params(uninformed_params_constrained)
 
-        # Define wrapper for objective with fixed mu
+        # Define wrapper for objective with fixed mu and stability penalty
         @eqx.filter_jit
         def fixed_mu_objective_wrapper(t_params, args_tuple):
-            obs, filt, fixed_mu_val = args_tuple # Unpack static args (only fixed_mu_val)
+            obs, filt, fixed_mu_val, penalty_weight = args_tuple # Unpack static args including penalty weight
             # 1. Untransform parameters being optimized (includes lambda_r)
             params_iter = untransform_params(t_params)
             # 2. Fix mu to its true value
@@ -171,14 +193,24 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, true_
             # 3. Apply identification constraint (ensures lambda_r has correct structure)
             #    This is crucial as lambda_r comes from the optimization state via untransform
             params_fixed_constrained = apply_identification_constraint(params_fixed_mu)
-            # 4. Calculate loss using the original objective (no priors needed)
-            loss = bellman_objective(params_fixed_constrained, obs, filt, priors=None) # Pass priors=None
+            # 4. Calculate loss using the original objective, passing the penalty weight
+            loss = bellman_objective(
+                params_fixed_constrained,
+                obs,
+                filt,
+                priors=None, # Pass priors=None
+                stability_penalty_weight=penalty_weight # Pass the penalty weight
+            )
             return loss
 
-        fn_to_minimize = fixed_mu_objective_wrapper # Use the new wrapper
+        fn_to_minimize = fixed_mu_objective_wrapper # Use the updated wrapper
 
-        # Package static arguments: observations, filter, fixed mu
-        static_args = (returns, filter_instance, true_mu) # Pass only true_mu
+        # Define stability penalty weight
+        stability_penalty_weight = 1000.0 # Increased penalty weight as requested
+        print(f"Using stability_penalty_weight = {stability_penalty_weight}")
+
+        # Package static arguments: observations, filter, fixed mu, penalty weight
+        static_args = (returns, filter_instance, true_mu, stability_penalty_weight) # Pass penalty weight
 
         start_time = time.time()
         final_loss = jnp.inf
@@ -279,16 +311,43 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, true_
             final_loss = jnp.inf # Assign Inf on exception
             print(f"Exception! Error: {e}, Time: {time_taken:.2f}s")
 
+        # --- Eigenvalue Check ---
+        if final_params_untransformed is not None:
+            try:
+                phi_f_eigvals = jnp.abs(jnp.linalg.eigvals(final_params_untransformed.Phi_f))
+                phi_h_eigvals = jnp.abs(jnp.linalg.eigvals(final_params_untransformed.Phi_h))
+                print("\n--- Final Eigenvalue Magnitudes ---")
+                print(f"Phi_f: {phi_f_eigvals}")
+                print(f"Phi_h: {phi_h_eigvals}")
+                if jnp.all(phi_f_eigvals < 1.0) and jnp.all(phi_h_eigvals < 1.0):
+                    print("Stability Check: PASSED (All eigenvalue magnitudes < 1.0)")
+                else:
+                    print("Stability Check: FAILED (One or more eigenvalue magnitudes >= 1.0)")
+                    # Potentially modify success status or error message if stability fails
+                    if success: # If solver thought it succeeded but stability failed
+                         error_msg += "; Stability Check FAILED"
+                         success = False # Mark as overall failure if stability check fails
+            except Exception as eig_e:
+                print(f"ERROR calculating eigenvalues: {eig_e}")
+                if success:
+                    error_msg += f"; Eigenvalue calc failed: {eig_e}"
+                    success = False # Mark as failure if eigenvalue check fails
+        else:
+            print("\n--- Final Eigenvalue Magnitudes ---")
+            print("Skipping eigenvalue check (final_params is None).")
+        # --- End Eigenvalue Check ---
+
+
         # Store results
         results.append(OptimizerResult(
             optimizer_name=name,
             uses_transformations=use_transform,
             prior_config_name=config_name, # Use config_name
-            success=success,
+            success=success, # Use potentially updated success status
             final_loss=float(final_loss), # Convert JAX scalar to float
             steps=int(num_steps),
             time_taken=time_taken,
-            error_message=error_msg,
+            error_message=error_msg, # Use potentially updated error message
             final_params=final_params_untransformed # Store the final params Pytree (with fixed mu, constrained lambda)
         ))
 
@@ -417,21 +476,31 @@ def main():
         filter_instance_for_true = DFSVBellmanInformationFilter(true_params.N, true_params.K)
         # Need to transform true params to use the objective wrapper
         true_params_transformed = transform_params(true_params)
-        # Define the objective wrapper locally for this calculation (similar to the one in run_comparison)
+        # Define stability penalty weight (same as in run_comparison) for this calculation
+        stability_penalty_weight_for_true = 10.0 # Restore original penalty weight
+
+        # Define the objective wrapper locally for this calculation, including penalty weight
         @eqx.filter_jit # Use filter_jit
         def temp_objective_wrapper_fixed_mu(t_params, args_tuple):
-            obs, filt, fixed_mu_val = args_tuple # Unpack static args
+            obs, filt, fixed_mu_val, penalty_weight = args_tuple # Unpack static args including penalty weight
             params_iter = untransform_params(t_params)
             # Fix mu, keep other params (including lambda_r) from optimization state
             params_fixed = eqx.tree_at(lambda p: p.mu, params_iter, fixed_mu_val)
             # Apply constraint to lambda_r (should already be correct for true params)
             params_fixed = apply_identification_constraint(params_fixed)
-            loss = bellman_objective(params_fixed, obs, filt, priors=None) # No priors
+            # Calculate loss including the stability penalty
+            loss = bellman_objective(
+                params_fixed,
+                obs,
+                filt,
+                priors=None, # No priors
+                stability_penalty_weight=penalty_weight # Pass penalty weight
+            )
             return loss
 
         true_objective_value = temp_objective_wrapper_fixed_mu(
             true_params_transformed,
-            (returns, filter_instance_for_true, true_mu) # Pass only true_mu
+            (returns, filter_instance_for_true, true_mu, stability_penalty_weight_for_true) # Pass penalty weight
         )
 
         if jnp.isfinite(true_objective_value):
@@ -443,19 +512,20 @@ def main():
 
 
     # 3. Run Comparison
-    max_opt_steps = 500 # Set max steps for this experiment
+    max_opt_steps = 500 # Increased max steps for final run
     print(f"\nRunning optimizer comparison (max_steps={max_opt_steps})...")
     results = run_comparison(
         true_params=true_params,
         returns=returns,
         true_mu=true_mu, # Pass true mu
         # No prior info needed
-        max_steps=max_opt_steps
+        max_steps=max_opt_steps # Pass updated max_steps
     )
 
-    # 4. Print Results
+    # 4. Print Results Table (includes success/failure and error messages)
+    print_results_table(results)
 
-    # 6. Save Final Estimated Parameters
+    # 5. Save Final Estimated Parameters (Keep this for potential debugging)
     print("\nSaving final estimated parameters...")
     for res in results:
         if res.final_params is not None:
@@ -463,7 +533,8 @@ def main():
             opt_name = res.optimizer_name.replace(' ', '_')
             # Update config_name_safe to reflect "Fixed Mu, Constrained Lambda_f"
             config_name_safe = res.prior_config_name.replace(' ', '_').replace('(','').replace(')','').replace('+','_plus_').replace(',','').replace('=','_') # Make filename safe
-            filename = f"outputs/estimated_params_{opt_name}_{config_name_safe}_{status_str}_K{true_params.K}.pkl" # Added K to filename, save in outputs/
+            # Update filename for this specific test
+            filename = f"outputs/estimated_params_hybrid_integration_{opt_name}_{config_name_safe}_{status_str}_K{true_params.K}.pkl" # Save in outputs/
             try:
                 # Ensure outputs directory exists (optional, good practice)
                 import os
@@ -478,17 +549,12 @@ def main():
             config_name_safe = res.prior_config_name.replace(' ', '_').replace('(','').replace(')','').replace('+','_plus_').replace(',','').replace('=','_') # Make filename safe
             print(f"  Skipping parameter saving for {opt_name}/{config_name_safe} (final_params is None)")
 
-    # 7. Print Parameter Comparison Table
-    print_parameter_comparison(results, true_params) # Added call
+    # 6. Print Parameter Comparison Table (Keep as requested)
+    print_parameter_comparison(results, true_params)
 
-    print_results_table(results)
+    # 7. CSV saving removed for this specific test
 
-    # 5. Save Results to CSV
-    # Update filename for CSV results
-    csv_filename = f"outputs/bif_fixed_mu_constrained_lambda_results_K{true_params.K}.csv" # Updated filename, save in outputs/
-    save_results_to_csv(results, filename=csv_filename)
-
-    print(f"\nBIF Fixed Mu + Constrained Lambda_f (K={true_params.K}) Evaluation finished.") # Updated print
+    print(f"\nBIF Full Phi Hybrid Integration Test (K={true_params.K}) finished.") # Updated print
 
 
 if __name__ == "__main__":

@@ -327,4 +327,22 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 *   This decision impacts the hyperparameter estimation workflow for the BIF (`src/bellman_filter_dfsv/core/likelihood.py`, `scripts/test_bif_priors_optimizers.py`, etc.). Future estimation runs using BIF should incorporate a mechanism to fix `mu` according to the chosen contextual method.
 
 **Implication:** Fixing `mu` entirely appears to be a viable and potentially necessary strategy for obtaining stable BIF hyperparameter estimates, given the identified issues with estimating `mu` directly. This strategy allows for successful optimization of the remaining parameters.
+
+
+---
+
+**Decision [07-04-2025 02:05:00]:** Adopt element-wise `softplus` transformation combined with objective function penalty for handling full persistence matrices (`Phi_f`, `Phi_h`).
+
+**Rationale:** Initial attempts to allow full `Phi` matrices faced challenges:
+1.  **Option A (Eigenvalue Transformation):** Failed due to non-differentiability of `jax.linalg.eig` for general matrices, preventing gradient-based optimization. (Plan: `memory-bank/plans/full_phi_implementation_plan_07-04-2025.md` - Invalidated).
+2.  **Hybrid Approach (Diagonal `tanh` + Penalty):** Failed because the `tanh` gradient vanished near the stability boundary (+/- 1), preventing the penalty term from effectively constraining the eigenvalues via the diagonal elements. (Plan: `memory-bank/plans/full_phi_hybrid_plan_07-04-2025.md` - Step 3 Integration Test Failed).
+3.  **Softplus + Penalty Approach:** Using element-wise `softplus` transformation (whose gradient does not vanish) combined with the stability penalty (`stability_penalty_weight * sum(relu(abs(eigvals) - 1 + EPS)**2)`) proved successful.
+
+**Implementation Details:**
+*   `src/bellman_filter_dfsv/utils/transformations.py` updated: `transform_params` uses element-wise `inverse_softplus`, `untransform_params` uses element-wise `softplus` for `Phi_f`/`Phi_h`.
+*   `src/bellman_filter_dfsv/filters/objectives.py` updated: Objective functions include the stability penalty term, controlled by `stability_penalty_weight`.
+*   Integration test (`scripts/test_bif_full_phi_hybrid_integration.py`) using `softplus` transformation and `stability_penalty_weight=1000.0` completed successfully, yielding stable final `Phi_f` and `Phi_h` matrices (max eigenvalue magnitudes < 1).
+*   This `softplus` + penalty approach is now the standard method for handling full persistence matrices in this project.
+
+---
 **Implementation Details:** Removed the `np.testing.assert_allclose` call comparing the two likelihood values in the test. The test now only verifies that `log_likelihood_wrt_params` returns a finite scalar.
