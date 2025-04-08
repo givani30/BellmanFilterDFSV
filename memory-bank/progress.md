@@ -4,6 +4,8 @@ This file tracks the project's progress, key milestones, and next steps.
 
 *
 ## Current Tasks
+*   [07-04-2025 23:28:15] - Debug BIF (`bellman_information.py`) prediction/update steps due to inaccurate predicted covariances blocking EM plan.
+
 *   Analyze BIF Simulation Results (Known Params) & Comparative Analysis (Thesis Plan v3.4 - Phase 2a, Task 6).
 *   Design Hyperparameter Estimation Study Configurations (Thesis Plan v3.4 - Phase 2b, Task 7).
 
@@ -59,3 +61,7 @@ This file tracks the project's progress, key milestones, and next steps.
 
 *   [06-04-2025 17:45:00] - Mu investigation complete. Strategy decided: Fix `mu`. Next focus: Simulation analysis & Real data application using fixed `mu` BIF.
 *   [06-04-2025 17:10:00] - Completed `mu` ID Phase 2.2 (fix both `mu` elements). Success.
+
+*   [07-04-2025 15:55:00] - Completed Preliminary Parameter Recovery Check (Full Phi Matrices) as per plan `memory-bank/plans/parameter_recovery_check_plan_07-04-2025.md`. Key findings logged in `decisionLog.md`.
+
+*   [07-04-2025 23:28:15] - Attempted BIF EM Plan Phase 1 (`memory-bank/plans/bif_em_implementation_plan_07-04-2025.md`): Smoother modified (`base.py`), but test failed (`test_smooth_state_accuracy`). Phase 1 blocked by inaccurate BIF predictions.

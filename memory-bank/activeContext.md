@@ -7,6 +7,8 @@ This file tracks the project's current status, including recent changes, current
 ## Current Focus
 
 
+*   [07-04-2025 23:28:15] - Debugging BIF (`bellman_information.py`) prediction/update steps to resolve inaccurate predicted covariances/information matrices. This is blocking the BIF EM implementation plan.
+
 *   [04-06-2025 17:43:00] - Mu investigation complete. Final strategy: Fix `mu`. Focus shifts to simulation analysis & real data application using this strategy.
 *   [04-06-2025 17:10:00] - Completed Phase 2.2: Fixed *both* `mu` elements to `[-1.0, -1.0]`. Successful convergence, reasonable estimates for other params.
 *   [NEW TASK] Test Particle Filter (PF) and base Bellman Filter (BF, covariance-based) performance in hyperparameter optimization (potentially fixing `mu` for BF as well, TBD).
@@ -14,6 +16,8 @@ This file tracks the project's current status, including recent changes, current
 
 ## Recent Changes
 
+
+*   [07-04-2025 23:28:15] - Attempted BIF EM Phase 1: Modified RTS smoother (`base.py`) for lag-1 covs, but smoother test (`test_smooth_state_accuracy` in `test_bellman_information.py`) failed due to inaccurate BIF predicted covariances.
 
 *   [07-04-2025 02:05:00] - Completed implementation and testing of full persistence matrices (`Phi_f`, `Phi_h`) using element-wise `softplus` transformation and stability penalty in objective function. (See Decision [07-04-2025 02:05:00]).
 
@@ -26,4 +30,8 @@ This file tracks the project's current status, including recent changes, current
 
 ## Open Questions/Issues
 
+
+*   [07-04-2025 23:28:15] - BIF filter (`bellman_information.py`) generates inaccurate predicted covariance/information matrices, causing downstream smoother tests (`test_smooth_state_accuracy`) to fail. Root cause investigation needed. BIF EM plan paused.
+
+*   [07-04-2025 15:55:00] - Parameter recovery check (Full Phi, Fixed `mu`) revealed poor recovery for `Q_h`. This needs further investigation or consideration for model application reliability. (See Decision [07-04-2025 15:55:00])
 *   [04-06-2025 01:24:00] - Completed filter API alignment task: Refactored `DFSVFilter` base class and subclasses (`DFSVBellmanFilter`, `DFSVBellmanInformationFilter`, `DFSVParticleFilter`) for API consistency. Renamed likelihood methods, added abstract methods (`log_likelihood_wrt_params`, `jit_log_likelihood_wrt_params`), implemented `smooth` consistently, added/adjusted public `predict`/`update` methods. Updated tests and usage examples. All tests pass.
