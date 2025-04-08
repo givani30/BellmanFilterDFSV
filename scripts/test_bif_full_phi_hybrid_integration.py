@@ -133,7 +133,6 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, true_
     # --- End Configuration ---
 
     # Create uninformed initial parameters (K=2)
-    data_variance = jnp.var(returns, axis=0)
     # Generate initial lambda_r guess for K=2 with constraint (start with zeros)
     lambda_r_init_guess = jnp.zeros((N, K)) # Start with zeros
     diag_indices_init = jnp.diag_indices(n=min(N, K), ndim=2)

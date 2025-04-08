@@ -4,13 +4,15 @@ Objective functions for optimizing DFSV model parameters using different filters
 import jax
 import equinox as eqx
 import jax.numpy as jnp
+import warnings
 # Removed incorrect import: import jax.linalg
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter # Updated import path
 from bellman_filter_dfsv.filters.particle import DFSVParticleFilter # Updated import path
 from bellman_filter_dfsv.utils.transformations import untransform_params, EPS
 from bellman_filter_dfsv.models.likelihoods import log_prior_density # Updated import path
-
+from typing import Tuple, Optional # Add Tuple and Optional for type hinting
+import jax.scipy.stats as jss # Import for Gaussian prior
 
 # Note: Using eqx.filter_jit which should handle non-JAX types like dicts as static by default.
 # If JIT errors persist with priors, add static_argnames=['priors'] to the decorator.
@@ -145,18 +147,20 @@ def transformed_bellman_objective(
 # -------------------------------------------------------------------------
 
 # Note: This function is NOT JITted by default, but calls a potentially JITted
-# filter method. Priors are handled similarly to bellman_objective.
+# filter method. Priors and stability penalty are handled similarly to bellman_objective.
 def pf_objective(
     params: DFSVParamsDataclass,
     observations: jnp.ndarray,
     filter_instance: DFSVParticleFilter, # Use imported class
-    priors: dict | None = None
-) -> float:
+    priors: dict | None = None,
+    stability_penalty_weight: float = 0.0
+) -> Tuple[float, float, float]:
     """
     Objective function for standard parameter space using Particle Filter.
 
     Calculates the negative log-likelihood based on the particle filter's
-    estimation, potentially minus the log-prior density.
+    estimation, potentially minus the log-prior density, plus an optional
+    stability penalty.
 
     Args:
         params: Model parameters as a DFSVParamsDataclass Pytree.
@@ -166,14 +170,56 @@ def pf_objective(
             A dictionary containing prior hyperparameters. Keys should match the
             arguments of `log_prior_density`. If None, prior density is not added.
             Defaults to None.
+        stability_penalty_weight : float, optional
+            Weight for the stability penalty term applied to Phi_f and Phi_h.
+            The penalty is calculated as relu(max(|eigval|) - 1 + EPS)**2.
+            Defaults to 0.0 (no penalty).
 
     Returns:
-        float: Negative log-likelihood, potentially minus log-prior density.
+        Tuple[float, float, float]: A tuple containing:
+            - total_objective: Negative log-likelihood - log-prior + stability penalty.
+            - safe_neg_ll: The negative log-likelihood component.
+            - stability_penalty: The stability penalty component.
     """
     # Calculate log-likelihood using the particle filter method
-    # Note: The filter's likelihood method does NOT receive priors.
-    log_lik = filter_instance.log_likelihood_of_params(params, observations)
-    safe_neg_ll = jnp.nan_to_num(-log_lik, nan=1e10, posinf=1e10, neginf=1e10) # Add safety
+    # Note: The filter's likelihood method does NOT receive priors or penalty weights.
+    
+    # Precompute Cholesky of Q_h for this parameter set
+    # Add jitter for numerical stability before Cholesky
+    jitter = 1e-6 * jnp.eye(params.K)
+    # Use safe_cholesky from JAX
+    chol_success = True
+    chol_Q_h_local = jax.lax.cond(
+        jnp.all(jnp.isfinite(params.Q_h + jitter)),
+        lambda x: jax.scipy.linalg.cholesky(x, lower=True),
+        lambda x: jnp.full_like(x, jnp.inf),
+        params.Q_h + jitter
+    )
+    
+    # Check for NaN/Inf in result
+    chol_valid = jnp.all(jnp.isfinite(chol_Q_h_local))
+
+    # Get the JITted function
+    jit_ll_func = filter_instance.jit_log_likelihood_wrt_params()
+
+    # Define calculation branch
+    def compute_ll():
+        # Pass CORRECT arguments: params.sigma2 (1D) and chol_Q_h_local (matrix)
+        log_lik = jit_ll_func(filter_instance, params, observations, params.sigma2, chol_Q_h_local)
+        # Return negative log-likelihood, handling potential NaN/Inf from filter
+        return jnp.nan_to_num(-log_lik, nan=1e10, posinf=1e10, neginf=1e10)
+
+    # Define failure branch (if Cholesky failed)
+    def return_penalty():
+        # warnings.warn("Cholesky decomposition failed or resulted in non-finite values in pf_objective.") # Warning inside JIT can be problematic
+        return jnp.array(1e10, dtype=jnp.float32) # Return large penalty
+
+    # Use lax.cond based on chol_valid to compute safe_neg_ll
+    safe_neg_ll = jax.lax.cond(
+        chol_valid,
+        compute_ll,    # Function to call if true
+        return_penalty # Function to call if false
+    )
 
     # Calculate the log-prior density if priors are provided
     log_prior = 0.0
@@ -181,21 +227,41 @@ def pf_objective(
         log_prior = log_prior_density(params, **priors)
         log_prior = jnp.nan_to_num(log_prior, nan=-1e10, posinf=-1e10, neginf=-1e10) # Safety check
 
-    # Return negative log-likelihood minus log prior
-    return safe_neg_ll - log_prior
+    # Calculate stability penalty if weight > 0
+    stability_penalty = 0.0
+    # Check if stability_penalty_weight is a valid number and greater than 0
+    # Note: JAX tracers aren't concrete bools, so direct check `> 0` is fine inside JIT,
+    # but outside JIT (like PF objective), we might need care if it could be None/NaN.
+    # Assuming it's always a float >= 0.0 as per signature.
+    if stability_penalty_weight > 0:
+        # Calculate max eigenvalue magnitudes for Phi_f and Phi_h using jnp.linalg
+        max_mag_f = jnp.max(jnp.abs(jnp.linalg.eigvals(params.Phi_f)))
+        max_mag_h = jnp.max(jnp.abs(jnp.linalg.eigvals(params.Phi_h)))
+
+        # Calculate penalty using relu
+        penalty_f = jax.nn.relu(max_mag_f - 1.0 + EPS)**2
+        penalty_h = jax.nn.relu(max_mag_h - 1.0 + EPS)**2
+        stability_penalty = penalty_f + penalty_h
+
+    # Total objective: Negative Log Likelihood - Log Prior + Weighted Stability Penalty
+    total_objective = safe_neg_ll - log_prior + stability_penalty_weight * stability_penalty
+    # Return the total objective and its components
+    return total_objective, safe_neg_ll, stability_penalty
 
 # Note: This function is NOT JITted by default.
 def transformed_pf_objective(
     transformed_params: DFSVParamsDataclass,
     observations: jnp.ndarray,
-    filter_instance: DFSVParticleFilter,
-    priors: dict | None = None
-) -> float:
+    filter_instance: DFSVParticleFilter, # Use imported class
+    priors: dict | None = None,
+    stability_penalty_weight: float = 0.0
+) -> Tuple[float, float, float]:
     """
     Objective function for transformed parameter space using Particle Filter.
 
     Untransforms parameters, then calls `pf_objective` which computes
-    negative log-likelihood, potentially minus log-prior density.
+    negative log-likelihood, potentially minus log-prior density, plus an
+    optional stability penalty, and returns all three components.
 
     Args:
         transformed_params: Model parameters in transformed space.
@@ -204,17 +270,25 @@ def transformed_pf_objective(
         priors : dict | None, optional
             A dictionary containing prior hyperparameters, passed to `pf_objective`.
             If None, prior density is not added. Defaults to None.
+        stability_penalty_weight : float, optional
+            Weight for the stability penalty term, passed to `pf_objective`.
+            Defaults to 0.0.
 
     Returns:
-        float: Negative log-likelihood, potentially minus log-prior density.
+        Tuple[float, float, float]: A tuple containing:
+            - total_objective: Negative log-likelihood - log-prior + stability penalty.
+            - safe_neg_ll: The negative log-likelihood component.
+            - stability_penalty: The stability penalty component.
     """
     # Untransform parameters
     params_original = untransform_params(transformed_params)
 
     # Call the standard pf_objective with original parameters and pass the priors dictionary
+    # and the stability penalty weight. It now returns a tuple.
     return pf_objective(
         params_original,
         observations,
         filter_instance,
-        priors=priors # Pass the dictionary directly
+        priors=priors, # Pass the dictionary directly
+        stability_penalty_weight=stability_penalty_weight # Pass the weight
     )

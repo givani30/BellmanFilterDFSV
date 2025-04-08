@@ -216,8 +216,8 @@ class DFSVParticleFilter(DFSVFilter):
                 sample_key, shape=(self.state_dim, self.num_particles)
             )
             # Affine transformation: mean + L @ noise
-            particles = initial_state_mean + L @ noise
-        except jnp.linalg.LinAlgError as e:
+            particles = initial_state_mean.reshape(-1,1) + L @ noise
+        except np.linalg.LinAlgError as e:
             raise ValueError(
                 "Initial covariance matrix must be positive definite for sampling."
             ) from e
