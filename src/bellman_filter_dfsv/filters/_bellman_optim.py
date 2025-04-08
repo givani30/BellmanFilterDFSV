@@ -74,13 +74,12 @@ def neg_log_post_h(
 
     # 2. Compute prior penalty part involving h
     #    0.5 * (h - h_pred)^T I_hh (h - h_pred) + (f - f_pred)^T I_fh (h - h_pred)
-    #    (Note: The BFGS update in Lange (2024) seems to only use the quadratic
-    #     term in h for the penalty, which is implemented here. The cross-term
-    #     is handled implicitly by using the full alpha in log_posterior_fn).
     h_pred = predicted_state[K:]
     h_diff = log_vols - h_pred
     I_pred_hh = I_pred[K:, K:]
+    I_pred_fh = I_pred[:K, K:]
     prior_penalty = 0.5 * jnp.dot(h_diff, jnp.dot(I_pred_hh, h_diff))
+    prior_penalty += jnp.dot(factors - predicted_state[:K], jnp.dot(I_pred_fh, h_diff))
 
     # Total objective
     result = neg_log_lik + prior_penalty

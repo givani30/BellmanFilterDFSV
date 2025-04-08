@@ -399,7 +399,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
         # Return results as JAX arrays (reshaped state), keep log_lik as JAX scalar
         # Always return components for potential use in scan
-        return alpha_updated.reshape(-1, 1), updated_info, log_lik_contrib, log_lik_fit, kl_penalty
+        return alpha_updated.reshape(-1, 1), updated_info, log_lik_contrib
 
     # --- Public API Methods (NumPy In/Out) ---
 
@@ -881,7 +881,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
 
     def _log_likelihood_wrt_params_impl(
-        self, params: DFSVParamsDataclass, observations: jnp.ndarray, return_components: bool = False
+        self, params: DFSVParamsDataclass, observations: jnp.ndarray
     ) -> Union[jnp.ndarray, Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
         """Internal JAX implementation for BIF log-likelihood using scan.
 
@@ -903,45 +903,37 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
         # Initialization (use BIF JAX arrays)
         initial_state_jax, initial_info_jax = self.initialize_state(params)
-        # Ensure carry types are JAX compatible: state, info, total_lik_sum, fit_sum, penalty_sum
-        initial_carry = (initial_state_jax, initial_info_jax, jnp.array(0.0), jnp.array(0.0), jnp.array(0.0))
+        # Ensure carry types are JAX compatible: state, info, total_lik_sum
+        initial_carry = (initial_state_jax, initial_info_jax, jnp.array(0.0))
 
         # Define the step function for lax.scan (operates purely on JAX types)
         def filter_step(carry, obs_t):
-            state_t_minus_1_jax, info_t_minus_1_jax, total_lik_sum, fit_sum, penalty_sum = carry
+            state_t_minus_1_jax, info_t_minus_1_jax, total_lik_sum= carry
             # Predict step -> returns JAX arrays
             pred_state_t_jax, pred_info_t_jax = self.predict_jax_info_jit(
                 params, state_t_minus_1_jax, info_t_minus_1_jax
             )
-            # Update step -> returns JAX arrays (state, info, total_lik, fit_lik, penalty_lik)
-            updated_state_t_jax, updated_info_t_jax, log_lik_t_jax, log_lik_fit_t, kl_penalty_t = self.update_jax_info_jit(
+            # Update step -> returns JAX arrays (state, info, total_lik
+            updated_state_t_jax, updated_info_t_jax, log_lik_t_jax = self.update_jax_info_jit(
                 params, pred_state_t_jax, pred_info_t_jax, obs_t
             )
             # Prepare carry for next step
             next_carry = (updated_state_t_jax, updated_info_t_jax,
-                          total_lik_sum + log_lik_t_jax,
-                          fit_sum + log_lik_fit_t,
-                          penalty_sum + kl_penalty_t) # Note: penalty is subtracted later in update, so we sum it here
+                          total_lik_sum + log_lik_t_jax) # Note: penalty is subtracted later in update, so we sum it here
             # We only need the carry for the final likelihood(s)
             return next_carry, None # Don't store intermediate results
 
         # Run the scan
         final_carry, _ = jax.lax.scan(filter_step, initial_carry, observations)
 
-        total_log_lik, fit_sum, penalty_sum = final_carry[2], final_carry[3], final_carry[4] # JAX scalars
+        total_log_lik = final_carry[2] # JAX scalars
 
         # Replace NaN/Inf with -inf for optimization stability
         # Note: penalty_sum is the sum of KL terms, which are subtracted from fit_sum.
         # A large positive penalty sum means a large negative contribution to total likelihood.
         safe_total_log_lik = jnp.where(jnp.isnan(total_log_lik) | jnp.isinf(total_log_lik), -jnp.inf, total_log_lik)
-        safe_fit_sum = jnp.where(jnp.isnan(fit_sum) | jnp.isinf(fit_sum), -jnp.inf, fit_sum)
-        safe_penalty_sum = jnp.where(jnp.isnan(penalty_sum) | jnp.isinf(penalty_sum), jnp.inf, penalty_sum) # Large penalty is positive inf
 
-        if return_components:
-            # Return the safe versions
-            return safe_total_log_lik, safe_fit_sum, safe_penalty_sum
-        else:
-            return safe_total_log_lik
+        return safe_total_log_lik
 
 
     def jit_log_likelihood_wrt_params(self) -> Callable:
