@@ -691,13 +691,13 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         filtered_covs_np = self.get_filtered_covariances()
         if filtered_covs_np is None:
             raise RuntimeError("Failed to compute filtered covariances needed for smoothing.")
-        
+
         #Compute predicted covariances (P_t|t-1) from information matrices (Omega_t|t-1)
         predicted_covs_np = self.get_predicted_covariances()
         if predicted_covs_np is None:
             raise RuntimeError("Failed to compute predicted covariances needed for smoothing.")
-        
-        
+
+
         # Overwrite attributes temporarily with NumPy versions for the base class call
         self.predicted_covs = predicted_covs_np
         self.filtered_covs = filtered_covs_np # This is already set by get_filtered_covariances
@@ -744,9 +744,15 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         return np.asarray(infos_jax) if infos_jax is not None else None
 
     def get_predicted_states(self) -> np.ndarray | None:
-        """Returns the predicted states alpha_{t|t-1} as a NumPy array."""
+        """Returns the predicted states alpha_{t|t-1} as a NumPy array with shape (T, state_dim)."""
         states_jax = getattr(self, 'predicted_states', None)
-        return np.asarray(states_jax) if states_jax is not None else None
+        if states_jax is not None:
+            states_np = np.asarray(states_jax)
+            # Ensure flat vector shape (T, state_dim)
+            if states_np.ndim == 3:
+                states_np = states_np.reshape(states_np.shape[0], states_np.shape[1])
+            return states_np
+        return None
 
     def get_predicted_information_matrices(self) -> np.ndarray | None:
         """Returns the predicted information matrices Omega_{t|t-1} as NumPy arrays."""

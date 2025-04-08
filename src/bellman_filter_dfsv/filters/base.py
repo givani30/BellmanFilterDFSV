@@ -370,7 +370,8 @@ class DFSVFilter:
             ]
         )
 
-        return initial_state.flatten(), initial_cov # Return flattened state for consistency
+        # Return column vector for state (not flattened)
+        return initial_state, initial_cov
 
     def filter(
         self, params: DFSVParamsDataclass, y: np.ndarray
@@ -746,17 +747,45 @@ class DFSVFilter:
 
     # --- Getters for Filtered/Smoothed Results ---
 
+    def get_filtered_states(self) -> np.ndarray:
+        """Returns the filtered state vectors alpha_{t|t} with shape (T, state_dim)."""
+        if not self.is_filtered or self.filtered_states is None:
+            raise RuntimeError("Filter must be run before getting filtered states.")
+        # Always return shape (T, state_dim)
+        if self.filtered_states.ndim == 3:
+            return self.filtered_states[:, :, 0]
+        else:
+            return self.filtered_states
+
+    def get_predicted_states(self) -> np.ndarray:
+        """Returns the predicted state vectors alpha_{t|t-1} with shape (T, state_dim)."""
+        if not self.is_filtered or not hasattr(self, 'predicted_states') or self.predicted_states is None:
+            raise RuntimeError("Filter must be run before getting predicted states.")
+        # Always return shape (T, state_dim)
+        if self.predicted_states.ndim == 3:
+            return self.predicted_states[:, :, 0]
+        else:
+            return self.predicted_states
+
     def get_filtered_factors(self) -> np.ndarray:
         """Returns the filtered latent factors f_{t|t}."""
         if not self.is_filtered or self.filtered_states is None:
             raise RuntimeError("Filter must be run before getting filtered factors.")
-        return self.filtered_states[:, : self.K]
+        # Handle both (T, state_dim) and (T, state_dim, 1) shapes
+        if self.filtered_states.ndim == 3:
+            return self.filtered_states[:, : self.K, 0]
+        else:
+            return self.filtered_states[:, : self.K]
 
     def get_filtered_volatilities(self) -> np.ndarray:
         """Returns the filtered log-volatilities h_{t|t}."""
         if not self.is_filtered or self.filtered_states is None:
             raise RuntimeError("Filter must be run before getting filtered volatilities.")
-        return self.filtered_states[:, self.K :]
+        # Handle both (T, state_dim) and (T, state_dim, 1) shapes
+        if self.filtered_states.ndim == 3:
+            return self.filtered_states[:, self.K:, 0]
+        else:
+            return self.filtered_states[:, self.K:]
 
     def get_smoothed_factors(self) -> np.ndarray:
         """Returns the smoothed latent factors f_{t|T}."""

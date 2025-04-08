@@ -8,12 +8,13 @@ using BFGS, and the main block coordinate update implementation itself.
 from functools import partial
 from typing import Callable, Tuple
 
+import equinox as eqx  # Add equinox import
 import jax
 import jax.numpy as jnp
+import jax.scipy.linalg  # Add linalg import
+import numpy as np  # Add numpy import
 import optimistix as optx
-import numpy as np # Add numpy import
-import jax.scipy.linalg # Add linalg import
-import equinox as eqx # Add equinox import
+from jaxtyping import PyTree, Scalar
 
 # Type hint for build_covariance function signature
 BuildCovarianceFn = Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], jnp.ndarray]
@@ -363,3 +364,29 @@ def _block_coordinate_update_impl(
 
     # Return the final concatenated state vector
     return jnp.concatenate([f_final, h_final])
+
+class CustomBFGS(optx.AbstractBFGS):
+    """Custom BFGS solver with specific configurations."""
+    rtol:float
+    atol:float
+    norm: Callable[[PyTree], Scalar]
+    use_inverse:bool
+    descent:optx.AbstractDescent=optx.DoglegDescent()
+    search:optx.AbstractSearch=optx.ClassicalTrustRegion()
+    verbose: frozenset[str]
+    def __init__(
+        self,
+        rtol: float,
+        atol: float,
+        norm: Callable[[PyTree], Scalar] = optx.max_norm,
+        use_inverse: bool = False,
+        verbose: frozenset[str] = frozenset(),
+):
+        self.rtol = rtol
+        self.atol = atol
+        self.norm = norm
+        self.use_inverse = use_inverse
+        self.descent = optx.DoglegDescent()
+        # self.search = optx.BacktrackingArmijo(decrease_factor=0.1,step_init=0.1)
+        self.search=optx.ClassicalTrustRegion()
+        self.verbose = verbose

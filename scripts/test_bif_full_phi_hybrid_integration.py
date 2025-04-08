@@ -52,9 +52,9 @@ def create_simple_model(N=3, K=2): # Default to K=2 for this experiment
     # Factor persistence (K=2 -> 2x2 matrix)
     # Generate full matrices for Phi_f and Phi_h with high values on diagonal and smaller on off-diagonal
     Phi_f = np.random.uniform(0.01, 0.1, (K, K))  # Off-diagonal elements
-    Phi_f[np.diag_indices(K)] = np.random.uniform(0.8, 0.98, K)  # Diagonal elements
+    Phi_f[np.diag_indices(K)] = np.random.uniform(0.1, 0.3, K)  # Diagonal elements
     Phi_h = np.random.uniform(0.01, 0.1, (K, K))  # Off-diagonal elements
-    Phi_h[np.diag_indices(K)] = np.random.uniform(0.9, 0.99, K)  # Diagonal elements
+    Phi_h[np.diag_indices(K)] = np.random.uniform(0.85, 0.95, K)  # Diagonal elements
     # Long-run mean for log-volatilities (K=2 -> vector of size 2)
     mu = np.array([-1.0, -0.5]) # Fix to true value for K=2
     # Idiosyncratic variance (diagonal)
@@ -132,41 +132,29 @@ def run_comparison(true_params: DFSVParamsDataclass, returns: jnp.ndarray, true_
     priors_dict = None # No priors needed
     # --- End Configuration ---
 
-    # Create uninformed initial parameters (K=2)
-    # Generate initial lambda_r guess for K=2 with constraint (start with zeros)
-    lambda_r_init_guess = jnp.zeros((N, K)) # Start with zeros
-    diag_indices_init = jnp.diag_indices(n=min(N, K), ndim=2)
-    lambda_r_init_guess = lambda_r_init_guess.at[diag_indices_init].set(1.0) # Set diagonal to 1.0
-    lambda_r_init_guess = jnp.tril(lambda_r_init_guess) # Ensure lower triangular (redundant if starting with zeros, but safe)
-    print(f"Initial lambda_r guess (constrained):\n{lambda_r_init_guess}") # Add print
 
-    # Create initial guess for Phi matrices using hybrid approach
-    # We need the *unconstrained* representation for the optimizer's initial state (y0)
-    # Off-diagonals are unconstrained (start at 0)
-    # Diagonals are arctanh of the desired initial stable value (e.g., 0.95)
-    initial_stable_diag_val = 0.95
+    lambda_r_init_guess = jnp.zeros((N, K))
+    diag_indices_init = jnp.diag_indices(min(N, K))
+    lambda_r_init_guess = lambda_r_init_guess.at[diag_indices_init].set(1.0)
+    lambda_r_init_guess = jnp.tril(lambda_r_init_guess)
+
+    initial_stable_diag_val = 0.8
     unconstrained_diag_val = safe_arctanh(initial_stable_diag_val)
 
-    phi_f_init = jnp.zeros((K, K))
-    phi_f_init = phi_f_init.at[jnp.diag_indices(K)].set(unconstrained_diag_val)
-    phi_h_init = jnp.zeros((K, K))
-    phi_h_init = phi_h_init.at[jnp.diag_indices(K)].set(unconstrained_diag_val)
-
-    # Define desired initial constrained diagonal value for Phi
-    initial_stable_diag_val = 0.95
+    phi_f_init = jnp.eye(K)*0.3 #lower persistence
+    phi_h_init = jnp.eye(K)*0.8 #higher persistence
 
     uninformed_params = DFSVParamsDataclass(
         N=N, K=K,
-        lambda_r=lambda_r_init_guess, # Use K=2 constrained guess
-        Phi_f=initial_stable_diag_val * jnp.eye(K), # Use CONSTRAINED initial value
-        Phi_h=initial_stable_diag_val * jnp.eye(K), # Use CONSTRAINED initial value
-        mu=jnp.zeros(K), # Start mu at 0 (will be fixed)
-        sigma2=jnp.ones(N) * 0.1, # Use smaller fixed initial sigma2
-        Q_h=0.5 * jnp.eye(K) # Increased initial Q_h for stability
+        lambda_r=lambda_r_init_guess,
+        Phi_f=phi_f_init,
+        Phi_h=phi_h_init,
+        mu=jnp.zeros(K),
+        sigma2=0.1 * jnp.ones(N),
+        Q_h=0.5 * jnp.eye(K),
     )
-    # Apply constraint to initial guess (important for transformation)
+
     uninformed_params_constrained = apply_identification_constraint(uninformed_params)
-    uninformed_params_constrained = filter_instance._process_params(uninformed_params_constrained) # Ensure JAX arrays
 
     # Loop through optimizers (only AdamW defined above)
     for name, solver in optimizers_to_test.items():

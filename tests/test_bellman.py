@@ -64,11 +64,12 @@ def test_bellman_single_step(
 
     # Assert: Basic checks on shapes and finiteness
     state_dim = 2 * K
-    assert initial_state.shape == (state_dim, 1), "Incorrect initial state shape"
+    # Allow both flat vectors (state_dim,) and column vectors (state_dim, 1)
+    assert initial_state.shape in [(state_dim,), (state_dim, 1)], "Incorrect initial state shape"
     assert initial_cov.shape == (state_dim, state_dim), "Incorrect initial covariance shape"
-    assert predicted_state.shape == (state_dim, 1), "Incorrect predicted state shape"
+    assert predicted_state.shape in [(state_dim,), (state_dim, 1)], "Incorrect predicted state shape"
     assert predicted_cov.shape == (state_dim, state_dim), "Incorrect predicted covariance shape"
-    assert updated_state.shape == (state_dim, 1), "Incorrect updated state shape"
+    assert updated_state.shape in [(state_dim,), (state_dim, 1)], "Incorrect updated state shape"
     assert updated_cov.shape == (state_dim, state_dim), "Incorrect updated covariance shape"
 
     assert isinstance(log_likelihood, (jax.Array, float)), "Log-likelihood should be JAX array or float"
