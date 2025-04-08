@@ -899,8 +899,7 @@ class DFSVBellmanFilter(DFSVFilter):
         # Initialization (get initial state/cov as JAX arrays)
         initial_state_jax, initial_cov_jax = self.initialize_state(params_jax)
         # Ensure initial_state_jax is a flat vector with shape (state_dim,)
-        if initial_state_jax.ndim > 1:
-            initial_state_jax = initial_state_jax.reshape(-1)
+        initial_state_jax = initial_state_jax.flatten()
         # Use flat vector in carry
         initial_carry = (initial_state_jax, initial_cov_jax, jnp.array(0.0, dtype=jnp.float64)) # state, cov, log_lik_sum
 
@@ -913,17 +912,22 @@ class DFSVBellmanFilter(DFSVFilter):
         def filter_step(carry, obs_t):
             state_t_minus_1_jax, cov_t_minus_1_jax, log_lik_sum_t_minus_1 = carry
 
+            # Ensure state_t_minus_1_jax is a flat vector using flatten()
+            state_t_minus_1_jax = state_t_minus_1_jax.flatten()
+
             # Predict step (predict state t based on t-1) -> returns JAX arrays
             pred_state_t_jax, pred_cov_t_jax = self.predict_jax(params_jax, state_t_minus_1_jax, cov_t_minus_1_jax)
+
+            # Ensure pred_state_t_jax is a flat vector using flatten()
+            pred_state_t_jax = pred_state_t_jax.flatten()
 
             # Update step (update state t using observation t) -> returns JAX arrays
             updated_state_t_jax, updated_cov_t_jax, log_lik_t_jax = self.update_jax(
                 params_jax, pred_state_t_jax, pred_cov_t_jax, obs_t
             )
 
-            # Prepare carry for next step (using JAX arrays, ensuring flat vector shape)
-            if updated_state_t_jax.ndim > 1:
-                updated_state_t_jax = updated_state_t_jax.reshape(-1)
+            # Ensure updated_state_t_jax is a flat vector with consistent shape
+            updated_state_t_jax = updated_state_t_jax.flatten()
             next_carry = (updated_state_t_jax, updated_cov_t_jax, log_lik_sum_t_minus_1 + log_lik_t_jax)
 
             # What we store for this time step t (JAX arrays)
@@ -1037,18 +1041,32 @@ class DFSVBellmanFilter(DFSVFilter):
 
         # Initialization (use JAX arrays)
         initial_state_jax, initial_cov_jax = self.initialize_state(params)
+        # Ensure initial_state_jax is a flat vector
+        initial_state_jax = initial_state_jax.flatten()
         # Ensure carry types are JAX compatible
         initial_carry = (initial_state_jax, initial_cov_jax, jnp.array(0.0, dtype=jnp.float64)) # state, cov, log_lik_sum
 
         # Define the step function for lax.scan (operates purely on JAX types)
         def filter_step(carry, obs_t):
             state_t_minus_1_jax, cov_t_minus_1_jax, log_lik_sum_t_minus_1 = carry
+
+            # Ensure state_t_minus_1_jax is a flat vector using flatten()
+            state_t_minus_1_jax = state_t_minus_1_jax.flatten()
+
             # Predict step -> returns JAX arrays
             pred_state_t_jax, pred_cov_t_jax = self.predict_jax(params, state_t_minus_1_jax, cov_t_minus_1_jax)
+
+            # Ensure pred_state_t_jax is a flat vector using flatten()
+            pred_state_t_jax = pred_state_t_jax.flatten()
+
             # Update step -> returns JAX arrays
             updated_state_t_jax, updated_cov_t_jax, log_lik_t_jax = self.update_jax(
                 params, pred_state_t_jax, pred_cov_t_jax, obs_t
             )
+
+            # Ensure updated_state_t_jax is a flat vector with consistent shape
+            updated_state_t_jax = updated_state_t_jax.flatten()
+
             # Prepare carry for next step
             next_carry = (updated_state_t_jax, updated_cov_t_jax, log_lik_sum_t_minus_1 + log_lik_t_jax)
             # We only need the carry for the final likelihood

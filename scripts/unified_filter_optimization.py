@@ -171,6 +171,7 @@ OptimizerResult = namedtuple("OptimizerResult", [
     "filter_type",           # Type of filter used
     "optimizer_name",        # Name of the optimizer
     "uses_transformations",  # Whether parameter transformations were used
+    "fix_mu",               # Whether mu parameter was fixed
     "prior_config_name",    # Description of prior configuration
     "success",              # Whether optimization succeeded
     "final_loss",           # Final loss value
@@ -370,18 +371,18 @@ def run_optimization(
     )
 
     if optimizer_name == "BFGS":
-        solver = optx.BFGS(rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"}))
+        solver = optx.BFGS(rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset())
     elif optimizer_name == "NonlinearCG":
         solver = optx.NonlinearCG(rtol=rtol, atol=atol, norm=optx.rms_norm)
     # NonlinearCG is already defined above
     elif optimizer_name == "Adam":
         # Use scheduler and apply_if_finite to handle NaN/Inf values
         optimizer = optax.apply_if_finite(optax.adam(learning_rate=scheduler), 10)
-        solver = optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"}))
+        solver = optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset())
     elif optimizer_name == "AdamW":
         # Use scheduler and apply_if_finite to handle NaN/Inf values
         optimizer = optax.apply_if_finite(optax.adamw(learning_rate=scheduler), 10)
-        solver = optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"}))
+        solver = optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset())
     elif optimizer_name == "SGD":
         # Use a more conservative learning rate schedule for SGD
         sgd_scheduler = optax.warmup_cosine_decay_schedule(
@@ -393,17 +394,17 @@ def run_optimization(
         )
         # Use scheduler and apply_if_finite to handle NaN/Inf values
         optimizer = optax.apply_if_finite(optax.sgd(learning_rate=sgd_scheduler, momentum=0.9, nesterov=True), 10)
-        solver = optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset({"loss"}))
+        solver = optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset())
     elif optimizer_name == "CustomBFGS":
-        solver = CustomBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset({"step_size", "loss"}))
+        solver = CustomBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset())
     elif optimizer_name == "DogLegBFGS":
-        solver = DogLegBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset({"step_size", "loss"}))
+        solver = DogLegBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset())
     elif optimizer_name == "ArmijoBFGS":
-        solver = ArmijoBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset({"step_size", "loss"}))
+        solver = ArmijoBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset())
     elif optimizer_name == "DampedTrustRegionBFGS":
-        solver = DampedTrustRegionBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset({"step_size", "loss"}))
+        solver = DampedTrustRegionBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset())
     elif optimizer_name == "IndirectTrustRegionBFGS":
-        solver = IndirectTrustRegionBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset({"step_size", "loss"}))
+        solver = IndirectTrustRegionBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset())
     else:
         raise ValueError(f"Unknown optimizer: {optimizer_name}")
 
@@ -500,8 +501,13 @@ def run_optimization(
                     return jnp.inf
     else:
         # Particle Filter
-        # Get true mu if available, otherwise use zeros
-        true_mu = true_params.mu if true_params is not None else jnp.zeros(K)
+        # Only fix mu if true parameters are provided
+        fix_mu = true_params is not None
+        true_mu = true_params.mu if fix_mu else None
+        if fix_mu:
+            print(f"  Using mu={true_mu} for optimization (fixed parameter)")
+        else:
+            print("  Optimizing mu parameter (not fixed)")
 
         if use_transformations:
             @eqx.filter_jit
@@ -510,10 +516,11 @@ def run_optimization(
                 try:
                     # 1. Untransform parameters
                     params_iter = untransform_params(t_params)
-                    # 2. Fix mu to true value
-                    params_fixed_mu = eqx.tree_at(lambda p: p.mu, params_iter, true_mu)
+                    # 2. Fix mu to true value if provided
+                    if fix_mu:
+                        params_iter = eqx.tree_at(lambda p: p.mu, params_iter, true_mu)
                     # 3. Apply identification constraint
-                    params_fixed_constrained = apply_identification_constraint(params_fixed_mu)
+                    params_fixed_constrained = apply_identification_constraint(params_iter)
                     # 4. Calculate loss
                     return pf_objective(
                         params_fixed_constrained, obs, filt,
@@ -527,10 +534,12 @@ def run_optimization(
             def objective(params, args_tuple):
                 obs, filt, priors_dict, penalty_weight = args_tuple
                 try:
-                    # 1. Fix mu to true value
-                    params_fixed_mu = eqx.tree_at(lambda p: p.mu, params, true_mu)
+                    # 1. Fix mu to true value if provided
+                    params_iter = params
+                    if fix_mu:
+                        params_iter = eqx.tree_at(lambda p: p.mu, params_iter, true_mu)
                     # 2. Apply identification constraint
-                    params_fixed_constrained = apply_identification_constraint(params_fixed_mu)
+                    params_fixed_constrained = apply_identification_constraint(params_iter)
                     # 3. Calculate loss
                     return pf_objective(
                         params_fixed_constrained, obs, filt,
@@ -634,6 +643,7 @@ def run_optimization(
         filter_type=filter_type,
         optimizer_name=optimizer_name,
         uses_transformations=use_transformations,
+        fix_mu=fix_mu,  # Add fix_mu parameter
         prior_config_name=prior_config_name,
         success=success,
         final_loss=float(final_loss),
@@ -656,20 +666,21 @@ def print_results_table(results: List[OptimizerResult]):
     """
     print("\n\n--- Optimization Results ---")
     # Header
-    print(f"{'Filter':<6} | {'Optimizer':<10} | {'Transform':<10} | {'Prior Config':<20} | {'Success':<8} | {'Final Loss':<15} | {'Steps':<8} | {'Time (s)':<10} | {'Error Message'}")
-    print("-" * 130)
+    print(f"{'Filter':<6} | {'Optimizer':<10} | {'Transform':<10} | {'Fix_mu':<7} | {'Prior Config':<20} | {'Success':<8} | {'Final Loss':<15} | {'Steps':<8} | {'Time (s)':<10} | {'Error Message'}")
+    print("-" * 140)
 
     # Rows
-    for res in sorted(results, key=lambda x: (x.filter_type.name, x.optimizer_name, x.uses_transformations)):
+    for res in sorted(results, key=lambda x: (x.filter_type.name, x.optimizer_name, x.uses_transformations, x.fix_mu)):
         filter_str = res.filter_type.name
         success_str = "Yes" if res.success else "No"
+        fix_mu_str = "Yes" if res.fix_mu else "No"
         loss_str = f"{res.final_loss:.4e}" if jnp.isfinite(res.final_loss) else "Inf/NaN"
         steps_str = str(res.steps) if res.steps >= 0 else "N/A"
         time_str = f"{res.time_taken:.2f}"
         error_str = res.error_message if not res.success else "N/A"
-        print(f"{filter_str:<6} | {res.optimizer_name:<10} | {'Yes' if res.uses_transformations else 'No':<10} | {res.prior_config_name:<20} | {success_str:<8} | {loss_str:<15} | {steps_str:<8} | {time_str:<10} | {error_str}")
+        print(f"{filter_str:<6} | {res.optimizer_name:<10} | {'Yes' if res.uses_transformations else 'No':<10} | {fix_mu_str:<7} | {res.prior_config_name:<20} | {success_str:<8} | {loss_str:<15} | {steps_str:<8} | {time_str:<10} | {error_str}")
 
-    print("-" * 130)
+    print("-" * 140)
 
 
 def print_parameter_comparison(results: List[OptimizerResult], true_params: DFSVParamsDataclass):
@@ -689,9 +700,9 @@ def print_parameter_comparison(results: List[OptimizerResult], true_params: DFSV
     # Set numpy print options for better readability
     np.set_printoptions(precision=4, suppress=True)
 
-    for res in sorted(results, key=lambda x: (x.filter_type.name, x.optimizer_name, x.uses_transformations)):
+    for res in sorted(results, key=lambda x: (x.filter_type.name, x.optimizer_name, x.uses_transformations, x.fix_mu)):
         if res.final_params is not None:
-            print(f"\n-- Run: Filter='{res.filter_type.name}' | Optimizer='{res.optimizer_name}' | Success='{'Yes' if res.success else 'No'}' --")
+            print(f"\n-- Run: Filter='{res.filter_type.name}' | Optimizer='{res.optimizer_name}' | Fix_mu='{'Yes' if res.fix_mu else 'No'}' | Success='{'Yes' if res.success else 'No'}' --")
             print("-" * 80)
             print(f"{'Parameter':<10} | {'True Value':<35} | {'Estimated Value'}")
             print("-" * 80)
@@ -787,8 +798,9 @@ def save_estimated_params(results: List[OptimizerResult], true_params: DFSVParam
             filter_str = res.filter_type.name
             opt_name = res.optimizer_name.replace(' ', '_')
             transform_str = 'Transformed' if res.uses_transformations else 'Untransformed'
+            fix_mu_str = 'FixedMu' if res.fix_mu else 'FreeMu'
 
-            filename = f"estimated_params_{filter_str}_{opt_name}_{transform_str}_{status_str}.pkl"
+            filename = f"estimated_params_{filter_str}_{opt_name}_{transform_str}_{fix_mu_str}_{status_str}.pkl"
             filepath = os.path.join("outputs", filename)
 
             try:
@@ -815,21 +827,19 @@ def main():
     print(true_params)
 
     # 2. Generate simulation data
-    T = 500  # Reduced for quicker testing
+    T = 1500  # Full experiment with longer time series
     print(f"\nGenerating {T} time steps of simulation data...")
     returns = create_training_data(true_params, T=T, seed=123)
     print("Simulation data generated.")
 
     # 3. Define optimization configurations
-    # Default: run all filters with BFGS and AdamW
-    # filter_types = [FilterType.BIF, FilterType.BF, FilterType.PF]
+    # Run all three filters
+    filter_types = [FilterType.BIF, FilterType.PF]
 
-    # For quicker testing, use one of these lines:
-    filter_types = [FilterType.BIF]  # Only run BIF (fastest)
-    # filter_types = [FilterType.BIF, FilterType.BF]  # Skip PF (can be slow)
-
-    optimizers = ["AdamW", "DogLegBFGS", "DampedTrustRegionBFGS", "IndirectTrustRegionBFGS"]
+    # Use both AdamW and DampedTrustRegionBFGS optimizers
+    optimizers = ["AdamW", "DampedTrustRegionBFGS"]
     use_transformations_options = [True]  # Always use transformations for stability
+    fix_mu_options = [True, False]  # Run with both fixed and non-fixed mu
     max_steps = 200  # Increased for better convergence
     stability_penalty_weight = 1000.0
     num_particles = 5000
@@ -842,47 +852,49 @@ def main():
     for filter_type in filter_types:
         for optimizer_name in optimizers:
             for use_transformations in use_transformations_options:
-                print(f"\n--- Running: Filter={filter_type.name} | Optimizer={optimizer_name} | Transform={'Yes' if use_transformations else 'No'} ---")
+                for fix_mu in fix_mu_options:
+                    print(f"\n--- Running: Filter={filter_type.name} | Optimizer={optimizer_name} | Transform={'Yes' if use_transformations else 'No'} | Fix_mu={'Yes' if fix_mu else 'No'} ---")
 
-                # Skip certain filter-optimizer combinations that are known to be problematic
-                # if (filter_type == FilterType.PF and optimizer_name == "BFGS") or \
-                #    (filter_type == FilterType.BF and optimizer_name == "AdamW"):
-                #     print(f"Skipping {filter_type.name} with {optimizer_name} (known compatibility issue)")
-                #     continue
+                    # Skip certain filter-optimizer combinations that are known to be problematic
+                    # if (filter_type == FilterType.PF and optimizer_name == "BFGS") or \
+                    #    (filter_type == FilterType.BF and optimizer_name == "AdamW"):
+                    #     print(f"Skipping {filter_type.name} with {optimizer_name} (known compatibility issue)")
+                    #     continue
 
-                try:
-                    # Run optimization with error handling
-                    result = run_optimization(
-                        filter_type=filter_type,
-                        returns=returns,
-                        true_params=true_params,
-                        use_transformations=use_transformations,
-                        optimizer_name=optimizer_name,
-                        priors=None,
-                        stability_penalty_weight=stability_penalty_weight,
-                        max_steps=max_steps,
-                        num_particles=num_particles,
-                        prior_config_name="No Priors"
-                    )
+                    try:
+                        # Run optimization with error handling
+                        result = run_optimization(
+                            filter_type=filter_type,
+                            returns=returns,
+                            true_params=true_params if fix_mu else None,  # Only pass true_params if fix_mu is True
+                            use_transformations=use_transformations,
+                            optimizer_name=optimizer_name,
+                            priors=None,
+                            stability_penalty_weight=stability_penalty_weight,
+                            max_steps=max_steps,
+                            num_particles=num_particles,
+                            prior_config_name="No Priors"
+                        )
 
-                    # Add result to list
-                    results.append(result)
-                except Exception as e:
-                    print(f"Error running optimization: {e}")
-                    # Create a failure result
-                    error_result = OptimizerResult(
-                        filter_type=filter_type,
-                        optimizer_name=optimizer_name,
-                        uses_transformations=use_transformations,
-                        prior_config_name="No Priors",
-                        success=False,
-                        final_loss=float('inf'),
-                        steps=-1,
-                        time_taken=0.0,
-                        error_message=f"Exception: {str(e)}",
-                        final_params=None
-                    )
-                    results.append(error_result)
+                        # Add result to list
+                        results.append(result)
+                    except Exception as e:
+                        print(f"Error running optimization: {e}")
+                        # Create a failure result
+                        error_result = OptimizerResult(
+                            filter_type=filter_type,
+                            optimizer_name=optimizer_name,
+                            uses_transformations=use_transformations,
+                            fix_mu=fix_mu,  # Add fix_mu parameter
+                            prior_config_name="No Priors",
+                            success=False,
+                            final_loss=float('inf'),
+                            steps=-1,
+                            time_taken=0.0,
+                            error_message=f"Exception: {str(e)}",
+                            final_params=None
+                        )
+                        results.append(error_result)
 
     # 5. Print results table
     if results:

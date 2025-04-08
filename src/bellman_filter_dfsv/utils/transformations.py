@@ -247,3 +247,11 @@ def untransform_params(transformed_params: DFSVParamsDataclass) -> DFSVParamsDat
         Q_h=q_h_original
         # lambda_r is intentionally omitted from replace()
     )
+def apply_identification_constraint(params: DFSVParamsDataclass) -> DFSVParamsDataclass:
+    """Applies lower-triangular constraint with diagonal fixed to 1 to lambda_r."""
+    # Apply lower-triangular constraint first
+    constrained_lambda_r = jnp.tril(params.lambda_r)
+    # Set diagonal elements to 1.0
+    diag_indices = jnp.diag_indices(n=min(params.N, params.K), ndim=2)
+    constrained_lambda_r = constrained_lambda_r.at[diag_indices].set(1.0)
+    return params.replace(lambda_r=constrained_lambda_r)
