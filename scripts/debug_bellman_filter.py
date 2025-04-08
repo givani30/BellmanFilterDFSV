@@ -56,8 +56,24 @@ def run_bellman_debug(N, K, T, seed):
 
         # 2. Run Bellman Filter
         bf = DFSVBellmanFilter(N, K)
+
+        # Extract initial predicted state and covariance BEFORE first update
+        init_state, init_cov = bf.initialize_state(params)
+        K_ = K  # number of factors/vols
+        init_state_flat = init_state.flatten()
+        h_init = init_state_flat[K_:]  # extract h components
+        cov_diag = np.diag(init_cov)
+        h_cov_diag = cov_diag[K_:]  # extract diagonal elements for h
+
+        print("\n--- Initial predicted state and covariance BEFORE first update ---")
+        print("Initial predicted h (log-vols):", h_init)
+        print("Initial predicted h covariance diagonal:", h_cov_diag)
+        print("Is initial h close to mu? (diff):", h_init - params.mu)
+        print("mu:", params.mu)
+        print("---------------------------------------------------------------\n")
+
         start_time_bf = time.time()
-        bf.filter_scan(params, returns) # Use non-scan version for debugging prints
+        bf.filter(params, returns)  # Use non-JIT version for debugging
         end_time_bf = time.time()
         metrics['bf_time'] = end_time_bf - start_time_bf
 

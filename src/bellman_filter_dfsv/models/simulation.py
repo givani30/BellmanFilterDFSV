@@ -54,7 +54,8 @@ def simulate_DFSV(params: DFSVParamsDataclass, f0: np.ndarray = None, h0: np.nda
     
     # Set initial states using pythonic defaults
     factors_t[0, :] = f0 if f0 is not None else np.zeros(K)
-    log_vols_t[0, :] = h0 if h0 is not None else mu.flatten()
+    #Initialize at long-run mean instead
+    log_vols_t[0, :] = mu.flatten() if h0 is None else h0
     
     # Prepare Cholesky decompositions for efficiency
     # Convert JAX arrays to NumPy for np.linalg functions

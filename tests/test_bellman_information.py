@@ -433,8 +433,8 @@ def test_bif_stability_during_optimization(bif_setup):
     except Exception as e:
         pytest.fail(f"Optimization process raised an unexpected exception: {e}")
 
-def test_smooth(bif_setup):
-    """Tests the smoother implementation for BIF."""
+def test_smooth_basic_properties(bif_setup):
+    """Tests the basic properties (shape, dtype, finiteness) of the BIF smoother output."""
     bif_filter = bif_setup["filter"]
     params = bif_setup["params"]
     observations = bif_setup["observations"]
@@ -535,3 +535,72 @@ def test_getters(bif_setup):
                 matrix = result[i]
                 np.testing.assert_allclose(matrix, matrix.T, atol=1e-7, rtol=1e-6,
                                            err_msg=f"{method_name} matrix at index {i} is not symmetric")
+
+
+
+# --- Helper Function for RMSE ---
+
+def calculate_rmse(estimated: np.ndarray, true: np.ndarray) -> float:
+    """Calculates the Root Mean Squared Error between two NumPy arrays."""
+    if estimated.shape != true.shape:
+        raise ValueError(f"Shape mismatch: estimated {estimated.shape}, true {true.shape}")
+    return np.sqrt(np.mean((estimated - true) ** 2))
+
+
+# --- Test for Smoother Accuracy ---
+
+def test_smooth_state_accuracy_covariance_filter(params_fixture, data_fixture):
+    """Tests the accuracy of the covariance-based Bellman Filter smoother against true simulated states.
+    
+    This is a variant of the BIF smoother test, but uses the covariance-based filter.
+    """
+    # --- Test Setup ---
+    N = 3
+    K = 2
+    T = 1000  # Use a longer series for better smoothing assessment
+    seed = 123
+
+    # Get parameters and data using fixtures
+    params = params_fixture(N=N, K=K)
+    simulated_data = data_fixture(params=params, T=T, seed=seed)
+    observations = np.asarray(simulated_data["observations"])
+    true_factors = np.asarray(simulated_data["true_factors"])
+    true_log_vols = np.asarray(simulated_data["true_log_vols"])
+    state_dim = K * 2
+
+    # Combine true states: [factors, log_vols]
+    alpha_true = np.hstack([true_factors, true_log_vols])
+    assert alpha_true.shape == (T, state_dim)
+
+    # Instantiate the covariance-based Bellman filter
+    bf_filter = DFSVBellmanInformationFilter(N=N, K=K)
+    bf_filter._setup_jax_functions()
+
+    # --- Run Filter and Smoother ---
+    try:
+        # Run filter_scan (populates internal states/covs needed for smoother)
+        filtered_states_np, _, _ = bf_filter.filter_scan(params, observations)
+        assert filtered_states_np.shape == (T, state_dim)
+
+        # Run smoother (uses internally computed filtered_covs)
+        smoothed_states_np, _ = bf_filter.smooth(params)
+        assert smoothed_states_np.shape == (T, state_dim)
+
+    except Exception as e:
+        pytest.fail(f"Covariance Bellman Filter or Smoother raised an unexpected exception: {e}")
+
+    # --- Calculate RMSE and Assertions ---
+    rmse_smoothed = calculate_rmse(smoothed_states_np, alpha_true)
+    rmse_filtered = calculate_rmse(filtered_states_np, alpha_true)
+
+    expected_threshold = 0.5
+    print(f"\n[COV FILTER] Smoothed State RMSE: {rmse_smoothed:.4f}")
+    print(f"[COV FILTER] Filtered State RMSE: {rmse_filtered:.4f}")
+
+    assert rmse_smoothed < expected_threshold, \
+        f"[Covariance Filter] Smoothed state RMSE ({rmse_smoothed:.4f}) exceeds threshold ({expected_threshold:.4f})"
+
+    assert rmse_smoothed < rmse_filtered, \
+        f"[Covariance Filter] Smoothed RMSE ({rmse_smoothed:.4f}) is not lower than filtered RMSE ({rmse_filtered:.4f})"
+
+

@@ -641,13 +641,18 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         self.total_log_likelihood = final_carry[2]
 
         # --- Store results for smoother ---
-        # Convert filtered information matrices to covariances
-        vmapped_inverter = jit(jax.vmap(self._invert_info_matrix, in_axes=0))
-        filtered_covs_scan = vmapped_inverter(filtered_infos_scan)
+        # Convert filtered AND predicted information matrices to covariances
+        # vmapped_inverter = jit(jax.vmap(self._invert_info_matrix, in_axes=0))
+        # filtered_covs_scan = vmapped_inverter(filtered_infos_scan)
+        # predicted_covs_scan = vmapped_inverter(predicted_infos_scan) # Compute predicted covs
 
         # Store NumPy versions for the smoother in the base class attributes
         self.filtered_states = np.asarray(filtered_states_scan.reshape(T, self.state_dim))
-        self.filtered_covs = np.asarray(filtered_covs_scan)
+        # self.filtered_covs = np.asarray(filtered_covs_scan)
+        # Store predicted states (already computed) and predicted covariances (newly computed)
+        # Keep predicted states as (T, state_dim, 1) for potential consistency? Or flatten? Let's flatten for now.
+        self.predicted_states = np.asarray(predicted_states_scan.reshape(T, self.state_dim))
+        # self.predicted_covs = np.asarray(predicted_covs_scan) # Store predicted covs
         self.is_filtered = True # Mark filter as run
 
         # Return NumPy arrays for states/infos, JAX scalar for loglik by calling getter methods
@@ -680,27 +685,33 @@ class DFSVBellmanInformationFilter(DFSVFilter):
                 "before smoothing."
             )
 
-        # Convert JAX states to NumPy
-        filtered_states_np = np.asarray(self.filtered_states)
 
         # Compute filtered covariances (P_t|t) from information matrices (Omega_t|t)
         # get_filtered_covariances() handles JAX->NumPy conversion and stores in self.filtered_covs
         filtered_covs_np = self.get_filtered_covariances()
         if filtered_covs_np is None:
             raise RuntimeError("Failed to compute filtered covariances needed for smoothing.")
-
+        
+        #Compute predicted covariances (P_t|t-1) from information matrices (Omega_t|t-1)
+        predicted_covs_np = self.get_predicted_covariances()
+        if predicted_covs_np is None:
+            raise RuntimeError("Failed to compute predicted covariances needed for smoothing.")
+        
+        
         # Overwrite attributes temporarily with NumPy versions for the base class call
-        self.filtered_states = filtered_states_np
+        self.predicted_covs = predicted_covs_np
         self.filtered_covs = filtered_covs_np # This is already set by get_filtered_covariances
         self.is_filtered = True # Ensure base class knows filter was run
 
         # Call the base class implementation which expects NumPy arrays and now params
-        smoothed_states_np, smoothed_covs_np = super().smooth(params)
+        # Base class smooth returns 3 values: states, covs, lag1_covs
+        smoothed_states, smoothed_covs, smoothed_lag1_covs_np = super().smooth(params)
 
-        # Note: self.smoothed_states and self.smoothed_covariances are set
+        # Note: self.smoothed_states, self.smoothed_covs, and self.smoothed_lag1_covs are set
         #       by the base class smoother (as NumPy arrays).
 
-        return smoothed_states_np, smoothed_covs_np
+        # Return only states and covs to match the method's type hint/docstring
+        return smoothed_states, smoothed_covs
 
 
     # --- Getter Methods (Adapted for Information Filter) ---
@@ -767,7 +778,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
         Returns:
             The corresponding covariance matrix (state_dim, state_dim).
-        """
+       """
         jitter = 1e-8 # Consistent jitter
         state_dim = self.state_dim
         info_jittered = info_matrix + jitter * jnp.eye(state_dim, dtype=jnp.float64)

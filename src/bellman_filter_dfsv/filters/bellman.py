@@ -1,21 +1,32 @@
 from functools import partial
-from typing import Tuple, Union, Dict, Any
+from typing import Any, Dict, Tuple, Union
 
-import optimistix as optx
+import equinox as eqx
+
 # from altair import LogicalAndPredicate # Removed unused import
 import jax
 import jax.numpy as jnp
-import jax.scipy.linalg # Added import
+import jax.scipy.linalg  # Added import
+
 # import jaxopt # Removed unused import
 import numpy as np
+import optimistix as optx
 from jax import jit
-import equinox as eqx
-from .base import DFSVFilter # Import base class from sibling module
+
 # Update imports to use models.dfsv instead
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
+
 # Remove redundant jax_params import
-from ._bellman_impl import build_covariance_impl, log_posterior_impl, bif_likelihood_penalty_impl, observed_fim_impl # Removed kl_penalty_impl import
-from ._bellman_optim import update_factors, update_h_bfgs, _block_coordinate_update_impl # Import optimization helpers including the shared block update
+from ._bellman_impl import (  # Removed kl_penalty_impl import
+    bif_likelihood_penalty_impl,
+    build_covariance_impl,
+    log_posterior_impl,
+    observed_fim_impl,
+)
+from ._bellman_optim import (
+    _block_coordinate_update_impl,  # Import optimization helpers including the shared block update
+)
+from .base import DFSVFilter  # Import base class from sibling module
 
 
 class DFSVBellmanFilter(DFSVFilter):
@@ -498,12 +509,11 @@ class DFSVBellmanFilter(DFSVFilter):
                   (state_dim, state_dim)).
         """
         params_jax = self._process_params(params) # Ensure JAX arrays inside
-        state_jax = jnp.asarray(state, dtype=jnp.float64)
+        state_jax = jnp.asarray(state, dtype=jnp.float64).flatten()
         cov_jax = jnp.asarray(cov, dtype=jnp.float64)
 
-        # Ensure state has shape (state_dim, 1) for internal consistency if needed
-        if state_jax.ndim == 1:
-            state_jax = state_jax.reshape(-1, 1)
+        # Ensure state is 1D vector
+        state_jax = state_jax.flatten()
         # Call the JIT-compiled JAX implementation
         predicted_state_jax, predicted_cov_jax = self.predict_jax( # Call JIT version
             params_jax, state_jax, cov_jax
@@ -545,9 +555,8 @@ class DFSVBellmanFilter(DFSVFilter):
         predicted_cov_jax = jnp.asarray(predicted_cov, dtype=jnp.float64)
         observation_jax = jnp.asarray(observation, dtype=jnp.float64)
 
-        # Ensure state has shape (state_dim, 1) for internal consistency if needed
-        if predicted_state_jax.ndim == 1:
-            predicted_state_jax = predicted_state_jax.reshape(-1, 1)
+        # Ensure state is 1D vector
+        predicted_state_jax = predicted_state_jax.flatten()
         # Ensure observation has shape (N,) for internal consistency
         if observation_jax.ndim > 1:
              observation_jax = observation_jax.flatten()
@@ -606,7 +615,7 @@ class DFSVBellmanFilter(DFSVFilter):
         predicted_cov = F_t @ cov @ F_t.T + Q_t
         predicted_cov = (predicted_cov + predicted_cov.T) / 2 # Ensure symmetry
 
-        return predicted_state.reshape(-1, 1), predicted_cov
+        return predicted_state.flatten(), predicted_cov
 
     # Internal JAX version of update
     def __update_jax(
@@ -709,7 +718,7 @@ class DFSVBellmanFilter(DFSVFilter):
         log_lik_contrib = log_lik_fit - bif_penalty
 
         # Return results as JAX arrays (reshaped state), keep log_lik as JAX scalar
-        return alpha_updated.reshape(-1, 1), updated_cov, log_lik_contrib
+        return alpha_updated.flatten(), updated_cov, log_lik_contrib
 
 
     # _get_transition_matrix is now inherited from DFSVFilter base class
@@ -879,8 +888,8 @@ class DFSVBellmanFilter(DFSVFilter):
 
         # Initialization (get initial state/cov as JAX arrays)
         initial_state_jax, initial_cov_jax = self.initialize_state(params_jax)
-        # Ensure carry types are JAX compatible (float for sum)
-        initial_carry = (initial_state_jax, initial_cov_jax, jnp.array(0.0, dtype=jnp.float64)) # state, cov, log_lik_sum
+        # Flatten initial state to ensure consistent carry shape
+        initial_carry = (initial_state_jax.flatten(), initial_cov_jax, jnp.array(0.0, dtype=jnp.float64)) # state, cov, log_lik_sum
 
         # JAX observations
         jax_observations = jnp.array(observations)
@@ -900,7 +909,7 @@ class DFSVBellmanFilter(DFSVFilter):
             )
 
             # Prepare carry for next step (using JAX arrays)
-            next_carry = (updated_state_t_jax, updated_cov_t_jax, log_lik_sum_t_minus_1 + log_lik_t_jax)
+            next_carry = (updated_state_t_jax.flatten(), updated_cov_t_jax, log_lik_sum_t_minus_1 + log_lik_t_jax)
 
             # What we store for this time step t (JAX arrays)
             scan_output = (pred_state_t_jax, pred_cov_t_jax, updated_state_t_jax, updated_cov_t_jax, log_lik_t_jax)
@@ -957,7 +966,7 @@ class DFSVBellmanFilter(DFSVFilter):
         self.is_filtered = True # Ensure base class knows filter was run
 
         # Call the base class implementation which expects NumPy arrays and now params
-        smoothed_states_np, smoothed_covs_np = super().smooth(params)
+        smoothed_states_np, smoothed_covs_np,_ = super().smooth(params)
 
         # Note: self.smoothed_states and self.smoothed_covariances are set
         #       by the base class smoother (as NumPy arrays).
