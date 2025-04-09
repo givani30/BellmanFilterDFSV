@@ -29,7 +29,7 @@ def create_learning_rate_scheduler(
         decay_steps: Number of steps for learning rate decay.
         min_lr: Minimum learning rate.
         warmup_steps: Number of warmup steps (for schedulers that support warmup).
-        scheduler_type: Type of scheduler ('cosine', 'exponential', 'linear', 'warmup_cosine').
+        scheduler_type: Type of scheduler ('cosine', 'exponential', 'linear', 'warmup_cosine', 'constant').
 
     Returns:
         A learning rate scheduler function.
@@ -64,6 +64,9 @@ def create_learning_rate_scheduler(
             decay_steps=decay_steps,
             end_value=min_lr
         )
+    elif scheduler_type == "constant":
+        # Return a constant learning rate scheduler
+        return lambda count: jnp.ones_like(count, dtype=jnp.float32) * init_lr
     else:
         raise ValueError(f"Unknown scheduler type: {scheduler_type}")
 
@@ -207,6 +210,65 @@ def get_available_optimizers() -> Dict[str, str]:
         "Adafactor": "Memory-efficient version of Adam",
         "Lion": "Evolved Sign Momentum (Facebook AI, 2023)"
     }
+
+
+def get_optimizer_config(
+    optimizer_name: str,
+    learning_rate: float = 1e-3,
+    rtol: float = 1e-5,
+    atol: float = 1e-5
+) -> Dict[str, Any]:
+    """Get the configuration for a specific optimizer.
+
+    Args:
+        optimizer_name: Name of the optimizer.
+        learning_rate: Learning rate for gradient-based optimizers.
+        rtol: Relative tolerance for convergence.
+        atol: Absolute tolerance for convergence.
+
+    Returns:
+        A dictionary containing the optimizer configuration.
+
+    Raises:
+        ValueError: If the optimizer is not available.
+    """
+    # Check if optimizer is available
+    available_optimizers = get_available_optimizers()
+    if optimizer_name not in available_optimizers:
+        raise ValueError(f"Unknown optimizer: {optimizer_name}. Available optimizers: {list(available_optimizers.keys())}")
+
+    # Create configuration dictionary
+    config = {
+        "learning_rate": learning_rate,
+        "rtol": rtol,
+        "atol": atol
+    }
+
+    # Add optimizer-specific configurations
+    if optimizer_name == "BFGS":
+        config["use_inverse"] = False
+    elif optimizer_name == "Adam":
+        config["b1"] = 0.9
+        config["b2"] = 0.999
+        config["eps"] = 1e-8
+    elif optimizer_name == "AdamW":
+        config["b1"] = 0.9
+        config["b2"] = 0.999
+        config["eps"] = 1e-8
+        config["weight_decay"] = 1e-4
+    elif optimizer_name == "SGD":
+        config["momentum"] = 0.9
+        config["nesterov"] = True
+    elif optimizer_name == "RMSProp":
+        config["decay"] = 0.9
+        config["eps"] = 1e-8
+    elif optimizer_name == "Adagrad":
+        config["eps"] = 1e-8
+    elif optimizer_name == "Adadelta":
+        config["rho"] = 0.9
+        config["eps"] = 1e-8
+
+    return config
 
 
 # Custom optimizer implementations

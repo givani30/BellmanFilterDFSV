@@ -229,9 +229,23 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
         options = {}
 
     # Get the shape and dtype of the output
-    test_output, test_aux = objective_fn(initial_params, static_args)
-    f_struct = jax.ShapeDtypeStruct(test_output.shape, test_output.dtype)
-    aux_struct = None if test_aux is None else jax.ShapeDtypeStruct(test_aux.shape, test_aux.dtype)
+    try:
+        test_output, test_aux = objective_fn(initial_params, static_args)
+        f_struct = jax.ShapeDtypeStruct(test_output.shape, test_output.dtype)
+        aux_struct = None if test_aux is None else jax.ShapeDtypeStruct(test_aux.shape, test_aux.dtype)
+    except Exception as e:
+        if throw:
+            raise e
+        else:
+            # Return a dummy solution with the initial parameters
+            sol = optx.Solution(
+                value=initial_params,
+                result=optx.RESULTS.nonlinear_divergence,  # Use a valid result value
+                aux=None,  # Add the aux parameter
+                stats={"num_steps": 0},
+                state=None
+            )
+            return sol, [initial_params]
 
     # Initialize solver state
     state = solver.init(objective_fn, initial_params, static_args, options, f_struct, aux_struct, frozenset())
