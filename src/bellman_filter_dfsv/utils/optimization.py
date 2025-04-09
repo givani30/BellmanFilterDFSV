@@ -189,15 +189,17 @@ def get_objective_function(filter_type: FilterType, filter_instance,
 
     # Create the objective function wrapper
     # This wrapper handles untransformation, fixing mu, and constraints
-    @eqx.filter_jit # JIT compile the wrapper for performance
-    def objective_wrapper(params, observations):
+    # IMPORTANT: We use a separate JIT-compiled function for the actual computation
+    # to ensure the JIT compilation is effective
+    @eqx.filter_jit # JIT compile the computation for performance
+    def _compute_objective(params, observations, is_transformed_flag, fix_mu_flag, true_mu_val):
         # 1. Untransform parameters if they are passed in transformed space
-        params_iter = untransform_params(params) if is_transformed else params
+        params_iter = untransform_params(params) if is_transformed_flag else params
 
         # 2. Fix mu if requested
-        if fix_mu:
+        if fix_mu_flag:
             # We already checked true_mu is not None if fix_mu is True
-            params_iter = eqx.tree_at(lambda p: p.mu, params_iter, true_mu)
+            params_iter = eqx.tree_at(lambda p: p.mu, params_iter, true_mu_val)
 
         # 3. Apply identification constraint
         params_fixed_constrained = apply_identification_constraint(params_iter)
@@ -207,6 +209,11 @@ def get_objective_function(filter_type: FilterType, filter_instance,
             params_fixed_constrained, observations, filter_instance,
             priors=priors, stability_penalty_weight=stability_penalty_weight
         )
+        return loss
+
+    # Wrapper function that calls the JIT-compiled computation
+    def objective_wrapper(params, observations):
+        loss = _compute_objective(params, observations, is_transformed, fix_mu, true_mu)
         # Return loss and None for aux (as expected by optimistix)
         return loss, None
 
@@ -237,15 +244,8 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
     """
     # Initialize parameter history
     param_history = [initial_params]
-    y=initial_params
+    y = initial_params
 
-    # Define a wrapper function that logs parameters
-    def logging_step(param_history,params):
-        # Save current parameters
-        param_history.append(params)
-        return param_history
-
-    # Initialize solver state
     # Prepare options
     if options is None:
         options = {}
@@ -271,13 +271,18 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
 
     # Initialize solver state
     state = solver.init(objective_fn, initial_params, static_args, options, f_struct, aux_struct, frozenset())
+
     # Run optimization with logging
+    step_count = 0
     for _ in range(max_steps):
         # Perform one step of optimization
         try:
             y, state, _ = solver.step(objective_fn, y, static_args, options, state, frozenset())
-            # Log parameters
-            param_history = logging_step(param_history, y)
+            step_count += 1
+
+            # Log parameters at specified intervals
+            if step_count % log_interval == 0:
+                param_history.append(y)
 
             # Check for convergence
             converged, result = solver.terminate(objective_fn, y, static_args, options, state, frozenset())
@@ -312,6 +317,11 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
             aux=final_aux,
             state=state
         )
+
+        # Make sure the final parameters are in the history
+        if final_y is not None and (not param_history or param_history[-1] is not final_y):
+            param_history.append(final_y)
+
     except Exception as e:
         if throw:
             raise e

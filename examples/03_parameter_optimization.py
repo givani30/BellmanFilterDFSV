@@ -222,9 +222,9 @@ def compare_parameters(true_params, optimization_results):
         optimization_results (dict): Dictionary containing optimization results
     """
     # Extract estimated parameters
-    bf_params = optimization_results['bf']['result'].params
-    bif_params = optimization_results['bif']['result'].params
-    pf_params = optimization_results['pf']['result'].params
+    bf_params = optimization_results['bf']['result'].final_params
+    bif_params = optimization_results['bif']['result'].final_params
+    pf_params = optimization_results['pf']['result'].final_params
 
     # Print parameter comparison
     print("\nParameter Comparison:")

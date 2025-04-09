@@ -1014,8 +1014,12 @@ class DFSVBellmanFilter(DFSVFilter):
             # Convert dict to dataclass, ensuring N and K are correct
             params_jax = self._process_params(params_dict)
             _, _, total_log_lik = self.filter_scan(params_jax, observations)
+
             # Handle potential NaN/Inf values from filtering (using JAX functions)
-            return jnp.where(jnp.isnan(total_log_lik) | jnp.isinf(total_log_lik), -jnp.inf, total_log_lik)
+            # Also handle extremely large positive values which can occur due to numerical issues
+            # with the BIF penalty term
+            is_invalid = jnp.isnan(total_log_lik) | jnp.isinf(total_log_lik) | (total_log_lik > 1e10)
+            return jnp.where(is_invalid, -jnp.inf, total_log_lik)
         except (ValueError, TypeError) as e: # Catch only pre-JAX processing errors
             print(f"Warning: Error calculating likelihood in Bellman Filter: {e}")
             return jnp.array(-jnp.inf, dtype=jnp.float64)
@@ -1078,7 +1082,10 @@ class DFSVBellmanFilter(DFSVFilter):
         total_log_lik = final_carry[2] # JAX scalar
 
         # Replace NaN/Inf with -inf for optimization stability
-        return jnp.where(jnp.isnan(total_log_lik) | jnp.isinf(total_log_lik), -jnp.inf, total_log_lik)
+        # Also handle extremely large positive values which can occur due to numerical issues
+        # with the BIF penalty term
+        is_invalid = jnp.isnan(total_log_lik) | jnp.isinf(total_log_lik) | (total_log_lik > 1e10)
+        return jnp.where(is_invalid, -jnp.inf, total_log_lik)
 
 
     @eqx.filter_jit

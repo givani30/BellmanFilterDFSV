@@ -889,7 +889,10 @@ class DFSVBellmanInformationFilter(DFSVFilter):
             # filter_scan returns (filtered_states_np, filtered_infos_np, total_log_lik_jax)
             _, _, total_log_lik = self.filter_scan(params_jax, observations)
             # Handle potential NaN/Inf values from filtering (using JAX functions)
-            return jnp.where(jnp.isnan(total_log_lik) | jnp.isinf(total_log_lik), -jnp.inf, total_log_lik)
+            # Also handle extremely large positive values which can occur due to numerical issues
+            # with the BIF penalty term
+            is_invalid = jnp.isnan(total_log_lik) | jnp.isinf(total_log_lik) | (total_log_lik > 1e10)
+            return jnp.where(is_invalid, -jnp.inf, total_log_lik)
         except (ValueError, TypeError) as e: # Catch only pre-JAX processing errors
             # Handle errors during parameter processing or filtering
             print(f"Warning: Error calculating BIF likelihood: {e}")
@@ -948,7 +951,9 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         # Replace NaN/Inf with -inf for optimization stability
         # Note: penalty_sum is the sum of KL terms, which are subtracted from fit_sum.
         # A large positive penalty sum means a large negative contribution to total likelihood.
-        safe_total_log_lik = jnp.where(jnp.isnan(total_log_lik) | jnp.isinf(total_log_lik), -jnp.inf, total_log_lik)
+        # Also handle extremely large positive values which can occur due to numerical issues
+        is_invalid = jnp.isnan(total_log_lik) | jnp.isinf(total_log_lik) | (total_log_lik > 1e10)
+        safe_total_log_lik = jnp.where(is_invalid, -jnp.inf, total_log_lik)
 
         return safe_total_log_lik
 

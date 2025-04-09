@@ -327,6 +327,127 @@ def plot_optimization_comparison(optimization_results):
     plt.show()
 
 
+def run_filters_and_plot_states(params, result_standard, result_transformed, returns, factors, log_vols):
+    """Run filters with optimized parameters and plot state estimates vs true values.
+
+    Args:
+        params (DFSVParamsDataclass): True model parameters
+        result_standard (optx.Solution): Standard optimization result
+        result_transformed (optx.Solution): Transformed optimization result
+        returns (np.ndarray): Observed returns
+        factors (np.ndarray): True factors
+        log_vols (np.ndarray): True log-volatilities
+    """
+    print("\nRunning filters with optimized parameters...")
+
+    # Create filter instance
+    filter_instance = DFSVBellmanInformationFilter(params.N, params.K)
+
+    # Convert returns to JAX array
+    jax_returns = jnp.array(returns)
+
+    # Run filter with true parameters
+    print("Running filter with true parameters...")
+    _, _, true_ll = filter_instance.filter_scan(params, jax_returns)
+    true_filtered_states = np.array(filter_instance.filtered_states)
+
+    # Run filter with standard optimization result
+    print("Running filter with standard optimization result...")
+    _, _, std_ll = filter_instance.filter_scan(result_standard.value, jax_returns)
+    std_filtered_states = np.array(filter_instance.filtered_states)
+
+    # Untransform the transformed parameters
+    untransformed_params = untransform_params(result_transformed.value)
+
+    # Run filter with transformed optimization result
+    print("Running filter with transformed optimization result...")
+    _, _, trans_ll = filter_instance.filter_scan(untransformed_params, jax_returns)
+    trans_filtered_states = np.array(filter_instance.filtered_states)
+
+    # Print log-likelihoods
+    print(f"\nLog-likelihoods:")
+    print(f"  True parameters: {float(true_ll):.4f}")
+    print(f"  Standard optimization: {float(std_ll):.4f}")
+    print(f"  Transformed optimization: {float(trans_ll):.4f}")
+
+    # Plot factors
+    T = returns.shape[0]
+    time_index = np.arange(T)
+
+    # Create figure with 2 rows (factors and log-vols) and K columns
+    K = params.K
+    fig, axes = plt.subplots(2, K, figsize=(15, 10), sharex=True)
+    if K == 1:
+        axes = axes.reshape(2, 1)
+
+    # Plot factors
+    for k in range(K):
+        ax = axes[0, k]
+        ax.plot(time_index, factors[:, k], 'k-', label='True')
+        ax.plot(time_index, true_filtered_states[:, k], 'g--', label='True Params')
+        ax.plot(time_index, std_filtered_states[:, k], 'b-.', label='Standard Opt')
+        ax.plot(time_index, trans_filtered_states[:, k], 'r:', label='Transformed Opt')
+        ax.set_title(f'Factor {k+1}')
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Value')
+        ax.legend()
+        ax.grid(True)
+
+    # Plot log-volatilities
+    for k in range(K):
+        ax = axes[1, k]
+        ax.plot(time_index, log_vols[:, k], 'k-', label='True')
+        ax.plot(time_index, true_filtered_states[:, k+K], 'g--', label='True Params')
+        ax.plot(time_index, std_filtered_states[:, k+K], 'b-.', label='Standard Opt')
+        ax.plot(time_index, trans_filtered_states[:, k+K], 'r:', label='Transformed Opt')
+        ax.set_title(f'Log-Volatility {k+1}')
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Value')
+        ax.legend()
+        ax.grid(True)
+
+    plt.tight_layout()
+    plt.show()
+
+    # Calculate and plot state estimation errors
+    fig, axes = plt.subplots(2, 1, figsize=(15, 10))
+
+    # Factor estimation errors
+    factor_errors_true = np.mean(np.abs(true_filtered_states[:, :K] - factors), axis=0)
+    factor_errors_std = np.mean(np.abs(std_filtered_states[:, :K] - factors), axis=0)
+    factor_errors_trans = np.mean(np.abs(trans_filtered_states[:, :K] - factors), axis=0)
+
+    # Log-vol estimation errors
+    logvol_errors_true = np.mean(np.abs(true_filtered_states[:, K:2*K] - log_vols), axis=0)
+    logvol_errors_std = np.mean(np.abs(std_filtered_states[:, K:2*K] - log_vols), axis=0)
+    logvol_errors_trans = np.mean(np.abs(trans_filtered_states[:, K:2*K] - log_vols), axis=0)
+
+    # Plot factor errors
+    x = np.arange(K)
+    width = 0.25
+    axes[0].bar(x - width, factor_errors_true, width, label='True Params')
+    axes[0].bar(x, factor_errors_std, width, label='Standard Opt')
+    axes[0].bar(x + width, factor_errors_trans, width, label='Transformed Opt')
+    axes[0].set_title('Mean Absolute Error in Factor Estimation')
+    axes[0].set_xticks(x)
+    axes[0].set_xticklabels([f'Factor {k+1}' for k in range(K)])
+    axes[0].legend()
+    axes[0].grid(True, axis='y')
+
+    # Plot log-vol errors
+    axes[1].bar(x - width, logvol_errors_true, width, label='True Params')
+    axes[1].bar(x, logvol_errors_std, width, label='Standard Opt')
+    axes[1].bar(x + width, logvol_errors_trans, width, label='Transformed Opt')
+    axes[1].set_title('Mean Absolute Error in Log-Volatility Estimation')
+    axes[1].set_xticks(x)
+    axes[1].set_xticklabels([f'Log-Vol {k+1}' for k in range(K)])
+    axes[1].legend()
+    axes[1].grid(True, axis='y')
+
+    plt.tight_layout()
+    plt.show()
+
+
 def main():
     """Run the parameter transformation example."""
     print("Parameter Transformation Example for DFSV Models")
@@ -360,6 +481,12 @@ def main():
 
     # Plot optimization comparison
     plot_optimization_comparison(optimization_results)
+
+    # If both optimizations were successful, run filters and plot state estimates
+    if optimization_results['standard']['success'] and optimization_results['transformed']['success']:
+        result_standard = optimization_results['standard']['result']
+        result_transformed = optimization_results['transformed']['result']
+        run_filters_and_plot_states(params, result_standard, result_transformed, returns, factors, log_vols)
 
     return params, returns, factors, log_vols, optimization_results
 
