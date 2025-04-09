@@ -13,173 +13,33 @@ penalties, allowing for comprehensive comparison of filter performance in
 parameter estimation.
 """
 
-import time
 import csv
 import os
 import cloudpickle
-from enum import Enum, auto
-from typing import Dict, Any, Optional, List, Callable, Tuple, Union
-from collections import namedtuple
-from jaxtyping import Array, Float, PRNGKeyArray, PyTree, Scalar
+from typing import List
 
 # JAX imports
 import jax
 import jax.numpy as jnp
 import numpy as np
-import optimistix as optx
-import optax
-import equinox as eqx
 
 # Project specific imports
-from bellman_filter_dfsv.filters.base import DFSVFilter
-from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformationFilter
-from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
-from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.utils.transformations import (
-    transform_params,
-    untransform_params,
-    apply_identification_constraint
-)
-from bellman_filter_dfsv.filters.objectives import bellman_objective, pf_objective
 from bellman_filter_dfsv.models.simulation import simulate_DFSV
-from bellman_filter_dfsv.filters._bellman_optim import CustomBFGS
-
-# Custom BFGS implementations
-class DogLegBFGS(optx.AbstractBFGS):
-    """DogLeg BFGS solver with specific configurations."""
-    rtol: float
-    atol: float
-    norm: Callable[[PyTree], Scalar]
-    use_inverse: bool
-    descent: optx.AbstractDescent = optx.DoglegDescent()
-    search: optx.AbstractSearch = optx.ClassicalTrustRegion()
-    verbose: frozenset[str]
-
-    def __init__(
-        self,
-        rtol: float,
-        atol: float,
-        norm: Callable[[PyTree], Scalar] = optx.max_norm,
-        use_inverse: bool = False,
-        verbose: frozenset[str] = frozenset(),
-    ):
-        self.rtol = rtol
-        self.atol = atol
-        self.norm = norm
-        self.use_inverse = use_inverse
-        self.descent = optx.DoglegDescent()
-        self.search = optx.ClassicalTrustRegion()
-        self.verbose = verbose
+from bellman_filter_dfsv.utils.transformations import apply_identification_constraint
+from bellman_filter_dfsv.utils.optimization import (
+    run_optimization,
+    FilterType,
+    OptimizerResult
+)
 
 
-class ArmijoBFGS(optx.AbstractBFGS):
-    """BFGS solver with Backtracking Armijo line search."""
-    rtol: float
-    atol: float
-    norm: Callable[[PyTree], Scalar]
-    use_inverse: bool
-    descent: optx.AbstractDescent
-    search: optx.AbstractSearch
-    verbose: frozenset[str]
-
-    def __init__(
-        self,
-        rtol: float,
-        atol: float,
-        norm: Callable[[PyTree], Scalar] = optx.max_norm,
-        use_inverse: bool = False,
-        verbose: frozenset[str] = frozenset(),
-    ):
-        self.rtol = rtol
-        self.atol = atol
-        self.norm = norm
-        self.use_inverse = use_inverse
-        self.descent = optx.DampedNewtonDescent()
-        self.search = optx.BacktrackingArmijo(step_init=0.1)
-        self.verbose = verbose
-
-
-class DampedTrustRegionBFGS(optx.AbstractBFGS):
-    """BFGS solver with Damped Newton descent and Classical Trust Region search."""
-    rtol: float
-    atol: float
-    norm: Callable[[PyTree], Scalar]
-    use_inverse: bool
-    descent: optx.AbstractDescent = optx.DampedNewtonDescent()
-    search: optx.AbstractSearch = optx.ClassicalTrustRegion()
-    verbose: frozenset[str]
-
-    def __init__(
-        self,
-        rtol: float,
-        atol: float,
-        norm: Callable[[PyTree], Scalar] = optx.max_norm,
-        use_inverse: bool = False,
-        verbose: frozenset[str] = frozenset(),
-    ):
-        self.rtol = rtol
-        self.atol = atol
-        self.norm = norm
-        self.use_inverse = use_inverse
-        self.descent = optx.DampedNewtonDescent()
-        self.search = optx.ClassicalTrustRegion()
-        self.verbose = verbose
-
-
-class IndirectTrustRegionBFGS(optx.AbstractBFGS):
-    """BFGS solver with Indirect Damped Newton descent and Classical Trust Region search."""
-    rtol: float
-    atol: float
-    norm: Callable[[PyTree], Scalar]
-    use_inverse: bool
-    descent: optx.AbstractDescent = optx.IndirectDampedNewtonDescent()
-    search: optx.AbstractSearch = optx.ClassicalTrustRegion()
-    verbose: frozenset[str]
-
-    def __init__(
-        self,
-        rtol: float,
-        atol: float,
-        norm: Callable[[PyTree], Scalar] = optx.max_norm,
-        use_inverse: bool = False,
-        verbose: frozenset[str] = frozenset(),
-    ):
-        self.rtol = rtol
-        self.atol = atol
-        self.norm = norm
-        self.use_inverse = use_inverse
-        self.descent = optx.IndirectDampedNewtonDescent()
-        self.search = optx.ClassicalTrustRegion()
-        self.verbose = verbose
 
 # Enable 64-bit precision for better numerical stability
 jax.config.update("jax_enable_x64", True)
 
 
-# --- Enums and Data Structures ---
-
-class FilterType(Enum):
-    """Enum for the different filter types."""
-    BIF = auto()  # Bellman Information Filter
-    BF = auto()   # Bellman Filter
-    PF = auto()   # Particle Filter
-
-
-# Result data structure for optimization runs
-OptimizerResult = namedtuple("OptimizerResult", [
-    "filter_type",           # Type of filter used
-    "optimizer_name",        # Name of the optimizer
-    "uses_transformations",  # Whether parameter transformations were used
-    "fix_mu",               # Whether mu parameter was fixed
-    "prior_config_name",    # Description of prior configuration
-    "success",              # Whether optimization succeeded
-    "final_loss",           # Final loss value
-    "steps",                # Number of steps taken
-    "time_taken",           # Time taken in seconds
-    "error_message",        # Error message if any
-    "final_params"          # Final estimated parameters
-])
+# No need to redefine enums and data structures - using the ones from the main code
 
 
 # --- Model and Data Generation Functions ---
@@ -260,28 +120,7 @@ def create_training_data(params: DFSVParamsDataclass, T: int = 1000, seed: int =
     return jnp.asarray(returns)  # Convert to JAX array
 
 
-# --- Filter Creation and Initialization ---
-
-def create_filter(filter_type: FilterType, N: int, K: int, num_particles: int = 5000) -> DFSVFilter:
-    """Create a filter instance based on the filter type.
-
-    Args:
-        filter_type: Type of filter to create.
-        N: Number of observed series.
-        K: Number of factors.
-        num_particles: Number of particles for particle filter.
-
-    Returns:
-        DFSVFilter: Filter instance.
-    """
-    if filter_type == FilterType.BIF:
-        return DFSVBellmanInformationFilter(N, K)
-    elif filter_type == FilterType.BF:
-        return DFSVBellmanFilter(N, K)
-    elif filter_type == FilterType.PF:
-        return DFSVParticleFilter(N, K, num_particles=num_particles)
-    else:
-        raise ValueError(f"Unknown filter type: {filter_type}")
+# Using create_filter from the main code
 
 
 def create_initial_params(N: int, K: int) -> DFSVParamsDataclass:
@@ -321,357 +160,8 @@ def create_initial_params(N: int, K: int) -> DFSVParamsDataclass:
     return initial_params
 
 
-# --- Optimization Functions ---
+# Using run_optimization from the main code
 
-def run_optimization(
-    filter_type: FilterType,
-    returns: jnp.ndarray,
-    true_params: Optional[DFSVParamsDataclass] = None,
-    use_transformations: bool = True,
-    optimizer_name: str = "BFGS",
-    priors: Optional[Dict[str, Any]] = None,
-    stability_penalty_weight: float = 1000.0,
-    max_steps: int = 500,
-    num_particles: int = 5000,
-    prior_config_name: str = "No Priors"
-) -> OptimizerResult:
-    """Run optimization for a specific filter type and configuration.
-
-    Args:
-        filter_type: Type of filter to use.
-        returns: Observed returns with shape (T, N).
-        true_params: True parameters (for reference, not used in optimization).
-        use_transformations: Whether to use parameter transformations.
-        optimizer_name: Name of the optimizer to use.
-        priors: Dictionary of prior hyperparameters.
-        stability_penalty_weight: Weight for stability penalty.
-        max_steps: Maximum number of optimization steps.
-        num_particles: Number of particles for particle filter.
-        # Note: learning_rate is set internally in the function
-        prior_config_name: Description of prior configuration.
-
-    Returns:
-        OptimizerResult: Results of the optimization run.
-    """
-    # Extract dimensions
-    _, N = returns.shape
-    K = true_params.K if true_params is not None else 2
-
-    # Create filter instance
-    filter_instance = create_filter(filter_type, N, K, num_particles)
-
-    # Create initial parameters
-    initial_params = create_initial_params(N, K)
-
-    # Apply transformations if requested
-    if use_transformations:
-        initial_y = transform_params(initial_params)
-    else:
-        initial_y = initial_params
-
-    # Define optimizer
-    rtol, atol = 1e-3, 1e-5
-
-    # Create learning rate scheduler (similar to working script)
-    initial_lr = 1e-3
-    peak_lr = 1e-2
-    end_lr = 1e-6
-    scheduler = optax.warmup_cosine_decay_schedule(
-        init_value=initial_lr,
-        peak_value=peak_lr,
-        end_value=end_lr,
-        warmup_steps=int(max_steps*0.1),
-        decay_steps=max_steps
-    )
-
-    if optimizer_name == "BFGS":
-        solver = optx.BFGS(rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset())
-    elif optimizer_name == "NonlinearCG":
-        solver = optx.NonlinearCG(rtol=rtol, atol=atol, norm=optx.rms_norm)
-    # NonlinearCG is already defined above
-    elif optimizer_name == "Adam":
-        # Use scheduler and apply_if_finite to handle NaN/Inf values
-        optimizer = optax.apply_if_finite(optax.adam(learning_rate=scheduler), 10)
-        solver = optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset())
-    elif optimizer_name == "AdamW":
-        # Use scheduler and apply_if_finite to handle NaN/Inf values
-        optimizer = optax.apply_if_finite(optax.adamw(learning_rate=scheduler), 10)
-        solver = optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset())
-    elif optimizer_name == "SGD":
-        # Use a more conservative learning rate schedule for SGD
-        sgd_scheduler = optax.warmup_cosine_decay_schedule(
-            init_value=1e-4,  # Lower initial learning rate
-            peak_value=1e-3,   # Lower peak learning rate
-            end_value=1e-7,    # Lower end learning rate
-            warmup_steps=int(max_steps*0.1),
-            decay_steps=max_steps
-        )
-        # Use scheduler and apply_if_finite to handle NaN/Inf values
-        optimizer = optax.apply_if_finite(optax.sgd(learning_rate=sgd_scheduler, momentum=0.9, nesterov=True), 10)
-        solver = optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset())
-    elif optimizer_name == "CustomBFGS":
-        solver = CustomBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset())
-    elif optimizer_name == "DogLegBFGS":
-        solver = DogLegBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset())
-    elif optimizer_name == "ArmijoBFGS":
-        solver = ArmijoBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset())
-    elif optimizer_name == "DampedTrustRegionBFGS":
-        solver = DampedTrustRegionBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset())
-    elif optimizer_name == "IndirectTrustRegionBFGS":
-        solver = IndirectTrustRegionBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset())
-    else:
-        raise ValueError(f"Unknown optimizer: {optimizer_name}")
-
-    # Define objective function based on filter type and transformation
-    if filter_type == FilterType.BIF:
-        # Bellman Information Filter
-        # Only fix mu if true parameters are provided
-        fix_mu = true_params is not None
-        true_mu = true_params.mu if fix_mu else None
-        if fix_mu:
-            print(f"  Using mu={true_mu} for optimization (fixed parameter)")
-        else:
-            print("  Optimizing mu parameter (not fixed)")
-
-        if use_transformations:
-            @eqx.filter_jit
-            def objective(t_params, args_tuple):
-                obs, filt, priors_dict, penalty_weight = args_tuple
-                # 1. Untransform parameters
-                params_iter = untransform_params(t_params)
-                # 2. Fix mu to true value if provided
-                if fix_mu:
-                    params_iter = eqx.tree_at(lambda p: p.mu, params_iter, true_mu)
-                # 3. Apply identification constraint
-                params_fixed_constrained = apply_identification_constraint(params_iter)
-                # 4. Calculate loss
-                return bellman_objective(
-                    params_fixed_constrained, obs, filt,
-                    priors=priors_dict, stability_penalty_weight=penalty_weight
-                )
-        else:
-            @eqx.filter_jit
-            def objective(params, args_tuple):
-                obs, filt, priors_dict, penalty_weight = args_tuple
-                # 1. Fix mu to true value if provided
-                params_iter = params
-                if fix_mu:
-                    params_iter = eqx.tree_at(lambda p: p.mu, params_iter, true_mu)
-                # 2. Apply identification constraint
-                params_fixed_constrained = apply_identification_constraint(params_iter)
-                # 3. Calculate loss
-                return bellman_objective(
-                    params_fixed_constrained, obs, filt,
-                    priors=priors_dict, stability_penalty_weight=penalty_weight
-                )
-    elif filter_type == FilterType.BF:
-        # Bellman Filter - with extra error handling for shape mismatches
-        # Only fix mu if true parameters are provided
-        fix_mu = true_params is not None
-        true_mu = true_params.mu if fix_mu else None
-        if fix_mu:
-            print(f"  Using mu={true_mu} for optimization (fixed parameter)")
-        else:
-            print("  Optimizing mu parameter (not fixed)")
-
-        if use_transformations:
-            @eqx.filter_jit
-            def objective(t_params, args_tuple):
-                obs, filt, priors_dict, penalty_weight = args_tuple
-                try:
-                    # 1. Untransform parameters
-                    params_iter = untransform_params(t_params)
-                    # 2. Fix mu to true value if provided
-                    if fix_mu:
-                        params_iter = eqx.tree_at(lambda p: p.mu, params_iter, true_mu)
-                    # 3. Apply identification constraint
-                    params_fixed_constrained = apply_identification_constraint(params_iter)
-                    # 4. Calculate loss
-                    return bellman_objective(
-                        params_fixed_constrained, obs, filt,
-                        priors=priors_dict, stability_penalty_weight=penalty_weight
-                    )
-                except Exception as e:
-                    print(f"Error in BF objective: {e}")
-                    return jnp.inf
-        else:
-            @eqx.filter_jit
-            def objective(params, args_tuple):
-                obs, filt, priors_dict, penalty_weight = args_tuple
-                try:
-                    # 1. Fix mu to true value if provided
-                    params_iter = params
-                    if fix_mu:
-                        params_iter = eqx.tree_at(lambda p: p.mu, params_iter, true_mu)
-                    # 2. Apply identification constraint
-                    params_fixed_constrained = apply_identification_constraint(params_iter)
-                    # 3. Calculate loss
-                    return bellman_objective(
-                        params_fixed_constrained, obs, filt,
-                        priors=priors_dict, stability_penalty_weight=penalty_weight
-                    )
-                except Exception as e:
-                    print(f"Error in BF objective: {e}")
-                    return jnp.inf
-    else:
-        # Particle Filter
-        # Only fix mu if true parameters are provided
-        fix_mu = true_params is not None
-        true_mu = true_params.mu if fix_mu else None
-        if fix_mu:
-            print(f"  Using mu={true_mu} for optimization (fixed parameter)")
-        else:
-            print("  Optimizing mu parameter (not fixed)")
-
-        if use_transformations:
-            @eqx.filter_jit
-            def objective(t_params, args_tuple):
-                obs, filt, priors_dict, penalty_weight = args_tuple
-                try:
-                    # 1. Untransform parameters
-                    params_iter = untransform_params(t_params)
-                    # 2. Fix mu to true value if provided
-                    if fix_mu:
-                        params_iter = eqx.tree_at(lambda p: p.mu, params_iter, true_mu)
-                    # 3. Apply identification constraint
-                    params_fixed_constrained = apply_identification_constraint(params_iter)
-                    # 4. Calculate loss
-                    return pf_objective(
-                        params_fixed_constrained, obs, filt,
-                        priors=priors_dict, stability_penalty_weight=penalty_weight
-                    )
-                except Exception as e:
-                    print(f"Error in PF objective: {e}")
-                    return jnp.inf
-        else:
-            @eqx.filter_jit
-            def objective(params, args_tuple):
-                obs, filt, priors_dict, penalty_weight = args_tuple
-                try:
-                    # 1. Fix mu to true value if provided
-                    params_iter = params
-                    if fix_mu:
-                        params_iter = eqx.tree_at(lambda p: p.mu, params_iter, true_mu)
-                    # 2. Apply identification constraint
-                    params_fixed_constrained = apply_identification_constraint(params_iter)
-                    # 3. Calculate loss
-                    return pf_objective(
-                        params_fixed_constrained, obs, filt,
-                        priors=priors_dict, stability_penalty_weight=penalty_weight
-                    )
-                except Exception as e:
-                    print(f"Error in PF objective: {e}")
-                    return jnp.inf
-
-    # Package static arguments
-    static_args = (returns, filter_instance, priors, stability_penalty_weight)
-
-    # Run optimization
-    start_time = time.time()
-    final_loss = jnp.inf
-    num_steps = -1
-    success = False
-    error_msg = "N/A"
-    final_params_untransformed = None
-
-    try:
-        # Calculate objective with true parameters if available
-        if true_params is not None:
-            # Apply transformations if needed
-            true_params_y = transform_params(true_params) if use_transformations else true_params
-            true_params_loss = objective(true_params_y, static_args)
-            print(f"Objective value with true parameters: {true_params_loss:.4f}")
-
-        # Calculate initial objective
-        initial_loss = objective(initial_y, static_args)
-        print(f"Initial objective value: {initial_loss:.4f}")
-
-        # Run the minimization
-        sol = optx.minimise(
-            fn=objective,
-            solver=solver,
-            y0=initial_y,
-            args=static_args,
-            max_steps=max_steps,
-            throw=False
-        )
-
-        end_time = time.time()
-        time_taken = end_time - start_time
-        num_steps = sol.stats.get('num_steps', -1)
-
-        # Check solver success
-        success = (sol.result == optx.RESULTS.successful)
-
-        # Get final parameters and loss
-        if use_transformations:
-            final_params_untransformed = untransform_params(sol.value)
-        else:
-            final_params_untransformed = sol.value
-
-        # Fix mu in final parameters if it was fixed during optimization
-        if fix_mu:
-            final_params_untransformed = eqx.tree_at(lambda p: p.mu, final_params_untransformed, true_mu)
-
-        # Apply identification constraint
-        final_params_untransformed = apply_identification_constraint(final_params_untransformed)
-
-        # Recalculate loss using the non-transformed objective function
-        try:
-            if filter_type == FilterType.BIF:
-                final_loss = bellman_objective(
-                    final_params_untransformed, returns, filter_instance,
-                    priors=priors, stability_penalty_weight=stability_penalty_weight
-                )
-            elif filter_type == FilterType.BF:
-                try:
-                    final_loss = bellman_objective(
-                        final_params_untransformed, returns, filter_instance,
-                        priors=priors, stability_penalty_weight=stability_penalty_weight
-                    )
-                except Exception as bf_e:
-                    print(f"Error recalculating BF loss: {bf_e}")
-                    final_loss = jnp.inf
-            else:
-                final_loss = pf_objective(
-                    final_params_untransformed, returns, filter_instance,
-                    priors=priors, stability_penalty_weight=stability_penalty_weight
-                )
-        except Exception as e:
-            print(f"Error recalculating final loss: {e}")
-            final_loss = jnp.inf
-
-        if not jnp.isfinite(final_loss):
-            error_msg = "Final loss is non-finite"
-            success = False
-
-        # Print final loss value and steps
-        print(f"Final objective value: {final_loss:.4f}")
-        print(f"Number of optimization steps: {num_steps}")
-
-    except Exception as e:
-        end_time = time.time()
-        time_taken = end_time - start_time
-        success = False
-        error_msg = f"Exception: {str(e)}"
-        print(f"Error during optimization: {e}")
-
-    # Create result object
-    result = OptimizerResult(
-        filter_type=filter_type,
-        optimizer_name=optimizer_name,
-        uses_transformations=use_transformations,
-        fix_mu=fix_mu,  # Add fix_mu parameter
-        prior_config_name=prior_config_name,
-        success=success,
-        final_loss=float(final_loss),
-        steps=int(num_steps),
-        time_taken=time_taken,
-        error_message=error_msg,
-        final_params=final_params_untransformed
-    )
-
-    return result
 
 
 # --- Results Analysis Functions ---
@@ -845,7 +335,7 @@ def main():
     print(true_params)
 
     # 2. Generate simulation data
-    T = 1000  # Full experiment with longer time series
+    T = 500  # Full experiment with longer time series
     print(f"\nGenerating {T} time steps of simulation data...")
     returns = create_training_data(true_params, T=T, seed=123)
     print("Simulation data generated.")

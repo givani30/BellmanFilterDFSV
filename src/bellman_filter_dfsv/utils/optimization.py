@@ -46,6 +46,7 @@ OptimizerResult = namedtuple("OptimizerResult", [
     "fix_mu",                # Whether mu parameter was fixed
     "prior_config_name",     # Description of prior configuration
     "success",               # Whether optimization succeeded
+    "result_code",           # The specific result code from the optimizer
     "final_loss",            # Final loss value
     "steps",                 # Number of steps taken
     "time_taken",            # Time taken in seconds
@@ -226,7 +227,7 @@ def get_objective_function(filter_type: FilterType, filter_instance,
 def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: optx.AbstractMinimiser,
                          static_args: Any = None, max_steps: int = 100,
                          log_interval: int = 1, throw: bool = False,
-                         options: Dict[str, Any] = None) -> Tuple[optx.Solution, List]:
+                         options: Dict[str, Any] = None, verbose: bool = False) -> Tuple[optx.Solution, List]:
     """Minimize an objective function with parameter logging.
 
     This function iteratively steps through a solver and returns both the optimization
@@ -241,6 +242,8 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
         max_steps: Maximum number of optimization steps.
         log_interval: Interval at which to log parameters (1 = every step).
         throw: Whether to throw an exception if optimization fails.
+        options: Optimizer options.
+        verbose: Whether to print verbose output.
 
     Returns:
         A tuple containing the optimization solution and parameter history.
@@ -252,10 +255,11 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
     # Prepare options
     if options is None:
         options = {}
-
+    #prepare tags
+    tags = frozenset()
     # Get the shape and dtype of the output
     try:
-        test_output, test_aux = objective_fn(initial_params, static_args)
+        test_output, test_aux = objective_fn(y, static_args)
         f_struct = jax.ShapeDtypeStruct(test_output.shape, test_output.dtype)
         aux_struct = None if test_aux is None else jax.ShapeDtypeStruct(test_aux.shape, test_aux.dtype)
     except Exception as e:
@@ -273,23 +277,40 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
             return sol, [initial_params]
 
     # Initialize solver state
-    state = solver.init(objective_fn, initial_params, static_args, options, f_struct, aux_struct, frozenset())
+    #also initialize termination
+    #jit compile solver steps
+    step=eqx.filter_jit(eqx.Partial(solver.step,fn=objective_fn,args=static_args,options=options,tags=tags))
+    terminate=eqx.filter_jit(eqx.Partial(solver.terminate,fn=objective_fn,args=static_args,options=options,tags=tags))
 
     # Run optimization with logging
     step_count = 0
-    for _ in range(max_steps):
+
+    # Initialize state and termination
+    state = solver.init(objective_fn, y, static_args, options, f_struct, aux_struct, tags)
+    converged,result=solver.terminate(objective_fn, y, static_args, options, state, tags)
+
+    # Calculate initial loss for verbose output
+    if verbose:
+        initial_loss, _ = objective_fn(initial_params, static_args)
+        print(f"Initial loss: {float(initial_loss):.4f}")
+
+    while not converged and step_count < max_steps:
         # Perform one step of optimization
         try:
-            y, state, _ = solver.step(objective_fn, y, static_args, options, state, frozenset())
+            # Take a step
+            y, state, _ = step(y=y, state=state)
             step_count += 1
+
 
             # Log parameters at specified intervals
             if step_count % log_interval == 0:
                 param_history.append(y)
 
             # Check for convergence
-            converged, result = solver.terminate(objective_fn, y, static_args, options, state, frozenset())
+            converged, result = terminate(y=y, state=state)
             if converged:
+                if verbose:
+                    print(f"Converged after {step_count} steps")
                 break
         except Exception as e:
             if throw:
@@ -300,9 +321,12 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
                 break
 
     # Create solution object
-    if 'result' not in locals():
-        # If we reached max_steps without convergence or failure
+    # Determine the final result code based on how the loop terminated
+    if not converged and step_count >= max_steps:
+        # Explicitly set max_steps_reached if the loop finished due to steps
         result = optx.RESULTS.max_steps_reached
+    # If converged is True, 'result' holds the reason from terminate().
+    # If an exception occurred, 'result' should be optx.RESULTS.failed (set in except block).
 
     # Perform postprocessing
     try:
@@ -337,14 +361,13 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
                 aux=None,
                 state=state
             )
-
     return sol, param_history
 
 
 def minimize_with_lax_while(objective_fn: Callable, initial_params: Any, solver: optx.AbstractMinimiser,
                           static_args: Any = None, max_steps: int = 100,
                           log_interval: int = 1, throw: bool = False,
-                          options: Dict[str, Any] = None) -> Tuple[optx.Solution, List]:
+                          options: Dict[str, Any] = None, verbose: bool = False) -> Tuple[optx.Solution, List]:
     """Minimize an objective function with parameter logging using lax.while_loop.
 
     This implementation uses JAX's lax.while_loop and pre-allocated arrays for parameter history,
@@ -525,6 +548,46 @@ def minimize_with_lax_while(objective_fn: Callable, initial_params: Any, solver:
         result = final_carry['result']
         param_history_arrays = final_carry['param_history']
         history_idx = final_carry['history_idx']
+
+        # Check the termination reason explicitly
+        final_step = final_carry['step']
+        final_converged = final_carry['converged']
+        final_result_from_terminate = final_carry['result'] # Result from the last terminate() call inside loop
+
+        if not final_converged and final_step >= max_steps:
+            # Override result if max_steps was the primary reason for stopping
+            result = optx.RESULTS.max_steps_reached
+        else:
+            # Otherwise, use the result determined by terminate() or failure handling
+            result = final_result_from_terminate
+
+        # Perform postprocessing
+        try:
+            final_y, final_aux, stats = solver.postprocess(
+                objective_fn, final_y, final_aux, static_args, options,
+                final_state, frozenset(), result
+            )
+
+            # Create the solution object
+            sol = optx.Solution(
+                value=final_y,
+                result=result,
+                stats=stats,
+                aux=final_aux,
+                state=final_state
+            )
+        except Exception as e:
+            if throw:
+                raise e
+            else:
+                # Create a failure solution
+                sol = optx.Solution(
+                    value=final_y,
+                    result=optx.RESULTS.nonlinear_divergence,
+                    stats={"error": str(e)},
+                    aux=None,
+                    state=final_state
+                )
     except Exception as e:
         if throw:
             raise e
@@ -539,39 +602,8 @@ def minimize_with_lax_while(objective_fn: Callable, initial_params: Any, solver:
                 max_steps=max_steps,
                 log_interval=log_interval,
                 throw=throw,
-                options=options
-            )
-
-    # If we reached max_steps without convergence or failure
-    if result is None:
-        result = optx.RESULTS.max_steps_reached
-
-    # Perform postprocessing
-    try:
-        final_y, final_aux, stats = solver.postprocess(
-            objective_fn, final_y, final_aux, static_args, options,
-            final_state, frozenset(), result
-        )
-
-        # Create the solution object
-        sol = optx.Solution(
-            value=final_y,
-            result=result,
-            stats=stats,
-            aux=final_aux,
-            state=final_state
-        )
-    except Exception as e:
-        if throw:
-            raise e
-        else:
-            # Create a failure solution
-            sol = optx.Solution(
-                value=final_y,
-                result=optx.RESULTS.nonlinear_divergence,
-                stats={"error": str(e)},
-                aux=None,
-                state=final_state
+                options=options,
+                verbose=verbose
             )
 
     # We'll convert the parameter history arrays directly to a list of parameters
@@ -667,6 +699,7 @@ def run_optimization(
     """
     # Start timing
     start_time = time.time()
+    #TODO: add a warning that verbose=True will ignore use_lax_while and thus be slower
 
     # Create filter instance
     N, K = returns.shape[1], 1  # Assume K=1 if not provided in true_params
@@ -725,16 +758,13 @@ def run_optimization(
     # Print initial loss if verbose
     if verbose:
         try:
-            initial_loss, _ = objective_fn(initial_params, returns)
-            print(f"Initial loss: {initial_loss:.4f}")
-
-            # If true_params is provided, also print loss at true parameters
+            # If true_params is provided, print loss at true parameters
             if true_params is not None:
                 true_params_transformed = transform_params(true_params) if use_transformations else true_params
                 true_loss, _ = objective_fn(true_params_transformed, returns)
                 print(f"Loss at true parameters: {true_loss:.4f}")
         except Exception as e:
-            print(f"Error calculating initial loss: {e}")
+            print(f"Error calculating loss at true parameters: {e}")
 
     # Run optimization with logging
     try:
@@ -750,7 +780,8 @@ def run_optimization(
                 max_steps=max_steps,
                 log_interval=log_interval if log_params else max_steps + 1,  # Only log at the end if log_params is False
                 options={},
-                throw=False
+                throw=False,
+                verbose=verbose
             )
         else:
             # Use standard implementation
@@ -762,7 +793,8 @@ def run_optimization(
                 max_steps=max_steps,
                 log_interval=log_interval if log_params else max_steps + 1,  # Only log at the end if log_params is False
                 options={},
-                throw=False
+                throw=False,
+                verbose=verbose
             )
 
         # Calculate final loss
@@ -797,7 +829,7 @@ def run_optimization(
                 if verbose:
                     print(f"Error processing parameter history: {e}")
 
-        # Calculate loss history
+        # Extract loss history from optimizer state if available
         loss_history = []
         if log_params:
             for p in param_history:
@@ -834,6 +866,7 @@ def run_optimization(
         fix_mu=fix_mu,
         prior_config_name=prior_config_name,
         success=success,
+        result_code=sol.result if 'sol' in locals() else None,
         final_loss=final_loss,
         steps=steps,
         time_taken=time_taken,

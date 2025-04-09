@@ -45,47 +45,73 @@ returns = jnp.asarray(returns)  # Convert to JAX array
 max_steps = 20  # Use fewer steps for faster testing
 optimizer_name = "DampedTrustRegionBFGS"
 
-# Run optimization with standard approach
-print("\nRunning optimization with standard approach...")
-start_time = time.time()
-result_standard = run_optimization(
-    filter_type=FilterType.BF,  # Use Bellman Filter
-    returns=returns,
-    true_params=true_params,
-    use_transformations=True,
-    optimizer_name=optimizer_name,
-    max_steps=max_steps,
-    verbose=True,
-    use_lax_while=False  # Use standard approach
-)
-standard_time = time.time() - start_time
-print(f"Standard approach completed in {standard_time:.2f} seconds")
-print(f"Final loss: {result_standard.final_loss}")
-print(f"Steps taken: {result_standard.steps}")
+# Run multiple iterations to get average performance
+num_iterations = 3
+standard_times = []
+standard_results = []
+lax_while_times = []
+lax_while_results = []
 
-# Run optimization with lax.while_loop approach
-print("\nRunning optimization with lax.while_loop approach...")
-start_time = time.time()
-result_lax_while = run_optimization(
-    filter_type=FilterType.BF,  # Use Bellman Filter
-    returns=returns,
-    true_params=true_params,
-    use_transformations=True,
-    optimizer_name=optimizer_name,
-    max_steps=max_steps,
-    verbose=True,
-    use_lax_while=True  # Use lax.while_loop approach
-)
-lax_while_time = time.time() - start_time
-print(f"lax.while_loop approach completed in {lax_while_time:.2f} seconds")
-print(f"Final loss: {result_lax_while.final_loss}")
-print(f"Steps taken: {result_lax_while.steps}")
+for i in range(num_iterations):
+    print(f"\nIteration {i+1}/{num_iterations}")
+
+    # Run optimization with standard approach
+    print("\nRunning optimization with standard approach...")
+    start_time = time.time()
+    result_standard = run_optimization(
+        filter_type=FilterType.BF,  # Use Bellman Filter
+        returns=returns,
+        true_params=true_params,
+        use_transformations=True,
+        optimizer_name=optimizer_name,
+        max_steps=max_steps,
+        verbose=False,  # Disable verbose output for cleaner output
+        use_lax_while=False  # Use standard approach
+    )
+    standard_time = time.time() - start_time
+    standard_times.append(standard_time)
+    standard_results.append(result_standard)
+    print(f"Standard approach completed in {standard_time:.2f} seconds")
+    print(f"Final loss: {result_standard.final_loss}")
+    print(f"Steps taken: {result_standard.steps}")
+
+    # Run optimization with lax.while_loop approach
+    print("\nRunning optimization with lax.while_loop approach...")
+    start_time = time.time()
+    result_lax_while = run_optimization(
+        filter_type=FilterType.BF,  # Use Bellman Filter
+        returns=returns,
+        true_params=true_params,
+        use_transformations=True,
+        optimizer_name=optimizer_name,
+        max_steps=max_steps,
+        verbose=False,  # Disable verbose output for cleaner output
+        use_lax_while=True  # Use lax.while_loop approach
+    )
+    lax_while_time = time.time() - start_time
+    lax_while_times.append(lax_while_time)
+    lax_while_results.append(result_lax_while)
+    print(f"lax.while_loop approach completed in {lax_while_time:.2f} seconds")
+    print(f"Final loss: {result_lax_while.final_loss}")
+    print(f"Steps taken: {result_lax_while.steps}")
+
+# Calculate average times
+avg_standard_time = sum(standard_times) / len(standard_times)
+avg_lax_while_time = sum(lax_while_times) / len(lax_while_times)
+
+# Use the last results for comparison
+result_standard = standard_results[-1]
+result_lax_while = lax_while_results[-1]
 
 # Compare results
-print("\nPerformance comparison:")
-print(f"Standard approach: {standard_time:.2f} seconds")
-print(f"lax.while_loop approach: {lax_while_time:.2f} seconds")
-print(f"Speedup: {standard_time / lax_while_time:.2f}x")
+print("\nPerformance comparison (average of multiple runs):")
+print(f"Standard approach: {avg_standard_time:.2f} seconds")
+print(f"lax.while_loop approach: {avg_lax_while_time:.2f} seconds")
+print(f"Speedup: {avg_standard_time / avg_lax_while_time:.2f}x")
+
+print("\nIndividual run times:")
+for i, (std_time, lax_time) in enumerate(zip(standard_times, lax_while_times)):
+    print(f"Run {i+1}: Standard: {std_time:.2f}s, lax.while_loop: {lax_time:.2f}s, Speedup: {std_time / lax_time:.2f}x")
 
 # Compare parameter estimates
 print("\nParameter estimate comparison:")
