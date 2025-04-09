@@ -195,30 +195,44 @@ def create_simple_model(N: int = 3, K: int = 2) -> DFSVParamsDataclass:
         DFSVParamsDataclass: Model parameters.
     """
     # Set random seed for reproducibility
-    np.random.seed(42)
+    key = jax.random.PRNGKey(42)
+    key, subkey1 = jax.random.split(key)
 
     # Factor loadings (lower triangular with diagonal fixed to 1)
-    lambda_r_init = np.random.randn(N, K) * 0.5 + 0.5
+    lambda_r_init = jax.random.normal(subkey1, (N, K)) * 0.5 + 0.5
     lambda_r = jnp.tril(lambda_r_init)
     diag_indices = jnp.diag_indices(n=min(N, K), ndim=2)
     lambda_r = lambda_r.at[diag_indices].set(1.0)
 
     # Factor persistence (diagonal-dominant with eigenvalues < 1)
-    Phi_f = np.random.uniform(0.01, 0.1, (K, K))  # Off-diagonal elements
-    Phi_f[np.diag_indices(K)] = np.random.uniform(0.15, 0.35, K)  # Diagonal elements
+    # Off-diagonal elements
+    key, subkey1 = jax.random.split(key)
+    Phi_f = jax.random.uniform(subkey1, (K, K), minval=0.01, maxval=0.1)
+    # Diagonal elements
+    key, subkey1 = jax.random.split(key)
+    diag_values = jax.random.uniform(subkey1, (K,), minval=0.15, maxval=0.35)
+    Phi_f = Phi_f.at[jnp.diag_indices(K)].set(diag_values)
 
     # Log-volatility persistence (diagonal-dominant with eigenvalues < 1)
-    Phi_h = np.random.uniform(0.01, 0.1, (K, K))  # Off-diagonal elements
-    Phi_h[np.diag_indices(K)] = np.random.uniform(0.9, 0.99, K)  # Diagonal elements
+    # Off-diagonal elements
+    key, subkey1 = jax.random.split(key)
+    Phi_h = jax.random.uniform(subkey1, (K, K), minval=0.01, maxval=0.1)
+    # Diagonal elements
+    key, subkey1 = jax.random.split(key)
+    diag_values = jax.random.uniform(subkey1, (K,), minval=0.9, maxval=0.99)
+    Phi_h = Phi_h.at[jnp.diag_indices(K)].set(diag_values)
 
     # Long-run mean for log-volatilities
-    mu = np.array([-1.0, -0.5] if K == 2 else [-1.0] * K)
+    mu = jnp.array([-1.0, -0.5] if K == 2 else [-1.0] * K)
 
     # Idiosyncratic variance (diagonal)
-    sigma2 = np.random.uniform(0.05, 0.1, N)
+    key, subkey1 = jax.random.split(key)
+    sigma2 = jax.random.uniform(subkey1, (N,), minval=0.05, maxval=0.1)
 
     # Log-volatility noise covariance (diagonal)
-    Q_h = np.diag(np.random.uniform(0.1, 0.3, K))
+    key, subkey1 = jax.random.split(key)
+    Q_h_diag = jax.random.uniform(subkey1, (K,), minval=0.1, maxval=0.3)
+    Q_h = jnp.diag(Q_h_diag)
 
     # Create parameter object
     params = DFSVParamsDataclass(
@@ -631,6 +645,10 @@ def run_optimization(
             error_msg = "Final loss is non-finite"
             success = False
 
+        # Print final loss value and steps
+        print(f"Final objective value: {final_loss:.4f}")
+        print(f"Number of optimization steps: {num_steps}")
+
     except Exception as e:
         end_time = time.time()
         time_taken = end_time - start_time
@@ -827,7 +845,7 @@ def main():
     print(true_params)
 
     # 2. Generate simulation data
-    T = 1500  # Full experiment with longer time series
+    T = 1000  # Full experiment with longer time series
     print(f"\nGenerating {T} time steps of simulation data...")
     returns = create_training_data(true_params, T=T, seed=123)
     print("Simulation data generated.")
@@ -839,7 +857,7 @@ def main():
     # Use both AdamW and DampedTrustRegionBFGS optimizers
     optimizers = ["AdamW", "DampedTrustRegionBFGS"]
     use_transformations_options = [True]  # Always use transformations for stability
-    fix_mu_options = [True, False]  # Run with both fixed and non-fixed mu
+    fix_mu_options = [True]  # Run only with fixed fixed mu
     max_steps = 200  # Increased for better convergence
     stability_penalty_weight = 1000.0
     num_particles = 5000
