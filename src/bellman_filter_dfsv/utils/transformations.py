@@ -138,7 +138,8 @@ def transform_params(params: DFSVParamsDataclass) -> DFSVParamsDataclass:
     """
     Transform bounded parameters to unconstrained space for optimization.
 
-    - Applies element-wise `inverse_softplus` to `Phi_f` and `Phi_h`.
+    - Applies `inverse_softplus` to diagonal elements of `Phi_f` and `Phi_h`.
+      Off-diagonals remain unconstrained.
     - Applies `inverse_softplus` to diagonal elements of `sigma2` and `Q_h`.
     - Leaves `mu` and `lambda_r` unchanged.
 
@@ -155,10 +156,17 @@ def transform_params(params: DFSVParamsDataclass) -> DFSVParamsDataclass:
     # Create a copy to avoid modifying the original
     result = copy.deepcopy(params)
 
-    # --- Phi_f and Phi_h Transformation (Element-wise inverse_softplus) ---
-    # Ensures Phi_f and Phi_h are positive after untransformation
-    transformed_phi_f = inverse_softplus(params.Phi_f)
-    transformed_phi_h = inverse_softplus(params.Phi_h)
+    # --- Phi_f and Phi_h Transformation (Diagonal inverse_softplus) ---
+    # Ensures diagonal elements of Phi_f/Phi_h are positive after untransformation.
+    # Off-diagonals are left unconstrained.
+    diag_indices_phi_f = jnp.diag_indices_from(params.Phi_f)
+    transformed_phi_f = params.Phi_f.at[diag_indices_phi_f].set(
+        inverse_softplus(jnp.diag(params.Phi_f))
+    )
+    diag_indices_phi_h = jnp.diag_indices_from(params.Phi_h)
+    transformed_phi_h = params.Phi_h.at[diag_indices_phi_h].set(
+        inverse_softplus(jnp.diag(params.Phi_h))
+    )
 
     # --- Variance/Covariance Transformations ---
     # Transform variance parameters (must be positive) using inverse softplus
@@ -197,7 +205,8 @@ def untransform_params(transformed_params: DFSVParamsDataclass) -> DFSVParamsDat
     """
     Transform parameters back from unconstrained to constrained space.
 
-    - Applies element-wise `softplus` to `Phi_f` and `Phi_h`.
+    - Applies `softplus` to diagonal elements of `Phi_f` and `Phi_h`.
+      Off-diagonals remain unconstrained.
     - Applies `softplus` to diagonal elements of `sigma2` and `Q_h`.
     - Leaves `mu` and `lambda_r` unchanged.
 
@@ -211,10 +220,17 @@ def untransform_params(transformed_params: DFSVParamsDataclass) -> DFSVParamsDat
     DFSVParamsDataclass
         Parameters in their natural (constrained) space.
     """
-    # --- Phi_f and Phi_h Untransformation (Element-wise softplus) ---
-    # Ensures Phi_f and Phi_h are positive
-    phi_f_original = softplus(transformed_params.Phi_f)
-    phi_h_original = softplus(transformed_params.Phi_h)
+    # --- Phi_f and Phi_h Untransformation (Diagonal softplus) ---
+    # Ensures diagonal elements of Phi_f/Phi_h are positive.
+    # Off-diagonals are left unconstrained.
+    diag_indices_phi_f = jnp.diag_indices_from(transformed_params.Phi_f)
+    phi_f_original = transformed_params.Phi_f.at[diag_indices_phi_f].set(
+        softplus(jnp.diag(transformed_params.Phi_f))
+    )
+    diag_indices_phi_h = jnp.diag_indices_from(transformed_params.Phi_h)
+    phi_h_original = transformed_params.Phi_h.at[diag_indices_phi_h].set(
+        softplus(jnp.diag(transformed_params.Phi_h))
+    )
 
     # --- Variance/Covariance Untransformations ---
     # Apply softplus to transform back variance parameters

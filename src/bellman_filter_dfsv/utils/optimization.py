@@ -140,55 +140,77 @@ def generate_parameter_history(initial_params, final_params, num_points,
 def get_objective_function(filter_type: FilterType, filter_instance,
                           stability_penalty_weight: float = 1000.0,
                           priors: Optional[Dict[str, Any]] = None,
-                          is_transformed: bool = False):
-    """Get the appropriate objective function for a filter type.
+                          is_transformed: bool = False,
+                          fix_mu: bool = False,
+                          true_mu: Optional[jnp.ndarray] = None):
+    """Get the appropriate objective function wrapper for a filter type.
 
-    This function returns the appropriate objective function based on the filter type
-    and whether the parameters are in transformed space. It uses the existing objective
-    functions from bellman_filter_dfsv.filters.objectives.
+    This function returns a wrapper around the appropriate objective function.
+    The wrapper handles parameter untransformation, fixing mu, applying
+    identification constraints, and calling the underlying objective function.
 
     Args:
         filter_type: Type of filter.
         filter_instance: Filter instance.
         stability_penalty_weight: Weight for stability penalty.
         priors: Dictionary of prior hyperparameters.
-        is_transformed: Whether the parameters are in transformed space.
+        is_transformed: Whether the parameters passed to the wrapper are transformed.
+        fix_mu: Whether to fix the mu parameter to true_mu.
+        true_mu: The true value of mu to use if fix_mu is True.
 
     Returns:
-        The objective function for the specified filter type.
+        The objective function wrapper.
 
     Raises:
-        ValueError: If the filter type is unknown.
+        ValueError: If the filter type is unknown or if fix_mu is True but true_mu is None.
     """
+    if fix_mu and true_mu is None:
+        raise ValueError("fix_mu is True, but true_mu was not provided.")
+
     from bellman_filter_dfsv.filters.objectives import (
         bellman_objective, transformed_bellman_objective,
         pf_objective, transformed_pf_objective
     )
 
-    # Map filter types to their objective functions (both transformed and untransformed)
+    # Map filter types to their underlying objective functions
+    # Note: We select the *untransformed* objective here, as the wrapper handles transformations.
     objective_map = {
-        FilterType.BIF: (bellman_objective, transformed_bellman_objective),
-        FilterType.BF: (bellman_objective, transformed_bellman_objective),
-        FilterType.PF: (pf_objective, transformed_pf_objective)
+        FilterType.BIF: bellman_objective,
+        FilterType.BF: bellman_objective,
+        FilterType.PF: pf_objective
     }
 
     # Check if filter type is supported
     if filter_type not in objective_map:
         raise ValueError(f"Unknown filter type: {filter_type}")
 
-    # Get the appropriate objective function based on whether parameters are transformed
-    untransformed_obj, transformed_obj = objective_map[filter_type]
-    selected_obj = transformed_obj if is_transformed else untransformed_obj
+    # Get the underlying objective function
+    underlying_objective = objective_map[filter_type]
 
-    # Create a closure with the fixed arguments
-    def objective_fn(params, observations):
-        loss = selected_obj(
-            params, observations, filter_instance,
+    # Create the objective function wrapper
+    # This wrapper handles untransformation, fixing mu, and constraints
+    @eqx.filter_jit # JIT compile the wrapper for performance
+    def objective_wrapper(params, observations):
+        # 1. Untransform parameters if they are passed in transformed space
+        params_iter = untransform_params(params) if is_transformed else params
+
+        # 2. Fix mu if requested
+        if fix_mu:
+            # We already checked true_mu is not None if fix_mu is True
+            params_iter = eqx.tree_at(lambda p: p.mu, params_iter, true_mu)
+
+        # 3. Apply identification constraint
+        params_fixed_constrained = apply_identification_constraint(params_iter)
+
+        # 4. Calculate loss using the underlying objective function
+        loss = underlying_objective(
+            params_fixed_constrained, observations, filter_instance,
             priors=priors, stability_penalty_weight=stability_penalty_weight
         )
+        # Return loss and None for aux (as expected by optimistix)
         return loss, None
 
-    return objective_fn
+    return objective_wrapper
 
 
 def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: optx.AbstractMinimiser,
@@ -385,16 +407,18 @@ def run_optimization(
     if use_transformations:
         initial_params = transform_params(initial_params)
 
-    # Determine if we should fix mu
-    fix_mu = true_params is not None and not use_transformations
+    # Determine if we should fix mu (only for BIF, requires true_params)
+    fix_mu =  (true_params is not None)
 
-    # Get objective function
+    # Get objective function wrapper
     objective_fn = get_objective_function(
         filter_type=filter_type,
         filter_instance=filter_instance,
         stability_penalty_weight=stability_penalty_weight,
         priors=priors,
-        is_transformed=use_transformations
+        is_transformed=use_transformations,
+        fix_mu=fix_mu,  # Pass the flag
+        true_mu=true_params.mu if fix_mu else None # Pass the true value if fixing
     )
 
     # Create optimizer

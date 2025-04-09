@@ -128,11 +128,11 @@ def test_transform_persistence_params_hybrid(base_params):
     # Transform parameters
     transformed = transform_params(params)
 
-    # Check diagonal elements are transformed via safe_arctanh
-    expected_diag_f = safe_arctanh(jnp.diag(params.Phi_f))
+    # Check diagonal elements are transformed via inverse_softplus
+    expected_diag_f = inverse_softplus(jnp.diag(params.Phi_f))
     np.testing.assert_allclose(jnp.diag(transformed.Phi_f), expected_diag_f, rtol=1e-6)
 
-    expected_diag_h = safe_arctanh(jnp.diag(params.Phi_h))
+    expected_diag_h = inverse_softplus(jnp.diag(params.Phi_h))
     np.testing.assert_allclose(jnp.diag(transformed.Phi_h), expected_diag_h, rtol=1e-6)
 
     # Check off-diagonal elements remain unchanged
@@ -184,11 +184,11 @@ def test_untransform_persistence_params_hybrid(base_params):
     # Untransform parameters
     untransformed = untransform_params(transformed)
 
-    # Check diagonal elements are untransformed via tanh
-    expected_diag_f = jnp.tanh(jnp.diag(transformed.Phi_f))
+    # Check diagonal elements are untransformed via softplus
+    expected_diag_f = softplus(jnp.diag(transformed.Phi_f))
     np.testing.assert_allclose(jnp.diag(untransformed.Phi_f), expected_diag_f, rtol=1e-6)
 
-    expected_diag_h = jnp.tanh(jnp.diag(transformed.Phi_h))
+    expected_diag_h = softplus(jnp.diag(transformed.Phi_h))
     np.testing.assert_allclose(jnp.diag(untransformed.Phi_h), expected_diag_h, rtol=1e-6)
 
     # Check off-diagonal elements remain unchanged (same as transformed off-diagonals)
@@ -292,18 +292,20 @@ def test_boundary_values_hybrid(base_params):
     # Untransform parameters
     untransformed = untransform_params(transformed)
 
-    # Check Phi diagonal elements are close to original, considering clipping effect
+    # Check Phi diagonal elements are close to softplus(inverse_softplus(original diagonals))
+    expected_diag_f = softplus(inverse_softplus(jnp.diag(extreme_params.Phi_f)))
+    expected_diag_h = softplus(inverse_softplus(jnp.diag(extreme_params.Phi_h)))
     np.testing.assert_allclose(
         jnp.diag(untransformed.Phi_f),
-        jnp.diag(extreme_params.Phi_f), # Compare to original extreme diagonal
-        rtol=1e-5, # Relaxed tolerance due to epsilon clamping via safe_arctanh -> tanh
-        atol=EPS * 2 # Allow tolerance around EPS boundary
+        expected_diag_f,
+        rtol=1e-5,
+        atol=1e-8
     )
     np.testing.assert_allclose(
         jnp.diag(untransformed.Phi_h),
-        jnp.diag(extreme_params.Phi_h),
+        expected_diag_h,
         rtol=1e-5,
-        atol=EPS * 2
+        atol=1e-8
     )
     # Check Phi off-diagonal elements are preserved exactly
     off_diag_mask = ~jnp.eye(K, dtype=bool)
