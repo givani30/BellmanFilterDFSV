@@ -271,21 +271,17 @@ def apply_identification_constraint(params: DFSVParamsDataclass) -> DFSVParamsDa
     2. Sets the first K diagonal elements to 1.0
     3. For N > K, only the first K columns have the constraint applied
     """
-    N, K = params.N, params.K
+    N, K = params.N, params.K # N and K should be static attributes
+    lambda_r = params.lambda_r
 
-    # Start with the original lambda_r
-    constrained_lambda_r = params.lambda_r
+    # 1. Zero out elements above the diagonal for the whole matrix
+    tril_lambda = jnp.tril(lambda_r, k=0)
 
-    # For each column up to K
-    for k in range(K):
-        # Zero out elements above the diagonal in this column
-        mask = jnp.arange(N) < k  # True for rows above diagonal
-        constrained_lambda_r = constrained_lambda_r.at[:, k].set(
-            constrained_lambda_r[:, k] * (1 - mask)  # Zero out where mask is True
-        )
-
-        # Set the diagonal element to 1.0
-        if k < N:  # Only if we haven't exceeded the number of rows
-            constrained_lambda_r = constrained_lambda_r.at[k, k].set(1.0)
+    # 2. Set the first K diagonal elements to 1.0
+    #    Create indices for the diagonal elements up to K.
+    #    .at[] handles out-of-bounds indices gracefully (ignores them),
+    #    so we don't need explicit clipping by N if K is static.
+    diag_indices_k = jnp.arange(K) # K must be static for this to work under JIT
+    constrained_lambda_r = tril_lambda.at[diag_indices_k, diag_indices_k].set(1.0)
 
     return params.replace(lambda_r=constrained_lambda_r)

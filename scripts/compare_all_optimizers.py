@@ -36,7 +36,7 @@ from bellman_filter_dfsv.utils.optimization import (
     OptimizerResult
 )
 from bellman_filter_dfsv.utils.solvers import get_available_optimizers
-
+from bellman_filter_dfsv.utils.optimization_helpers import create_stable_initial_params
 # Enable 64-bit precision for better numerical stability
 jax.config.update("jax_enable_x64", True)
 
@@ -439,7 +439,7 @@ def main():
     print(true_params)
 
     # 2. Generate simulation data
-    T = 500  # Full experiment with longer time series
+    T = 1500  # Full experiment with longer time series
     print(f"\nGenerating {T} time steps of simulation data...")
     returns = create_training_data(true_params, T=T, seed=123)
     print("Simulation data generated.")
@@ -455,16 +455,19 @@ def main():
     use_transformations = True  # Always use transformations for stability
     fix_mu = True  # Fix mu to true values
     max_steps = 750  # Number of optimization steps
-    stability_penalty_weight = 1000.0  # Weight for stability penalty
-    verbose = False  # Disable verbose output for faster performance
+    stability_penalty_weight = 1e4  # Weight for stability penalty
+    verbose = True  # Disable verbose output for faster performance
     log_params = False  # Disable parameter logging for faster performance
 
+    #4,5 generate initial parameter guess
+    initial_params = create_stable_initial_params(N, K)
     # 5. Run optimizations
     results = []
-
+    test_optimizers=["DampedTrustRegionBFGS","BFGS"]
     print(f"\nRunning optimizations with max_steps={max_steps}, stability_penalty_weight={stability_penalty_weight}...")
     # Run all available optimizers
-    for optimizer_name in available_optimizers.keys():
+    #
+    for optimizer_name in test_optimizers:
         print(f"\n--- Running: Optimizer={optimizer_name} | Transform={'Yes' if use_transformations else 'No'} | Fix_mu={'Yes' if fix_mu else 'No'} ---")
 
         try:
@@ -472,6 +475,7 @@ def main():
             result = run_optimization(
                 filter_type=filter_type,
                 returns=returns,
+                initial_params=initial_params, # Added
                 true_params=true_params if fix_mu else None,  # Only pass true_params if fix_mu is True
                 use_transformations=use_transformations,
                 optimizer_name=optimizer_name,
@@ -480,7 +484,10 @@ def main():
                 max_steps=max_steps,
                 verbose=verbose,
                 log_params=log_params,
-                log_interval=1  # Log at every step
+                log_interval=1,  # Log at every step
+                rtol=1e-6,
+                atol=1e-6,
+                fix_mu=fix_mu
             )
 
             results.append(result)

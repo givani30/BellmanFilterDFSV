@@ -16,6 +16,10 @@ This file provides a high-level overview of the project and the expected product
 *   Implementation of the Bellman filter based on Lange (2024).
 *   Implementation of a Particle Filter (Bootstrap/SISR) for benchmarking.
 *   Simulation capabilities for model testing and evaluation.
+
+    *   Supports a wide range of optimizers (BFGS variants, AdamW, SGD, Lion, etc.) and learning rate schedules via centralized utilities (`solvers.py`, `optimization.py`).
+    *   Includes parameter transformation, fixing (`mu`), and detailed logging capabilities.
+    *   Unified script (`unified_filter_optimization.py`) enables systematic comparison of filters and optimizers.
 *   Hyperparameter estimation framework using the Bellman filter's pseudo log-likelihood.
 
 ## Overall Architecture

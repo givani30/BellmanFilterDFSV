@@ -19,6 +19,27 @@ This file documents recurring patterns and standards used in the project.
 * **Helper Modules:** Encapsulation of complex mathematical implementations or optimization steps into internal helper modules (e.g., `_bellman_impl.py`, `_bellman_optim.py`) to keep primary class definitions cleaner.
 * **Parameter Passing:** Refactored `DFSVParticleFilter` to accept parameters externally via method arguments rather than storing them internally, facilitating JIT compilation across different parameter sets (Decision [01-04-2025 03:37:00]).
 
+* **Centralized Optimizer Creation (`solvers.py`):**
+  * Provides `create_optimizer` function for instantiating various optimizers:
+    * Custom BFGS variants (DogLeg, Armijo, DampedTrustRegion, IndirectTrustRegion).
+    * Standard Optax optimizers (Adam, AdamW, SGD, RMSProp, Adagrad, Adadelta, Adafactor, Lion).
+  * Includes `create_learning_rate_scheduler` for flexible LR scheduling (`cosine`, `exponential`, `linear`, `warmup_cosine`, `constant`).
+  * Employs `optax.apply_if_finite` for numerical stability with gradient-based optimizers.
+* **Optimization Orchestration (`optimization.py`):**
+  * Standardizes the optimization workflow using `run_optimization`.
+  * Selects and wraps objective functions (`get_objective_function`) to handle transformations, priors, and stability penalties.
+  * Enables detailed parameter/loss history logging via `minimize_with_logging` wrapper around `optimistix` solvers.
+  * Handles parameter transformations (`transform_params`, `untransform_params`) and identification constraints (`apply_identification_constraint`).
+  * Provides option to log parameters during optimization with `log_params=True` flag.
+  * Uses `BestSoFarMinimiser` to keep track of the best parameter values during optimization.
+  * Defaults to using the built-in Optimistix minimizer when `log_params=False` for better performance.
+  * **Note:** `mu` fixing logic aligned with established strategy to always fix `mu` for BIF when true parameters are available (Decision [11-04-2025 17:30:00]).
+* **Unified Experiment Script (`unified_filter_optimization.py`):**
+  * Provides a framework for comparative experiments across filters and optimizers.
+  * Supports running multiple filter types (BIF, PF) with different optimizers (AdamW, DampedTrustRegionBFGS).
+  * Includes comprehensive results analysis and visualization capabilities.
+  * Saves estimated parameters to pickle files for further analysis.
+
 ## Architectural Patterns
 
 * **Filter Base Class:** Filtering implementations (`DFSVBellmanFilter`, `DFSVParticleFilter`, `DFSVBellmanInformationFilter`) inherit from a common base class (`core/filters/base.py`), suggesting a common interface for filters.
@@ -70,3 +91,5 @@ This file documents recurring patterns and standards used in the project.
 * **Filter Comparison:** Tests often compare outputs of different filter implementations or optimized vs. non-optimized versions (e.g., `tests/test_bellman_unified.py`).
 * **Profiling Scripts:** Dedicated scripts (`scripts/profile_*.py`, `scripts/benchmark_*.py`) used to measure performance and identify bottlenecks.
 * **Runtime Error Debugging:** Use `equinox.error_if` to add runtime checks for conditions like NaN/Inf within JIT-compiled functions. Running the code with the environment variable `EQX_ON_ERROR=breakpoint` will then trigger the debugger precisely where the check fails, aiding in pinpointing errors that occur during gradient calculations or within JITted filter steps (Identified [04-04-2025 15:25:00]).
+
+* **JIT Static vs Traced Values:** When using JAX transformations like `@eqx.filter_jit`, ensure that values used to define computation graph structure (e.g., loop bounds, shapes for `jnp.arange`, dimensions for indexing) are static (known at compile time) or marked as static arguments. Using traced values (derived from function arguments that are JAX arrays/pytrees) for these purposes can lead to `ConcretizationTypeError` or `NonConcreteBooleanIndexError`. Vectorized operations often avoid these issues compared to explicit loops or conditional logic based on traced values. (Noted [11-04-2025 16:23:11])

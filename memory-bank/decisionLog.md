@@ -383,4 +383,85 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 **Implementation Details:** The BIF EM plan is paused. The immediate priority is to investigate and debug the prediction and update steps within the `DFSVBellmanInformationFilter` to resolve the inaccuracy in predicted covariances/information. This is now blocking further progress on the EM algorithm.
 
 ---
+
+
+---
+
+**Decision [09-04-2025 03:17:00]: Expanded Optimizer Suite and Centralized Creation**
+
+**Rationale:** To support flexible experimentation with various optimizers (custom BFGS, standard Optax, Lion) and learning rate schedules, improve numerical stability (`optax.apply_if_finite`), and centralize optimizer logic.
+**Implementation:** Created `src/bellman_filter_dfsv/utils/solvers.py` containing `create_optimizer`, `create_learning_rate_scheduler`, and helper functions. Integrated into `optimization.py`.
+
+---
+
+**Decision [09-04-2025 03:17:00]: Refactored Optimization Orchestration**
+
+**Rationale:** To standardize optimization workflows, including parameter transformations, fixing parameters (like `mu`), objective function wrapping, and detailed parameter/loss logging.
+**Implementation:** Refactored `src/bellman_filter_dfsv/utils/optimization.py` to orchestrate the optimization process, utilizing `solvers.py` for optimizer creation and introducing `get_objective_function` and `minimize_with_logging`.
+
+---
+
+**Decision [09-04-2025 03:17:00]: Created Unified Filter Optimization Script**
+
+**Rationale:** To enable systematic comparison of different filters (BIF, PF) and optimizers under various configurations.
+**Implementation:** Developed `scripts/unified_filter_optimization.py`, which uses the new utilities but currently duplicates some custom BFGS class definitions.
+
+---
+
+**Decision [09-04-2025 03:17:00]: Note on `mu` Fixing Strategy Alignment**
+
+**Rationale:** Fixing `mu` is critical for BIF stability (Decision [04-06-2025 17:40:11]). The current implementation in `optimization.py::run_optimization` (`fix_mu = true_params is not None and not use_transformations`) does not fully align with this strategy or the implementation in `unified_filter_optimization.py`.
+**Status:** Inconsistent logic identified.
+**Next Step:** Align `optimization.py`'s `mu` fixing logic to always fix `mu` for BIF when `true_params` is available, regardless of transformation status, matching the established strategy.
+
 **Implementation Details:** Removed the `np.testing.assert_allclose` call comparing the two likelihood values in the test. The test now only verifies that `log_likelihood_wrt_params` returns a finite scalar.
+
+---
+
+**Decision [11-04-2025 16:23:11]:** Vectorize `apply_identification_constraint` in `utils/transformations.py`.
+
+**Rationale:** Potential performance improvement under JIT compilation by replacing a Python `for` loop (iterating `K` times) with vectorized JAX primitives.
+
+**Implementation Details:** Replaced the `for` loop with `jnp.tril` to zero out upper triangular elements and `jnp.arange(K)` with `.at[]` to set the first K diagonal elements to 1.0. Addressed subsequent JAX tracing errors (`ConcretizationTypeError`, `NonConcreteBooleanIndexError`) by ensuring array shapes/limits used for indexing within the JIT context were derived from static values (`K`) rather than traced values (`N`).
+
+---
+
+**Decision [11-04-2025 16:23:11]:** Fix multiple test failures in `tests/test_optimization.py`.
+
+**Rationale:** Ensure test suite passes after code changes (vectorization of `apply_identification_constraint`) and address pre-existing/revealed issues in test setup.
+
+**Implementation Details:**
+1.  Corrected `ImportError` by changing imported name from `create_uninformed_initial_params` to `create_stable_initial_params`.
+2.  Fixed `TypeError` in multiple tests by adding the missing `initial_params` argument to `run_optimization` calls, using `create_stable_initial_params`.
+3.  Fixed `ValueError` in multiple tests by explicitly passing `fix_mu=False` to `run_optimization` calls where `true_params` was not provided (as `run_optimization` defaults `fix_mu=True`).
+4.  Fixed `AttributeError` (`numpy.ndarray` has no attribute `at`) by changing the `simple_model_params` fixture to create JAX arrays (`jnp.array`) instead of NumPy arrays (`np.array`).
+5.  Corrected `AssertionError` in `test_run_optimization_with_true_params` by changing `assert result.fix_mu is False` to `assert result.fix_mu is True`.
+6.  Corrected `AssertionError` in `test_run_optimization_bif` by changing `assert len(result.param_history) > 1` to `>= 1` to account for the default `log_params=False` behavior.
+
+---
+
+**Decision [11-04-2025 17:30:00]:** Align `mu` fixing logic in `optimization.py` with established strategy.
+
+**Rationale:** Following the plan in `memory-bank/plans/optimization_refactor_plan_09-04-2025.md`, the `mu` fixing logic in `run_optimization` needed to be aligned with the established strategy (Decision [04-06-2025 17:40:11]) to always fix `mu` for BIF when true parameters are available, regardless of transformation status.
+
+**Implementation Details:**
+
+1. Modified the `fix_mu` logic in `run_optimization` to ensure it's always set to `True` for BIF when `true_params` is provided.
+2. Updated the objective function wrapper in `get_objective_function` to properly handle fixing `mu` in both transformed and untransformed cases.
+3. Updated tests to reflect the new behavior, ensuring that BIF runs with `true_params` always fix `mu`.
+4. Added verbose output to indicate when `mu` is being fixed during optimization.
+
+---
+
+**Decision [11-04-2025 18:15:00]:** Enhance parameter logging in optimization process.
+
+**Rationale:** To provide better visibility into the optimization process and parameter evolution, while maintaining performance for cases where detailed logging is not needed.
+
+**Implementation Details:**
+
+1. Modified `run_optimization` to use the built-in Optimistix minimizer by default (when `log_params=False`) for better performance.
+2. Enhanced `minimize_with_logging` to provide more detailed information about the optimization process, including parameter history and convergence status.
+3. Added `BestSoFarMinimiser` wrapper to keep track of the best parameter values during optimization.
+4. Improved error handling and reporting in both minimizers.
+5. Added verbose output options to provide more information during the optimization process.
+6. Updated tests to verify both minimizer approaches work correctly.

@@ -2,13 +2,15 @@
 
 **Overall Goal:** Complete the implementation, evaluation, and documentation of the Bellman Information Filter (BIF) for the specified DFSV model, compare it against benchmarks (Particle Filter), evaluate hyperparameter estimation performance, and apply it to real financial data, culminating in the final thesis document by **April 30th, 2025**.
 
-**Current State:** (As of 2025-06-04)
+**Current State:** (As of 2025-11-04)
 
 * Core BIF and PF implementations are functional and stabilized.
-* Test framework is robust.
+* Test framework is robust and standardized using pytest.
 * **`mu` identifiability investigation complete:** Decision made to **fix `mu`** in BIF estimations.
 * Initial simulation runs (known parameters) for BF/PF/BIF are complete.
-* **Next major focus:** Completing all remaining analysis, estimation studies, real data prep, real data application, and thesis writing within April 2025.
+* Optimization framework enhanced with centralized optimizer creation, parameter logging, and improved performance options.
+* `mu` fixing logic aligned across all optimization utilities.
+* **Next major focus:** Completing hyperparameter estimation study, real data preparation, real data application, and thesis writing within April 2025.
 
 **Phase 1: Foundational Analysis & Initial Simulations**
 

@@ -6,6 +6,11 @@ This file tracks the project's current status, including recent changes, current
 
 ## Current Focus
 
+*   [11-04-2025 18:15:00] - Enhanced parameter logging in optimization process with improved `minimize_with_logging` function and better performance options.
+
+*   [11-04-2025 17:30:00] - Aligned `mu` fixing logic in `optimization.py` with established strategy to always fix `mu` for BIF when true parameters are available.
+
+*   [11-04-2025 16:23:11] - Vectorized `apply_identification_constraint` in `utils/transformations.py` and fixed related test failures.
 
 *   [07-04-2025 23:28:15] - Debugging BIF (`bellman_information.py`) prediction/update steps to resolve inaccurate predicted covariances/information matrices. This is blocking the BIF EM implementation plan.
 
@@ -16,6 +21,15 @@ This file tracks the project's current status, including recent changes, current
 
 ## Recent Changes
 
+*   [11-04-2025 18:15:00] - Enhanced parameter logging in optimization process with improved `minimize_with_logging` function, added `BestSoFarMinimiser` wrapper, and optimized performance by using built-in Optimistix minimizer when detailed logging is not needed.
+
+*   [11-04-2025 17:30:00] - Aligned `mu` fixing logic in `optimization.py` with established strategy to always fix `mu` for BIF when true parameters are available, regardless of transformation status.
+
+*   [11-04-2025 16:23:11] - Vectorized `apply_identification_constraint` in `utils/transformations.py` (replacing Python loop with `jnp.tril`).
+*   [11-04-2025 16:23:11] - Fixed multiple test failures in `tests/test_optimization.py` (imports, missing args, assertions, types, JIT tracing errors).
+
+*   [09-04-2025 03:18:00] - Refactored optimization utilities: Centralized optimizer creation in `solvers.py`, standardized orchestration in `optimization.py`.
+*   [09-04-2025 03:18:00] - Created `scripts/unified_filter_optimization.py` for comparative experiments.
 
 *   [07-04-2025 23:28:15] - Attempted BIF EM Phase 1: Modified RTS smoother (`base.py`) for lag-1 covs, but smoother test (`test_smooth_state_accuracy` in `test_bellman_information.py`) failed due to inaccurate BIF predicted covariances.
 
@@ -28,8 +42,9 @@ This file tracks the project's current status, including recent changes, current
 *   [04-06-2025 03:45:00] - Completed test framework unification: Standardized on `pytest`, created common fixtures (`tests/conftest.py`), implemented unified filter tests (`tests/test_unified_filters.py`), refactored existing tests (`test_bellman.py`, `test_particle_filter.py`, `test_transformations.py`), added constraint checks to transformation tests, and debugged resulting failures. All 49 tests pass.
 *   [04-06-2025 16:55:00] - Completed Phase 2.3 variant: Fixed `mu[0]=-1.0`, estimated `mu[1]`. Successful convergence.
 
-## Open Questions/Issues
+*   [11-04-2025 17:30:00] - `mu` fixing logic in `optimization.py` has been aligned with established strategy (Decision [04-06-2025 17:40:11]) and `unified_filter_optimization.py` implementation.
 
+## Open Questions/Issues
 
 *   [07-04-2025 23:28:15] - BIF filter (`bellman_information.py`) generates inaccurate predicted covariance/information matrices, causing downstream smoother tests (`test_smooth_state_accuracy`) to fail. Root cause investigation needed. BIF EM plan paused.
 

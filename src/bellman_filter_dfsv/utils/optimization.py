@@ -22,6 +22,7 @@ from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformati
 from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
 from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
 from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params, apply_identification_constraint
+from bellman_filter_dfsv.utils.optimization_helpers import create_stable_initial_params
 
 
 # Filter type enumeration
@@ -369,6 +370,8 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
 def run_optimization(
     filter_type: FilterType,
     returns: jnp.ndarray,
+    initial_params: DFSVParamsDataclass,
+    fix_mu: bool=True,
     true_params: Optional[DFSVParamsDataclass] = None,
     use_transformations: bool = True,
     optimizer_name: str = "BFGS",
@@ -399,6 +402,7 @@ def run_optimization(
         filter_type: Type of filter to use (BIF, BF, or PF).
         returns: Observed returns data with shape (T, N) where T is the number of time
             points and N is the number of observed variables.
+        initial_params: Initial parameter guess, will be used for starting the optimization.
         true_params: True parameters (optional). If provided, can be used for fixing mu
             and for reporting the true parameter log-likelihood.
         use_transformations: Whether to use parameter transformations to ensure constraints
@@ -444,6 +448,13 @@ def run_optimization(
     start_time = time.time()
     #TODO: add a warning that verbose=True will ignore use_lax_while and thus be slower
 
+    # If true_params is provided and we want to fix mu, use the true mu value
+    if true_params is not None and fix_mu:
+        initial_params = eqx.tree_at(lambda p: p.mu, initial_params, true_params.mu)
+
+    # Apply identification constraint to initial parameters
+    initial_params = apply_identification_constraint(initial_params)
+
     # Create filter instance
     N, K = returns.shape[1], 1  # Assume K=1 if not provided in true_params
     if true_params is not None:
@@ -451,32 +462,10 @@ def run_optimization(
 
     filter_instance = create_filter(filter_type, N, K, num_particles)
 
-    # Create initial parameters - always use uninformed initial parameters
-    # Use a small fixed value for sigma2 to ensure stability
-    initial_params = DFSVParamsDataclass(
-        N=N,
-        K=K,
-        lambda_r=0.5 * jnp.ones((N, K)),  # Moderate positive loadings
-        Phi_f=0.5 * jnp.eye(K)+0.05*jnp.ones((K,K)),  # Moderate persistence
-        Phi_h=0.5 * jnp.eye(K)+0.05*jnp.ones((K,K)),  # Moderate persistence
-        mu=jnp.zeros(K),  # Zero mean for log volatility
-        sigma2=0.05 * jnp.ones(N),  # Small fixed value for stability
-        Q_h=0.2 * jnp.eye(K)  # Moderate volatility of volatility
-    )
-
-    # If true_params is provided and we want to fix mu, use the true mu value
-    if true_params is not None and use_transformations is False:  # Only fix mu if not using transformations
-        initial_params = eqx.tree_at(lambda p: p.mu, initial_params, true_params.mu)
-
-    # Apply identification constraint to initial parameters
-    initial_params = apply_identification_constraint(initial_params)
-
-    # Transform parameters if needed
+    # Transform initial parameters if needed (before passing to objective)
+    initial_params_opt = initial_params # Keep original for reference if needed
     if use_transformations:
-        initial_params = transform_params(initial_params)
-
-    # Determine if we should fix mu (only for BIF, requires true_params)
-    fix_mu =  (true_params is not None)
+        initial_params_opt = transform_params(initial_params_opt)
 
     # Get objective function wrapper
     objective_fn = get_objective_function(
@@ -485,8 +474,8 @@ def run_optimization(
         stability_penalty_weight=stability_penalty_weight,
         priors=priors,
         is_transformed=use_transformations,
-        fix_mu=fix_mu,  # Pass the flag
-        true_mu=true_params.mu if fix_mu else None # Pass the true value if fixing
+        fix_mu=fix_mu,  # Pass the explicit flag
+        true_mu=true_params.mu if (fix_mu and true_params is not None) else None
     )
 
     # Create optimizer
@@ -523,7 +512,7 @@ def run_optimization(
             sol = optx.minimise(
                 fn=objective_fn,
                 solver=optimizer,
-                y0=initial_params,
+                y0=initial_params_opt, # Use potentially transformed initial params
                 args=returns,
                 has_aux=True,  # Specify that the objective function returns an auxiliary value (empty tuple in this case)
                 options={},  # Use empty options dictionary
@@ -554,7 +543,7 @@ def run_optimization(
             print("Starting optimization with parameter logging...")
             sol, param_history = minimize_with_logging(
                 objective_fn=objective_fn,
-                initial_params=initial_params,
+                initial_params=initial_params_opt, # Use potentially transformed initial params
                 solver=optimizer,
                 static_args=returns,
                 max_steps=max_steps,
@@ -587,14 +576,7 @@ def run_optimization(
                 print(f"Error applying identification constraint: {e}")
 
         # Fix mu in final parameters if requested
-        if fix_mu and true_params is not None:
-            try:
-                final_params = eqx.tree_at(lambda p: p.mu, final_params, true_params.mu)
-                if verbose:
-                    print(f"Fixed mu in final parameters to {true_params.mu}")
-            except Exception as e:
-                if verbose:
-                    print(f"Error fixing mu in final parameters: {e}")
+        # (No longer needed here; handled in the objective function if fix_mu is True)
 
         # Untransform parameter history if needed
         if use_transformations and log_params:
@@ -602,12 +584,9 @@ def run_optimization(
                 param_history = [untransform_params(p) for p in param_history]
                 # Apply identification constraint to each parameter in history
                 param_history = [apply_identification_constraint(p) for p in param_history]
-
-                # Fix mu in parameter history if requested
-                if fix_mu and true_params is not None:
-                    param_history = [eqx.tree_at(lambda p: p.mu, p, true_params.mu) for p in param_history]
-                    if verbose:
-                        print("Fixed mu in parameter history")
+                # Note: Fixing mu in history is not done here, as history should reflect
+                # the parameters *during* optimization. The objective function handles
+                # fixing mu for the loss calculation.
             except Exception as e:
                 if verbose:
                     print(f"Error processing parameter history: {e}")

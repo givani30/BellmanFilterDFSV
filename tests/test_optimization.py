@@ -26,6 +26,7 @@ from bellman_filter_dfsv.utils.solvers import (
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.models.simulation import simulate_DFSV
 from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params
+from bellman_filter_dfsv.utils.optimization_helpers import create_stable_initial_params # Added import
 
 # Enable float64 for tests
 jax.config.update("jax_enable_x64", True)
@@ -39,22 +40,22 @@ def simple_model_params():
     K = 1  # Number of factors
 
     # Factor loadings
-    lambda_r = np.array([[0.9], [0.6], [0.3]])
+    lambda_r = jnp.array([[0.9], [0.6], [0.3]]) # Use jnp
 
     # Factor persistence
-    Phi_f = np.array([[0.95]])
+    Phi_f = jnp.array([[0.95]]) # Use jnp
 
     # Log-volatility persistence
-    Phi_h = np.array([[0.98]])
+    Phi_h = jnp.array([[0.98]]) # Use jnp
 
     # Long-run mean for log-volatilities
-    mu = np.array([-1.0])
+    mu = jnp.array([-1.0]) # Use jnp
 
     # Idiosyncratic variance (diagonal)
-    sigma2 = np.array([0.1, 0.1, 0.1])
+    sigma2 = jnp.array([0.1, 0.1, 0.1]) # Use jnp
 
     # Log-volatility noise covariance
-    Q_h = np.array([[0.1]])
+    Q_h = jnp.array([[0.1]]) # Use jnp
 
     # Create parameter object using the standard dataclass
     params = DFSVParamsDataclass(
@@ -335,13 +336,17 @@ def test_minimize_with_logging_error_handling():
 def test_run_optimization_bif(simulated_data):
     """Test run_optimization with BIF filter."""
     returns, _, _ = simulated_data
+    N, K = returns.shape[1], 1 # Assuming K=1 based on simple_model_params
+    initial_params = create_stable_initial_params(N, K)
 
     # Run optimization with BIF filter
     result = run_optimization(
         filter_type=FilterType.BIF,
         returns=returns,
+        initial_params=initial_params, # Added
         optimizer_name="BFGS",
         max_steps=5,  # Use a small number of steps for testing
+        fix_mu=False, # Added: Avoid error when true_mu is None
         verbose=True
     )
 
@@ -352,8 +357,8 @@ def test_run_optimization_bif(simulated_data):
     assert result.filter_type == FilterType.BIF
     assert result.optimizer_name == "BFGS"
     assert isinstance(result.final_params, DFSVParamsDataclass)
-    assert len(result.param_history) > 1
-    assert len(result.loss_history) > 0
+    assert len(result.param_history) >= 1 # Changed > to >= for default log_params=False
+    assert len(result.loss_history) >= 1 # Changed > 0 to >= 1 for consistency
 
     # Check that the final parameters have the correct shape
     N, K = returns.shape[1], 1
@@ -368,13 +373,17 @@ def test_run_optimization_bif(simulated_data):
 def test_run_optimization_bf(simulated_data):
     """Test run_optimization with BF filter."""
     returns, _, _ = simulated_data
+    N, K = returns.shape[1], 1 # Assuming K=1 based on simple_model_params
+    initial_params = create_stable_initial_params(N, K)
 
     # Run optimization with BF filter
     result = run_optimization(
         filter_type=FilterType.BF,
         returns=returns,
+        initial_params=initial_params, # Added
         optimizer_name="Adam",  # Use Adam for better stability
         max_steps=5,  # Use a small number of steps for testing
+        fix_mu=False, # Added: Avoid error when true_mu is None
         verbose=True
     )
 
@@ -399,14 +408,18 @@ def test_run_optimization_bf(simulated_data):
 def test_run_optimization_pf(simulated_data):
     """Test run_optimization with PF filter."""
     returns, _, _ = simulated_data
+    N, K = returns.shape[1], 1 # Assuming K=1 based on simple_model_params
+    initial_params = create_stable_initial_params(N, K)
 
     # Run optimization with PF filter
     result = run_optimization(
         filter_type=FilterType.PF,
         returns=returns,
+        initial_params=initial_params, # Added
         optimizer_name="Adam",  # Use Adam for better stability
         max_steps=5,  # Use a small number of steps for testing
         num_particles=100,  # Use a small number of particles for testing
+        fix_mu=False, # Added: Avoid error when true_mu is None
         verbose=True
     )
 
@@ -431,14 +444,18 @@ def test_run_optimization_pf(simulated_data):
 def test_run_optimization_with_transformations(simulated_data):
     """Test run_optimization with parameter transformations."""
     returns, _, _ = simulated_data
+    N, K = returns.shape[1], 1 # Assuming K=1 based on simple_model_params
+    initial_params = create_stable_initial_params(N, K)
 
     # Run optimization with transformations
     result_transformed = run_optimization(
         filter_type=FilterType.BIF,
         returns=returns,
+        initial_params=initial_params, # Added
         optimizer_name="BFGS",
         use_transformations=True,
         max_steps=5,  # Use a small number of steps for testing
+        fix_mu=False, # Added: Avoid error when true_mu is None
         verbose=True
     )
 
@@ -446,9 +463,11 @@ def test_run_optimization_with_transformations(simulated_data):
     result_untransformed = run_optimization(
         filter_type=FilterType.BIF,
         returns=returns,
+        initial_params=initial_params, # Added
         optimizer_name="BFGS",
         use_transformations=False,
         max_steps=5,  # Use a small number of steps for testing
+        fix_mu=False, # Added: Avoid error when true_mu is None
         verbose=True
     )
 
@@ -469,11 +488,14 @@ def test_run_optimization_with_transformations(simulated_data):
 def test_run_optimization_with_true_params(simple_model_params, simulated_data):
     """Test run_optimization with true parameters."""
     returns, _, _ = simulated_data
+    # Use true_params as initial_params for this test
+    initial_params = simple_model_params
 
     # Run optimization with true parameters
     result = run_optimization(
         filter_type=FilterType.BIF,
         returns=returns,
+        initial_params=initial_params, # Added
         true_params=simple_model_params,
         optimizer_name="BFGS",
         max_steps=5,  # Use a small number of steps for testing
@@ -484,8 +506,8 @@ def test_run_optimization_with_true_params(simple_model_params, simulated_data):
     assert isinstance(result, OptimizerResult)
 
     # Check that the fix_mu field is set correctly
-    # Note: fix_mu is False when use_transformations is True (default)
-    assert result.fix_mu is False
+    # When true_params is provided, fix_mu defaults to True in run_optimization
+    assert result.fix_mu is True # Changed assertion
 
     # Check that the final parameters have the correct shape
     N, K = returns.shape[1], 1
@@ -500,6 +522,8 @@ def test_run_optimization_with_true_params(simple_model_params, simulated_data):
 def test_run_optimization_with_priors(simulated_data):
     """Test run_optimization with priors."""
     returns, _, _ = simulated_data
+    N, K = returns.shape[1], 1 # Assuming K=1 based on simple_model_params
+    initial_params = create_stable_initial_params(N, K)
 
     # Define priors
     priors = {
@@ -511,10 +535,12 @@ def test_run_optimization_with_priors(simulated_data):
     result = run_optimization(
         filter_type=FilterType.BIF,
         returns=returns,
+        initial_params=initial_params, # Added
         optimizer_name="BFGS",
         priors=priors,
         prior_config_name="Test Priors",
         max_steps=5,  # Use a small number of steps for testing
+        fix_mu=False, # Added: Avoid error when true_mu is None
         verbose=True
     )
 
@@ -538,13 +564,17 @@ def test_run_optimization_error_handling():
     """Test that run_optimization handles errors correctly."""
     # Create invalid returns data (NaN values)
     invalid_returns = jnp.ones((10, 3)) * jnp.nan  # Contains NaN values
+    N, K = 3, 1 # Define N, K for initial params
+    initial_params = create_stable_initial_params(N, K)
 
     # Run optimization with invalid data
     result = run_optimization(
         filter_type=FilterType.BIF,
         returns=invalid_returns,
+        initial_params=initial_params, # Added
         optimizer_name="BFGS",
         max_steps=5,
+        fix_mu=False, # Added: Avoid error when true_mu is None
         verbose=True
     )
 
