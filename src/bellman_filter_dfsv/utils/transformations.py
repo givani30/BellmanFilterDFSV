@@ -264,10 +264,28 @@ def untransform_params(transformed_params: DFSVParamsDataclass) -> DFSVParamsDat
         # lambda_r is intentionally omitted from replace()
     )
 def apply_identification_constraint(params: DFSVParamsDataclass) -> DFSVParamsDataclass:
-    """Applies lower-triangular constraint with diagonal fixed to 1 to lambda_r."""
-    # Apply lower-triangular constraint first
-    constrained_lambda_r = jnp.tril(params.lambda_r)
-    # Set diagonal elements to 1.0
-    diag_indices = jnp.diag_indices(n=min(params.N, params.K), ndim=2)
-    constrained_lambda_r = constrained_lambda_r.at[diag_indices].set(1.0)
+    """Applies lower-triangular constraint with diagonal fixed to 1 to lambda_r.
+
+    For the factor loading matrix lambda_r with shape (N, K):
+    1. Makes it lower triangular (zeros above the main diagonal)
+    2. Sets the first K diagonal elements to 1.0
+    3. For N > K, only the first K columns have the constraint applied
+    """
+    N, K = params.N, params.K
+
+    # Start with the original lambda_r
+    constrained_lambda_r = params.lambda_r
+
+    # For each column up to K
+    for k in range(K):
+        # Zero out elements above the diagonal in this column
+        mask = jnp.arange(N) < k  # True for rows above diagonal
+        constrained_lambda_r = constrained_lambda_r.at[:, k].set(
+            constrained_lambda_r[:, k] * (1 - mask)  # Zero out where mask is True
+        )
+
+        # Set the diagonal element to 1.0
+        if k < N:  # Only if we haven't exceeded the number of rows
+            constrained_lambda_r = constrained_lambda_r.at[k, k].set(1.0)
+
     return params.replace(lambda_r=constrained_lambda_r)

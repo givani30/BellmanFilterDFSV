@@ -170,8 +170,8 @@ def print_results_table(results: List[OptimizerResult], max_steps: int):
     """
     print("\n\n--- Optimization Results ---")
     # Header
-    print(f"{'Optimizer':<20} | {'Transform':<10} | {'Fix_mu':<7} | {'Status':<20} | {'Final Loss':<15} | {'Steps':<8} | {'Time (s)':<10} | {'Error Message'}")
-    print("-" * 160)
+    print(f"{'Optimizer':<20} | {'Transform':<10} | {'Fix_mu':<7} | {'Status':<20} | {'Final Loss':<15} | {'Steps':<8} | {'Time (s)':<10} | {'Error'}")
+    print("-" * 120)
 
     # Rows
     for res in sorted(results, key=lambda x: (x.optimizer_name, x.uses_transformations, x.fix_mu)):
@@ -212,10 +212,16 @@ def print_results_table(results: List[OptimizerResult], max_steps: int):
         loss_str = f"{res.final_loss:.4e}" if jnp.isfinite(res.final_loss) else "Inf/NaN"
         steps_str = str(res.steps) if res.steps >= 0 else "N/A"
         time_str = f"{res.time_taken:.2f}"
-        error_str = res.error_message if res.error_message else "N/A"
+        # Truncate error message if it's too long
+        error_str = "N/A"
+        if res.error_message:
+            error_str = res.error_message
+            if len(error_str) > 30:
+                error_str = error_str[:27] + "..."
+
         print(f"{res.optimizer_name:<20} | {'Yes' if res.uses_transformations else 'No':<10} | {fix_mu_str:<7} | {status_str:<20} | {loss_str:<15} | {steps_str:<8} | {time_str:<10} | {error_str}")
 
-    print("-" * 160)
+    print("-" * 120)
 
 
 def print_parameter_comparison(results: List[OptimizerResult], true_params: DFSVParamsDataclass):
@@ -227,42 +233,65 @@ def print_parameter_comparison(results: List[OptimizerResult], true_params: DFSV
     """
     print("\n\n--- Parameter Comparison ---")
 
-    # Get true parameter values as flat arrays for easier comparison
-    true_values = {
-        "lambda_r": true_params.lambda_r.flatten(),
-        "Phi_f": true_params.Phi_f.flatten(),
-        "Phi_h": true_params.Phi_h.flatten(),
-        "mu": true_params.mu.flatten(),
-        "sigma2": true_params.sigma2.flatten(),
-        "Q_h": true_params.Q_h.flatten()
-    }
+    # We'll compare the parameters directly as matrices
 
     for res in sorted(results, key=lambda x: (x.optimizer_name, x.uses_transformations, x.fix_mu)):
         if res.final_params is not None:
             print(f"\n-- Run: Optimizer='{res.optimizer_name}' | Fix_mu='{'Yes' if res.fix_mu else 'No'}' | Success='{'Yes' if res.success else 'No'}' --")
             print("-" * 80)
-            print(f"{'Parameter':<10} | {'True Value':<35} | {'Estimated Value'}")
+            print("Parameter Comparison:")
             print("-" * 80)
 
-            # Get estimated parameter values as flat arrays
-            est_values = {
-                "lambda_r": res.final_params.lambda_r.flatten(),
-                "Phi_f": res.final_params.Phi_f.flatten(),
-                "Phi_h": res.final_params.Phi_h.flatten(),
-                "mu": res.final_params.mu.flatten(),
-                "sigma2": res.final_params.sigma2.flatten(),
-                "Q_h": res.final_params.Q_h.flatten()
-            }
+            # If optimization failed, make sure we're using untransformed parameters
+            final_params = res.final_params
+
+            # If the optimization failed and we're using transformations, try to untransform the parameters
+            if not res.success and res.uses_transformations:
+                try:
+                    from bellman_filter_dfsv.utils.transformations import untransform_params, apply_identification_constraint
+                    final_params = untransform_params(final_params)
+                    final_params = apply_identification_constraint(final_params)
+                except Exception:
+                    # If untransformation fails, just use the parameters as is
+                    pass
+
+            # Function to format matrix parameters nicely
+            def format_matrix(matrix, precision=4):
+                if matrix.ndim == 1:  # Vector
+                    return np.array2string(matrix, precision=precision, separator=', ', suppress_small=True)
+                else:  # Matrix
+                    rows = []
+                    for i in range(matrix.shape[0]):
+                        row = np.array2string(matrix[i], precision=precision, separator=', ', suppress_small=True)
+                        rows.append(row)
+                    return '\n'.join(rows)
 
             # Print comparison for each parameter
-            for param_name, true_val in true_values.items():
-                est_val = est_values[param_name]
+            for param_name in ["lambda_r", "Phi_f", "Phi_h", "mu", "sigma2", "Q_h"]:
+                # Get the true and estimated values
+                true_val = getattr(true_params, param_name)
+                est_val = getattr(final_params, param_name)
 
-                # Format arrays for display
-                true_str = np.array2string(true_val, precision=4, separator=', ')
-                est_str = np.array2string(est_val, precision=4, separator=', ')
+                # Print parameter name with a more descriptive title
+                param_descriptions = {
+                    "lambda_r": "Factor Loadings (Lambda)",
+                    "Phi_f": "Factor Transition Matrix (Phi_f)",
+                    "Phi_h": "Log-Volatility Transition Matrix (Phi_h)",
+                    "mu": "Log-Volatility Mean (mu)",
+                    "sigma2": "Observation Noise Variance (sigma2)",
+                    "Q_h": "Log-Volatility Noise Covariance (Q_h)"
+                }
 
-                print(f"{param_name:<10} | {true_str:<35} | {est_str}")
+                print(f"\n{param_descriptions.get(param_name, param_name)}:")
+                print("-" * 60)
+
+                # Print true value
+                print("True Value:")
+                print(format_matrix(true_val))
+
+                # Print estimated value
+                print("\nEstimated Value:")
+                print(format_matrix(est_val))
 
 
 def save_results_to_csv(results: List[OptimizerResult]):
@@ -403,14 +432,14 @@ def main():
     print("Starting Comprehensive Optimizer Comparison...")
 
     # 1. Create model parameters
-    N, K = 3, 2
+    N, K = 5, 2
     true_params = create_simple_model(N=N, K=K)
     print(f"Created model with N={true_params.N}, K={true_params.K}")
     print("True Parameters:")
     print(true_params)
 
     # 2. Generate simulation data
-    T = 1500  # Full experiment with longer time series
+    T = 500  # Full experiment with longer time series
     print(f"\nGenerating {T} time steps of simulation data...")
     returns = create_training_data(true_params, T=T, seed=123)
     print("Simulation data generated.")
@@ -425,19 +454,17 @@ def main():
     filter_type = FilterType.BIF  # Focus on BIF filter
     use_transformations = True  # Always use transformations for stability
     fix_mu = True  # Fix mu to true values
-    max_steps = 10  # Number of optimization steps (reduced for faster testing)
+    max_steps = 750  # Number of optimization steps
     stability_penalty_weight = 1000.0  # Weight for stability penalty
-    verbose = False  # Disable verbose output to use lax.while_loop for better performance
+    verbose = False  # Disable verbose output for faster performance
+    log_params = False  # Disable parameter logging for faster performance
 
     # 5. Run optimizations
     results = []
 
     print(f"\nRunning optimizations with max_steps={max_steps}, stability_penalty_weight={stability_penalty_weight}...")
-
-    # For testing with a subset of optimizers
-    test_optimizers = ["BFGS", "AdamW", "DampedTrustRegionBFGS", "GradientDescent", "SGD"]
-
-    for optimizer_name in test_optimizers:
+    # Run all available optimizers
+    for optimizer_name in available_optimizers.keys():
         print(f"\n--- Running: Optimizer={optimizer_name} | Transform={'Yes' if use_transformations else 'No'} | Fix_mu={'Yes' if fix_mu else 'No'} ---")
 
         try:
@@ -452,9 +479,8 @@ def main():
                 stability_penalty_weight=stability_penalty_weight,
                 max_steps=max_steps,
                 verbose=verbose,
-                log_params=True,  # Enable parameter logging
-                log_interval=1,  # Log at every step
-                use_lax_while=True  # Use lax.while_loop for better performance
+                log_params=log_params,
+                log_interval=1  # Log at every step
             )
 
             results.append(result)
@@ -499,11 +525,41 @@ def main():
                         else:
                             success_str = "failed"
 
-            print(f"Optimization {success_str} with final loss: {result.final_loss:.4e}")
+            # Print a more detailed summary of the optimization result
+            if result.success:
+                print(f"Optimization {success_str} with final loss: {result.final_loss:.4e}")
+            else:
+                if jnp.isfinite(result.final_loss):
+                    print(f"Optimization {success_str} with final loss: {result.final_loss:.4e} (not converged)")
+                else:
+                    print(f"Optimization {success_str} with final loss: {result.final_loss} (not converged)")
             print(f"Steps: {result.steps}, Time: {result.time_taken:.2f}s")
 
         except Exception as e:
-            print(f"Error running optimization with {optimizer_name}: {e}")
+            # Create a minimal result object with error information
+            error_message = str(e)
+            # Truncate error message if it's too long
+            if len(error_message) > 100:
+                error_message = error_message[:97] + "..."
+
+            # Create a dummy result with error information
+            dummy_result = OptimizerResult(
+                optimizer_name=optimizer_name,
+                uses_transformations=use_transformations,
+                fix_mu=fix_mu,
+                final_loss=float('nan'),  # Set to NaN initially
+                steps=0,
+                time_taken=0.0,
+                success=False,
+                final_params=None,
+                param_history=None,
+                loss_history=None,
+                error_message=error_message,
+                result_code=None
+            )
+
+            results.append(dummy_result)
+            print(f"Error running optimization with {optimizer_name}: {error_message}")
 
     # 6. Print results table
     if results:

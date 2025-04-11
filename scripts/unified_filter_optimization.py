@@ -72,6 +72,8 @@ def create_simple_model(N: int = 3, K: int = 2) -> DFSVParamsDataclass:
     key, subkey1 = jax.random.split(key)
     diag_values = jax.random.uniform(subkey1, (K,), minval=0.15, maxval=0.35)
     Phi_f = Phi_f.at[jnp.diag_indices(K)].set(diag_values)
+    #Make sure Phi_f is stable by normalizing
+    Phi_f = Phi_f / jnp.linalg.norm(Phi_f, ord=2)*0.999
 
     # Log-volatility persistence (diagonal-dominant with eigenvalues < 1)
     # Off-diagonal elements
@@ -81,7 +83,9 @@ def create_simple_model(N: int = 3, K: int = 2) -> DFSVParamsDataclass:
     key, subkey1 = jax.random.split(key)
     diag_values = jax.random.uniform(subkey1, (K,), minval=0.9, maxval=0.99)
     Phi_h = Phi_h.at[jnp.diag_indices(K)].set(diag_values)
-
+    #Make sure Phi_h is stable by normalizing
+    Phi_h = Phi_h / jnp.linalg.norm(Phi_h, ord=2)*0.999
+    
     # Long-run mean for log-volatilities
     mu = jnp.array([-1.0, -0.5] if K == 2 else [-1.0] * K)
 
@@ -328,7 +332,7 @@ def main():
     print("Starting Unified Filter Optimization...")
 
     # 1. Create model parameters
-    N, K = 3, 2
+    N, K = 5, 3
     true_params = create_simple_model(N=N, K=K)
     print(f"Created model with N={true_params.N}, K={true_params.K}")
     print("True Parameters:")
@@ -381,6 +385,7 @@ def main():
                             stability_penalty_weight=stability_penalty_weight,
                             max_steps=max_steps,
                             num_particles=num_particles,
+                            verbose=True,
                             prior_config_name="No Priors"
                         )
 

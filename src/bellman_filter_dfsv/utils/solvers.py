@@ -58,8 +58,8 @@ def create_learning_rate_scheduler(
         )
     elif scheduler_type == "warmup_cosine":
         return optax.warmup_cosine_decay_schedule(
-            init_value=0.0,
-            peak_value=init_lr,
+            init_value=init_lr,
+            peak_value=init_lr*10,
             warmup_steps=warmup_steps,
             decay_steps=decay_steps,
             end_value=min_lr
@@ -80,7 +80,7 @@ def create_optimizer(
     min_learning_rate: float = 1e-6,
     decay_steps: int = 1000,
     warmup_steps: int = 100,
-    scheduler_type: str = "cosine",
+    scheduler_type: str = "warmup_cosine",
     verbose: bool = False
 ) -> Union[optx.AbstractMinimiser, optx.OptaxMinimiser]:
     """Create an optimizer based on name.
@@ -111,6 +111,7 @@ def create_optimizer(
         init_lr=learning_rate,
         decay_steps=decay_steps,
         min_lr=min_learning_rate,
+        warmup_steps=warmup_steps,
         scheduler_type=scheduler_type
     )
 

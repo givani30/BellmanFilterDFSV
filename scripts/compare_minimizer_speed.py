@@ -9,18 +9,20 @@ measuring the time taken for each.
 import time
 import jax
 import jax.numpy as jnp
-import numpy as np
 import matplotlib.pyplot as plt
 
 # Project specific imports
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.models.simulation import simulate_DFSV
-from bellman_filter_dfsv.utils.transformations import apply_identification_constraint
+from bellman_filter_dfsv.utils.transformations import apply_identification_constraint, transform_params
 from bellman_filter_dfsv.utils.optimization import (
-    run_optimization,
     FilterType,
-    OptimizerResult
+    minimize_with_lax_while,
+    minimize_with_logging,
+    get_objective_function
 )
+from bellman_filter_dfsv.utils.solvers import create_optimizer
+from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformationFilter
 
 # Enable 64-bit precision for better numerical stability
 jax.config.update("jax_enable_x64", True)
@@ -95,23 +97,84 @@ def run_speed_test(optimizer_name: str, max_steps: int, use_lax_while: bool, ver
     true_params = create_simple_model(N=3, K=2)
     returns = create_training_data(true_params, T=500, seed=123)
 
-    # Run optimization with specified minimizer
-    start_time = time.time()
-    result = run_optimization(
+    print(f"Model created with N={true_params.N}, K={true_params.K}")
+    print(f"Generated {len(returns)} time steps of data")
+
+    # Create filter instance
+    filter_instance = DFSVBellmanInformationFilter(N=true_params.N, K=true_params.K)
+
+    # Transform parameters if needed
+    initial_params = transform_params(true_params)
+
+    # Get objective function
+    objective_fn = get_objective_function(
         filter_type=FilterType.BIF,
-        returns=returns,
-        true_params=true_params,  # Fix mu to true values
-        use_transformations=True,
-        optimizer_name=optimizer_name,
-        priors=None,
+        filter_instance=filter_instance,
         stability_penalty_weight=1000.0,
-        max_steps=max_steps,
-        verbose=verbose,
-        log_params=True,
-        log_interval=1,
-        use_lax_while=use_lax_while
+        priors=None,
+        is_transformed=True,
+        fix_mu=True,
+        true_mu=true_params.mu
     )
-    end_time = time.time()
+
+    # Create optimizer
+    optimizer = create_optimizer(
+        optimizer_name=optimizer_name,
+        learning_rate=1e-3,
+        rtol=1e-5,
+        atol=1e-5,
+        verbose=verbose
+    )
+
+    # Run optimization with specified minimizer
+    print(f"Starting optimization with {optimizer_name}, max_steps={max_steps}, use_lax_while={use_lax_while}, verbose={verbose}")
+    start_time = time.time()
+    try:
+        if use_lax_while:
+            print("Using minimize_with_lax_while")
+            sol, param_history = minimize_with_lax_while(
+                objective_fn=objective_fn,
+                initial_params=initial_params,
+                solver=optimizer,
+                static_args=returns,
+                max_steps=max_steps,
+                log_interval=1,
+                throw=False,
+                options={},
+                verbose=verbose
+            )
+        else:
+            print("Using minimize_with_logging")
+            sol, param_history = minimize_with_logging(
+                objective_fn=objective_fn,
+                initial_params=initial_params,
+                solver=optimizer,
+                static_args=returns,
+                max_steps=max_steps,
+                log_interval=1,
+                throw=False,
+                options={},
+                verbose=verbose
+            )
+
+        end_time = time.time()
+        print("Optimization completed successfully")
+        print(f"Result: {sol.result}")
+        print(f"Steps: {sol.stats.get('num_steps', 0)}")
+        print(f"Final value shape: {jax.tree_map(lambda x: x.shape, sol.value)}")
+
+        # Create a result object similar to what run_optimization returns
+        result = type('OptimizerResult', (), {
+            'final_loss': float(objective_fn(sol.value, returns)[0]),
+            'steps': sol.stats.get('num_steps', 0),
+            'result_code': sol.result,
+            'loss_history': [float(objective_fn(p, returns)[0]) for p in param_history] if param_history else None
+        })
+
+    except Exception as e:
+        end_time = time.time()
+        print(f"Error during optimization: {e}")
+        raise
 
     # Return result and time taken
     return result, end_time - start_time
@@ -122,105 +185,85 @@ def main():
     print("Starting minimizer speed comparison...")
 
     # Define test parameters
-    optimizer_name = "BFGS"  # Use BFGS as it worked well in previous tests
+    optimizer_name = "DampedTrustRegionBFGS"  # Use BFGS as it worked well in previous tests
 
     # Create dictionaries to store results for each step count
     results = {}
     times = {}
 
-    for max_steps in [10, 50]:
+    # Test with different step counts
+    for max_steps in [50]:
         print(f"\n=== Test with {max_steps} steps ===")
         results[max_steps] = {}
         times[max_steps] = {}
 
-        # Test 1: minimize_with_logging (verbose=True, use_lax_while=False)
-        print("\nTest 1: minimize_with_logging (verbose=True, use_lax_while=False)")
-        result1, time1 = run_speed_test(
-            optimizer_name=optimizer_name,
-            max_steps=max_steps,
-            use_lax_while=False,
-            verbose=True
-        )
-        results[max_steps]["logging_verbose"] = result1
-        times[max_steps]["logging_verbose"] = time1
-        print(f"Time taken: {time1:.2f} seconds")
-        print(f"Final loss: {result1.final_loss:.4e}")
-        print(f"Steps completed: {result1.steps}")
-
-        # Test 2: minimize_with_lax_while (verbose=False, use_lax_while=True)
-        print("\nTest 2: minimize_with_lax_while (verbose=False, use_lax_while=True)")
-        result2, time2 = run_speed_test(
+        # Test with lax_while
+        print("\nRunning minimize_with_lax_while (verbose=False, use_lax_while=True)")
+        result_lax, time_lax = run_speed_test(
             optimizer_name=optimizer_name,
             max_steps=max_steps,
             use_lax_while=True,
             verbose=False
         )
-        results[max_steps]["lax_while"] = result2
-        times[max_steps]["lax_while"] = time2
-        print(f"Time taken: {time2:.2f} seconds")
-        print(f"Final loss: {result2.final_loss:.4e}")
-        print(f"Steps completed: {result2.steps}")
+        results[max_steps]["lax_while"] = result_lax
+        times[max_steps]["lax_while"] = time_lax
+        print(f"Time taken: {time_lax:.2f} seconds")
+        print(f"Final loss: {result_lax.final_loss:.4e}")
+        print(f"Steps completed: {result_lax.steps}")
+        print(f"Result code: {result_lax.result_code}")
 
-        # Test 3: minimize_with_logging (verbose=False, use_lax_while=False)
-        # This isolates the effect of verbose output
-        print("\nTest 3: minimize_with_logging (verbose=False, use_lax_while=False)")
-        result3, time3 = run_speed_test(
+        # Test with standard logging
+        print("\nRunning minimize_with_logging (verbose=False, use_lax_while=False)")
+        result_std, time_std = run_speed_test(
             optimizer_name=optimizer_name,
             max_steps=max_steps,
             use_lax_while=False,
             verbose=False
         )
-        results[max_steps]["logging_silent"] = result3
-        times[max_steps]["logging_silent"] = time3
-        print(f"Time taken: {time3:.2f} seconds")
-        print(f"Final loss: {result3.final_loss:.4e}")
-        print(f"Steps completed: {result3.steps}")
+        results[max_steps]["logging"] = result_std
+        times[max_steps]["logging"] = time_std
+        print(f"Time taken: {time_std:.2f} seconds")
+        print(f"Final loss: {result_std.final_loss:.4e}")
+        print(f"Steps completed: {result_std.steps}")
+        print(f"Result code: {result_std.result_code}")
 
-        # Compare results for this step count
-        print(f"\nSpeed Comparison for {max_steps} steps:")
-        print(f"minimize_with_logging (verbose=True): {time1:.2f} seconds")
-        print(f"minimize_with_lax_while: {time2:.2f} seconds")
-        print(f"minimize_with_logging (verbose=False): {time3:.2f} seconds")
-
-        # Calculate speedup/slowdown
-        speedup1 = time1 / time2
-        speedup2 = time3 / time2
-        print(f"\nSpeedup of lax_while vs logging (verbose=True): {speedup1:.2f}x")
-        print(f"Speedup of lax_while vs logging (verbose=False): {speedup2:.2f}x")
+        # Calculate speedup
+        speedup = time_std / time_lax
+        print(f"\nSpeedup of lax_while vs logging: {speedup:.2f}x")
 
     # Plot loss history for each step count
-    for max_steps in [10, 50]:
-        plt.figure(figsize=(10, 6))
-        if results[max_steps]["logging_verbose"].loss_history is not None:
-            plt.plot(results[max_steps]["logging_verbose"].loss_history, label="minimize_with_logging (verbose=True)")
-        if results[max_steps]["lax_while"].loss_history is not None:
-            plt.plot(results[max_steps]["lax_while"].loss_history, label="minimize_with_lax_while")
-        if results[max_steps]["logging_silent"].loss_history is not None:
-            plt.plot(results[max_steps]["logging_silent"].loss_history, label="minimize_with_logging (verbose=False)")
+    for max_steps in [50]:
+        if max_steps in results and "lax_while" in results[max_steps] and "logging" in results[max_steps]:
+            plt.figure(figsize=(10, 6))
+            if results[max_steps]["lax_while"].loss_history is not None:
+                plt.plot(results[max_steps]["lax_while"].loss_history, label="minimize_with_lax_while")
+            if results[max_steps]["logging"].loss_history is not None:
+                plt.plot(results[max_steps]["logging"].loss_history, label="minimize_with_logging")
 
-        plt.xlabel("Step")
-        plt.ylabel("Loss")
-        plt.title(f"Loss History Comparison ({max_steps} steps)")
-        plt.legend()
-        plt.yscale("log")
-        plt.grid(True)
+            plt.xlabel("Step")
+            plt.ylabel("Loss")
+            plt.title(f"Loss History Comparison - {max_steps} steps")
+            plt.legend()
+            plt.yscale("log")
+            plt.grid(True)
 
-        # Save plot
-        plt.savefig(f"outputs/minimizer_speed_comparison_{max_steps}_steps.png")
-        print(f"\nLoss history plot saved to outputs/minimizer_speed_comparison_{max_steps}_steps.png")
+            # Save plot
+            plt.savefig(f"outputs/minimizer_comparison_{max_steps}_steps.png")
+            print(f"\nLoss history plot saved to outputs/minimizer_comparison_{max_steps}_steps.png")
 
     # Print summary
     print("\n=== Summary ===")
     print("Time taken (seconds):")
-    print(f"{'Steps':<10} | {'Logging (verbose)':<20} | {'Lax While':<15} | {'Logging (silent)':<20} | {'Lax While Speedup vs Verbose':<30} | {'Lax While Speedup vs Silent':<30}")
+    print(f"{'Steps':<10} | {'Lax While':<15} | {'Logging':<15} | {'Speedup':<10} | {'Lax While Result':<30} | {'Logging Result':<30}")
     print("-" * 120)
-    for max_steps in [10, 50]:
-        time1 = times[max_steps]["logging_verbose"]
-        time2 = times[max_steps]["lax_while"]
-        time3 = times[max_steps]["logging_silent"]
-        speedup1 = time1 / time2
-        speedup2 = time3 / time2
-        print(f"{max_steps:<10} | {time1:<20.2f} | {time2:<15.2f} | {time3:<20.2f} | {speedup1:<30.2f} | {speedup2:<30.2f}")
+    for max_steps in [50]:
+        if max_steps in times and "lax_while" in times[max_steps] and "logging" in times[max_steps]:
+            time_lax = times[max_steps]["lax_while"]
+            time_std = times[max_steps]["logging"]
+            speedup = time_std / time_lax
+            result_lax = results[max_steps]["lax_while"].result_code
+            result_std = results[max_steps]["logging"].result_code
+            print(f"{max_steps:<10} | {time_lax:<15.2f} | {time_std:<15.2f} | {speedup:<10.2f} | {str(result_lax):<30} | {str(result_std):<30}")
 
 
 if __name__ == "__main__":
