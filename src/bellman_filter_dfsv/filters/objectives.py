@@ -18,47 +18,63 @@ def _compute_total_objective(
     priors: dict | None,
     stability_penalty_weight: float
 ) -> float:
-    """Shared helper: applies identification constraint, computes neg log likelihood, prior, penalty, fully JAX compatible."""
+    """
+    Shared helper: applies identification constraint, checks stability, computes objective.
+    
+    Returns large penalty plus weighted stability violation for unstable systems,
+    otherwise computes full objective with likelihood, prior, and stability penalty.
+    Fully JAX compatible.
+    """
     # Enforce identification constraint
     params = apply_identification_constraint(params)
-
-    # Compute log likelihood
-    log_lik = likelihood_fn(params, y)
-    safe_neg_ll = jnp.nan_to_num(-log_lik, nan=1e10, posinf=1e10, neginf=1e10)
-
-    # Compute log prior or zero
-    # Use a safer approach with jnp.where instead of jax.lax.cond for None check
-    has_priors = jnp.array(priors is not None)
-
-    # Only compute log_prior if priors is not None
-    log_prior = jnp.where(
-        has_priors,
-        # This branch only executes if priors is not None
-        jnp.nan_to_num(
-            log_prior_density(params, **({} if priors is None else priors)),
-            nan=-1e10, posinf=-1e10, neginf=-1e10
-        ),
-        # Default branch
-        0.0
-    )
-
-    # Compute stability penalty or zero
-    # Calculate penalty for all cases, but only use it if weight > 0
+    
+    # Early stability check via eigenvalues
     mags_f = jnp.abs(jnp.linalg.eigvals(params.Phi_f))
     mags_h = jnp.abs(jnp.linalg.eigvals(params.Phi_h))
+    is_unstable = jnp.any(mags_f >= 1.0 - EPS) | jnp.any(mags_h >= 1.0 - EPS)
+    
+    # Calculate stability penalty (shared between branches)
     penalty_f = jnp.sum(jax.nn.relu(mags_f - 1.0 + EPS))
     penalty_h = jnp.sum(jax.nn.relu(mags_h - 1.0 + EPS))
     penalty = penalty_f + penalty_h
-
-    # Only apply penalty if weight > 0
-    stability_penalty = jnp.where(
-        stability_penalty_weight > 0,
-        penalty,
-        0.0
+    
+    def unstable_branch(_):
+        # Large base penalty plus weighted stability violation
+        return jnp.array(1e10, dtype=jnp.float64) + stability_penalty_weight * penalty
+        
+    def stable_branch(_):
+        # Compute log likelihood
+        log_lik = likelihood_fn(params, y)
+        safe_neg_ll = jnp.nan_to_num(-log_lik, nan=1e10, posinf=1e10, neginf=1e10)
+        
+        # Compute log prior or zero
+        has_priors = jnp.array(priors is not None)
+        log_prior = jnp.where(
+            has_priors,
+            jnp.nan_to_num(
+                log_prior_density(params, **({} if priors is None else priors)),
+                nan=-1e10, posinf=-1e10, neginf=-1e10
+            ),
+            0.0
+        )
+        
+        # Only apply penalty if weight > 0
+        stability_penalty = jnp.where(
+            stability_penalty_weight > 0,
+            penalty,
+            0.0
+        )
+        
+        # Return total objective
+        return safe_neg_ll - log_prior + stability_penalty_weight * stability_penalty
+    
+    # Use jax.lax.cond to choose between branches
+    return jax.lax.cond(
+        is_unstable,
+        unstable_branch,
+        stable_branch,
+        None
     )
-
-    total = safe_neg_ll - log_prior + stability_penalty_weight * stability_penalty
-    return total
 
 @eqx.filter_jit
 def bellman_objective(
@@ -87,7 +103,6 @@ def transformed_bellman_objective(
     """Bellman filter objective in transformed space, fully JAX compatible."""
     params = untransform_params(transformed_params)
     return bellman_objective(params, y, filter, priors, stability_penalty_weight)
-
 
 # -------------------------------------------------------------------------
 # Particle Filter Objective Functions

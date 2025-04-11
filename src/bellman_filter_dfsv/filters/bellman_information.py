@@ -114,7 +114,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         self.bif_penalty_jit = eqx.filter_jit(bif_likelihood_penalty_impl)
 
         # --- Instantiate Optimistix Solver ---
-        self.h_solver = optx.BFGS(rtol=1e-4, atol=1e-6)
+        self.h_solver = optx.BFGS(rtol=1e-4, atol=1e-6,norm=optx.rms_norm)
 
         # --- JIT Core BIF Steps & Block Coordinate Update ---
         # JIT the imported _block_coordinate_update_impl

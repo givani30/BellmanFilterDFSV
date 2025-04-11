@@ -168,9 +168,9 @@ def update_h_bfgs(
     # Check if optimization was successful
     successful = sol.result == optx.RESULTS.successful
 
-    # Conditionally return the optimized value or the initial guess, plus success status
-    # Always return the final value from the optimizer, successful or not.
-    return sol.value, successful
+    # Use jnp.where to return h_init if optimization failed, sol.value if successful
+    h_new = jnp.where(successful, sol.value, h_init)
+    return h_new, successful
 
 
 # Removed unused obj_and_grad_fn
