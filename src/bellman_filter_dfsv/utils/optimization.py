@@ -456,7 +456,9 @@ def run_optimization(
     initial_params = apply_identification_constraint(initial_params)
 
     # Create filter instance
-    N, K = returns.shape[1], 1  # Assume K=1 if not provided in true_params
+    # Use dimensions from initial_params (which is always provided)
+    N, K = initial_params.N, initial_params.K
+    # Override with true_params dimensions if provided
     if true_params is not None:
         N, K = true_params.N, true_params.K
 

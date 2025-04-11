@@ -1,16 +1,42 @@
 # src/bellman_filter_dfsv/core/filters/_bellman_impl.py
-"""Static JAX implementations of core Bellman filter calculations.
+"""Core mathematical implementations for the Bellman Information Filter (BIF).
 
-This module provides standalone, JAX-based functions for computations
-used within the Bellman filters (both covariance and information forms),
-such as building covariance matrices, calculating Fisher information,
-log posteriors, and likelihood penalties. These functions are designed
-to be JIT-compiled by the filter classes that use them.
+This module provides the fundamental mathematical operations required by the BIF,
+implemented as standalone, JAX-based functions for efficiency. These implementations
+follow the methodology of Lange (2024) adapted for the DFSV model context of
+Boekestijn (2025).
+
+Key Components:
+    - Observed Fisher Information calculation (negative Hessian of log-likelihood)
+    - Log posterior evaluation using efficient matrix operations
+    - BIF pseudo-likelihood penalty term (KL divergence approximation)
+
+Mathematical Framework:
+    The implementations handle the DFSV model structure:
+    y_t = Λf_t + ε_t                            (Observation)
+    f_{t+1} = Φ_f f_t + ν_{t+1}               (Factor Evolution)
+    h_{t+1} = μ + Φ_h(h_t - μ) + η_{t+1}      (Log-Volatility Evolution)
+    
+    where:
+    - f_t: K-dimensional factor vector
+    - h_t: K-dimensional log-volatility vector
+    - α_t = [f_t', h_t']': Complete state vector
+    - ν_{t+1} ~ N(0, diag(exp(h_{t+1})))
+    - η_{t+1} ~ N(0, Q_h)
+    - ε_t ~ N(0, Σ_ε), Σ_ε = diag(σ²)
+
+Implementation Notes:
+    - Functions are designed to be JIT-compiled by the filter classes
+    - Matrix operations use Woodbury identity and MDL for O(NK²) complexity
+    - Numerical stability measures (jitter, regularization) are included
+    - All functions expect and return JAX arrays
+
+References:
+    - Lange (2024): Bellman Filter methodology
+    - Boekestijn (2025): DFSV model specification and implementation
 """
-from functools import partial
 from typing import Callable
-from jax.experimental import checkify
-import equinox as eqx
+
 import jax
 import jax.numpy as jnp
 import jax.scipy.linalg
@@ -24,15 +50,34 @@ BuildCovarianceFn = Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], jnp.ndarra
 def build_covariance_impl(
     lambda_r: jnp.ndarray, exp_h: jnp.ndarray, sigma2: jnp.ndarray
 ) -> jnp.ndarray:
-    """Builds the observation covariance matrix Sigma_t = Lambda * Sigma_f * Lambda^T + Sigma_e.
+    """Builds the observation covariance matrix A_t for the DFSV model.
+
+    Constructs A_t = ΛΣ_f(h_t)Λ' + Σ_ε, which represents the conditional covariance
+    matrix of the observation y_t given the current state. This matrix is central to
+    the likelihood calculations in both observation and state estimation.
+
+    Mathematical Details:
+        1. Model Structure:
+           y_t = Λf_t + ε_t
+           where ε_t ~ N(0, Σ_ε)
+
+        2. Components:
+           - Σ_f(h_t) = diag(exp(h_t)): State-dependent factor covariance
+           - Σ_ε = diag(σ²): Idiosyncratic error covariance
+           
+        3. Implementation includes jitter (1e-6) for numerical stability
+           and enforces matrix symmetry.
 
     Args:
-        lambda_r: Factor loading matrix Lambda (N, K).
-        exp_h: Exponentiated log-volatilities diag(Sigma_f) = exp(h_t) (K,).
-        sigma2: Idiosyncratic variances diag(Sigma_e) (N,).
+        lambda_r: Factor loading matrix Λ (N, K).
+        exp_h: Exponentiated log-volatilities diag(Σ_f) = exp(h_t) (K,).
+        sigma2: Idiosyncratic variances diag(Σ_ε) (N,).
 
     Returns:
-        The observation covariance matrix Sigma_t (N, N).
+        The observation covariance matrix A_t (N, N).
+
+    References:
+        Boekestijn (2025), Eq. 3.1: Observation equation structure.
     """
     K = lambda_r.shape[1]
     N = lambda_r.shape[0]
@@ -105,20 +150,44 @@ def observed_fim_impl(
     observation: jnp.ndarray,
     K: int, # Pass K explicitly
 ) -> jnp.ndarray:
-    """Calculates the Observed Fisher Information (Negative Hessian).
+    """Calculates the Observed Fisher Information Matrix (Negative Hessian).
 
-    Computes J = - d^2(log p(y_t|alpha_t)) / d(alpha_t) d(alpha_t)^T using an
-    efficient approach based on the Woodbury matrix identity.
+    Computes J = -∇²ℓ(y_t|α_t) where ℓ(y_t|α_t) is the log-likelihood of observation y_t
+    given state α_t = [f_t', h_t']'. Implements an efficient calculation using the
+    Woodbury matrix identity to handle the observation covariance A_t = ΛΣ_f(h_t)Λ' + Σ_ε.
+
+    Mathematical Derivation:
+        1. Log-likelihood: ℓ(y_t|α_t) = -1/2[log|A_t| + r_t'A_t^{-1}r_t]
+           where r_t = y_t - Λf_t, A_t = ΛΣ_f(h_t)Λ' + Σ_ε
+           
+        2. Block Structure:
+           J = [J_ff  J_fh]
+              [J_fh' J_hh]
+           where:
+           - J_ff = Λ'A_t^{-1}Λ
+           - J_fh[l,k] = exp(h_k)·I_ff[l,k]·P[k]
+           - J_hh[k,l] = 1/2·exp(h_k + h_l)·[tr(I_ff[k,l]) - P[k]P[l]]
+           with P = Λ'A_t^{-1}r_t
+
+        3. Implementation uses Woodbury identity for A_t^{-1} applications:
+           A_t^{-1} = D^{-1} - D^{-1}Λ(Σ_f^{-1} + Λ'D^{-1}Λ)^{-1}Λ'D^{-1}
+           where D = Σ_ε (diagonal) for efficiency
 
     Args:
-        lambda_r: Factor loading matrix Lambda (N, K).
-        sigma2: Idiosyncratic variances diag(Sigma_e) (N,).
-        alpha: State vector alpha_t = [f_t, h_t] (state_dim,).
+        lambda_r: Factor loading matrix Λ (N, K).
+        sigma2: Idiosyncratic variances diag(Σ_ε) (N,).
+        alpha: State vector α_t = [f_t', h_t']' (state_dim,).
         observation: Observation vector y_t (N,).
         K: Number of factors.
 
     Returns:
-        The Observed Fisher Information matrix J_observed (state_dim, state_dim).
+        The Observed Fisher Information matrix J (state_dim, state_dim), negative
+        Hessian of the log-likelihood. Used in the BIF update step:
+        Ω_{t|t} = Ω_{t|t-1} + J.
+        
+    References:
+        Lange (2024), Eq. 11: Information matrix update.
+        Boekestijn (2025), Sec 3.2: DFSV model specification.
     """
     N = lambda_r.shape[0]
 

@@ -1,9 +1,29 @@
 # src/bellman_filter_dfsv/core/filters/_bellman_optim.py
-"""Standalone JAX functions for Bellman filter optimization steps.
+"""State update optimization for the Bellman Information Filter.
 
-Provides helper functions used within the block coordinate descent update
-step of the Bellman filters, such as updating factors, updating log-volatilities
-using BFGS, and the main block coordinate update implementation itself.
+This module implements the numerical optimization required for the BIF state
+update step, which finds α_{t|t} by maximizing p(α_t|y_t,F_{t-1}) plus a penalty term.
+
+The optimization problem minimizes the objective:
+    J(α) = -ℓ(y_t|α_t) + 1/2||α_t - α_{t|t-1}||²_{Ω_{t|t-1}}
+
+where:
+- α_t = [f_t', h_t']': Complete state vector
+- ℓ(y_t|α_t): Log-likelihood of observation
+- Ω_{t|t-1}: Predicted information matrix
+- α_{t|t-1}: Predicted state
+
+Implementation Features:
+- JAX automatic differentiation and JIT compilation
+- BFGS optimization with trust region strategy
+- Cholesky decomposition for stable matrix operations
+- Numerical safeguards and fallback strategies
+
+The implementation provides efficient functions for:
+1. Log-posterior evaluation
+2. Factor state updates
+3. Log-volatility state updates
+4. Complete state vector optimization
 """
 from functools import partial
 from typing import Callable, Tuple
@@ -103,29 +123,45 @@ def update_h_bfgs(
     h_solver: optx.AbstractMinimiser, # Pass solver instance
     inner_max_steps: int = 100,
 ) -> Tuple[jnp.ndarray, bool]:
-    """Updates log-volatilities (h) using BFGS optimization.
+    """Updates log-volatilities h using trust-region BFGS optimization.
 
-    Minimizes the negative log posterior `neg_log_post_h` with respect to `h`,
-    keeping factors `f` fixed.
+    This function minimizes J(h) = -ℓ(y_t|f,h) + Prior_Penalty(h) with respect to h,
+    keeping factors f fixed. Uses a trust-region BFGS method with fallback strategies
+    for robustness.
+
+    Mathematical Details:
+        1. Objective Function:
+           J(h) = -ℓ(y_t|f,h) + 1/2·h'Ω_hh·h + h'Ω_fh'(f - f_pred)
+
+        2. Gradient/Hessian:
+           - Computed automatically via JAX AD
+           - Trust region helps handle potential non-convexity
+           - Uses CustomBFGS with modified DoglegDescent strategy
+
+    Implementation Notes:
+        - Employs Optimistix minimizer with trust region
+        - Falls back to h_init if optimization fails
+        - Uses JAX-compatible function wrapping
+        - Maintains JIT compatibility throughout
 
     Args:
         h_init: Initial guess for log-volatilities h (K,).
         factors: Current factor values f (K,) (fixed).
-        lambda_r: Factor loading matrix Lambda (N, K).
-        sigma2: Idiosyncratic variances diag(Sigma_e) (N,).
-        pred_state: Predicted state vector alpha_{t|t-1} (state_dim,).
-        I_pred: Predicted precision matrix Omega_{t|t-1} (state_dim, state_dim).
+        lambda_r: Factor loading matrix Λ (N, K).
+        sigma2: Idiosyncratic variances diag(Σ_ε) (N,).
+        pred_state: Predicted state vector α_{t|t-1} (state_dim,).
+        I_pred: Predicted information matrix Ω_{t|t-1} (state_dim, state_dim).
         observation: Observation vector y_t (N,).
         K: Number of factors.
-        build_covariance_fn: Function to build observation covariance Sigma_t.
-        log_posterior_fn: Function to compute log p(y_t|alpha_t).
-        h_solver: Pre-configured Optimistix solver instance (e.g., BFGS).
-        inner_max_steps: Maximum number of iterations for the BFGS solver.
+        build_covariance_fn: Function to build covariance Σ_t.
+        log_posterior_fn: Function to compute ℓ(y_t|α_t).
+        h_solver: Pre-configured Optimistix solver.
+        inner_max_steps: Maximum BFGS iterations.
 
     Returns:
         A tuple containing:
-            - h_new: Updated log-volatility values (K,).
-            - success: Boolean flag indicating if the optimization succeeded.
+            - h_new: Updated log-volatility values (K,)
+            - success: Boolean indicating optimization success
     """
     # Objective function wrapper to match optimistix fn(y, args) signature
     def objective_fn_h(h, objective_args):
@@ -221,24 +257,40 @@ def update_factors(
     # --- Dependencies ---
     build_covariance_fn: BuildCovarianceFn,
 ) -> jnp.ndarray:
-    """Solves for optimal factors f given fixed log-volatilities h.
+    """Updates factor values f by solving the state update optimization.
 
-    This corresponds to solving the linear system derived from the gradient
-    of the posterior w.r.t. f, setting it to zero.
+    Given fixed log-volatilities h, this function finds the optimal factors f
+    by solving the linear system that arises from setting ∂J/∂f = 0:
+
+    Mathematical Details:
+        ∂J/∂f = -∂ℓ(y_t|f,h)/∂f + Ω_ff(f - f_pred) + Ω_fh(h - h_pred) = 0
+
+        This yields the linear system:
+        (Λ'Σ_t^{-1}Λ + Ω_ff)f = Λ'Σ_t^{-1}y_t + Ω_ff·f_pred + Ω_fh(h - h_pred)
+
+        where:
+        - Σ_t = ΛΣ_f(h)Λ' + Σ_ε is the observation covariance
+        - Σ_f(h) = diag(exp(h)) is the factor covariance
+        - Ω_ff, Ω_fh are blocks of the predicted information matrix
+
+    Implementation Notes:
+        - Uses Cholesky decomposition for stable Σ_t^{-1} applications
+        - Adds small jitter term for numerical stability
+        - Employs JAX's linear algebra routines
 
     Args:
         log_volatility: Current log-volatility values h (K,).
-        lambda_r: Factor loading matrix Lambda (N, K).
-        sigma2: Idiosyncratic variances diag(Sigma_e) (N,).
+        lambda_r: Factor loading matrix Λ (N, K).
+        sigma2: Idiosyncratic variances diag(Σ_ε) (N,).
         observation: Observation vector y_t (N,).
         factors_pred: Predicted factor values f_{t|t-1} (K,).
         log_vols_pred: Predicted log-volatility values h_{t|t-1} (K,).
-        I_f: Factor block Omega_ff of predicted precision matrix (K, K).
-        I_fh: Factor-volatility block Omega_fh of predicted precision matrix (K, K).
-        build_covariance_fn: Function to build observation covariance Sigma_t.
+        I_f: Factor block Ω_ff of predicted information (K, K).
+        I_fh: Factor-volatility block Ω_fh of predicted information (K, K).
+        build_covariance_fn: Function to build observation covariance Σ_t.
 
     Returns:
-        Updated factor values f_new (K,).
+        The optimal factor values f that minimize J(f,h) for fixed h (K,).
     """
     # Build Sigma_t = Lambda Sigma_f Lambda^T + Sigma_e
     A = build_covariance_fn(lambda_r, jnp.exp(log_volatility), sigma2)
@@ -281,30 +333,37 @@ def _block_coordinate_update_impl(
     build_covariance_fn: BuildCovarianceFn, # Pass JITted build_covariance
     log_posterior_fn: LogPosteriorFn # Pass JITted log_posterior
 ) -> jnp.ndarray:
-    """Performs block coordinate descent to optimize the state vector alpha.
+    """Optimizes the state vector α_t in the BIF update step.
 
-    Alternately updates factors (f) and log-volatilities (h) to maximize
-    the posterior distribution p(alpha_t | y_t, F_{t-1}), which involves
-    minimizing the negative log posterior.
+    This function finds α_{t|t} by minimizing:
+    
+    J(α) = -ℓ(y_t|α_t) + 1/2||α_t - α_{t|t-1}||²_{Ω_{t|t-1}}
 
-    This implementation is shared between the covariance and information forms
-    of the Bellman filter.
+    The optimization alternates between:
+    1. Solving a linear system for factors f
+    2. Using BFGS for log-volatilities h
+
+    Implementation Notes:
+        - Uses jax.lax.fori_loop for JIT compatibility
+        - Employs trust region methods via h_solver
+        - Includes fallback strategies for failed updates
+        - Maintains strict numerical stability controls
 
     Args:
-        lambda_r: Factor loading matrix Lambda (N, K).
-        sigma2: Idiosyncratic variances diag(Sigma_e) (N,).
-        alpha: Initial guess for the state vector alpha_{t|t} (state_dim,).
-        pred_state: Predicted state vector alpha_{t|t-1} (state_dim,).
-        I_pred: Predicted information matrix Omega_{t|t-1} (state_dim, state_dim).
+        lambda_r: Factor loading matrix Λ (N, K).
+        sigma2: Idiosyncratic variances diag(Σ_ε) (N,).
+        alpha: Initial guess for state vector α_{t|t} (state_dim,).
+        pred_state: Predicted state vector α_{t|t-1} (state_dim,).
+        I_pred: Predicted information matrix Ω_{t|t-1} (state_dim, state_dim).
         observation: Observation vector y_t (N,).
         K: Number of factors.
-        max_iters: Maximum number of block coordinate descent iterations.
-        h_solver: Pre-configured Optimistix solver instance for the h-update.
-        build_covariance_fn: JIT-compiled function to build Sigma_t.
-        log_posterior_fn: JIT-compiled function to calculate log p(y_t|alpha_t).
+        max_iters: Maximum iterations for optimization.
+        h_solver: Pre-configured Optimistix solver for h-update.
+        build_covariance_fn: JIT-compiled function for Σ_t construction.
+        log_posterior_fn: JIT-compiled function for ℓ(y_t|α_t).
 
     Returns:
-        The optimized updated state vector alpha_{t|t} (state_dim,).
+        The optimized state vector α_{t|t} (state_dim,).
     """
     alpha = alpha.flatten()
     pred_state = pred_state.flatten()
@@ -366,7 +425,24 @@ def _block_coordinate_update_impl(
     return jnp.concatenate([f_final, h_final])
 
 class CustomBFGS(optx.AbstractBFGS):
-    """Custom BFGS solver with specific configurations."""
+    """Custom BFGS solver optimized for BIF state updates.
+
+    This class configures a BFGS solver with:
+    - Trust region strategy for robust convergence
+    - Dogleg-based descent method
+    - Custom convergence criteria
+    - Fallback mechanisms for numerical stability
+
+    Mathematical Context:
+        Used primarily for optimizing log-volatilities h in the BIF update step,
+        where the objective function can be non-convex and numerically sensitive.
+
+    Implementation Notes:
+        - Uses classical trust region over line search
+        - DoglegDescent handles potential indefinite Hessians
+        - Default tolerances tuned for state estimation context
+        - Maintains JAX-compatibility for JIT compilation
+    """
     rtol:float
     atol:float
     norm: Callable[[PyTree], Scalar]
