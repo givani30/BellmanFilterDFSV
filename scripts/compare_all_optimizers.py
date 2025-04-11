@@ -364,6 +364,7 @@ def save_parameter_errors_to_csv(results: List[OptimizerResult], true_params: DF
         for param_name in true_values.keys():
             header.append(f"{param_name}_RMSE")
             header.append(f"{param_name}_MAE")
+            header.append(f"{param_name}_ME")  # Mean Error (bias)
         writer.writerow(header)
 
         # Write rows
@@ -381,12 +382,14 @@ def save_parameter_errors_to_csv(results: List[OptimizerResult], true_params: DF
                 for param_name, true_val in true_values.items():
                     est_val = getattr(res.final_params, param_name).flatten()
 
-                    # Calculate RMSE and MAE
+                    # Calculate RMSE, MAE, and ME (bias)
                     rmse = jnp.sqrt(jnp.mean((true_val - est_val) ** 2))
                     mae = jnp.mean(jnp.abs(true_val - est_val))
+                    me = jnp.mean(true_val - est_val)  # Mean Error (bias)
 
                     row.append(f"{rmse:.6f}")
                     row.append(f"{mae:.6f}")
+                    row.append(f"{me:.6f}")
 
                 writer.writerow(row)
 
@@ -453,120 +456,121 @@ def main():
     # 4. Define optimization configurations
     filter_type = FilterType.BIF  # Focus on BIF filter
     use_transformations = True  # Always use transformations for stability
-    fix_mu = True  # Fix mu to true values
-    max_steps = 750  # Number of optimization steps
+    max_steps = 1000  # Number of optimization steps
     stability_penalty_weight = 1e4  # Weight for stability penalty
-    verbose = True  # Disable verbose output for faster performance
-    log_params = False  # Disable parameter logging for faster performance
+    verbose = True  # Enable verbose output for detailed information
+    log_params = False  # Disable parameter logging to avoid potential issues
 
     #4,5 generate initial parameter guess
     initial_params = create_stable_initial_params(N, K)
     # 5. Run optimizations
     results = []
-    test_optimizers=["DampedTrustRegionBFGS","BFGS"]
+    test_optimizers=["BFGS", "ArmijoBFGS", "RMSProp", "AdamW", "DampedTrustRegionBFGS"]
     print(f"\nRunning optimizations with max_steps={max_steps}, stability_penalty_weight={stability_penalty_weight}...")
-    # Run all available optimizers
-    #
+    # Run all available optimizers with both fixed and unfixed mu
     for optimizer_name in test_optimizers:
-        print(f"\n--- Running: Optimizer={optimizer_name} | Transform={'Yes' if use_transformations else 'No'} | Fix_mu={'Yes' if fix_mu else 'No'} ---")
+        for fix_mu in [True, False]:  # Run with both fixed and unfixed mu
+            print(f"\n--- Running: Optimizer={optimizer_name} | Transform={'Yes' if use_transformations else 'No'} | Fix_mu={'Yes' if fix_mu else 'No'} ---")
 
-        try:
-            # Run optimization with error handling
-            result = run_optimization(
-                filter_type=filter_type,
-                returns=returns,
-                initial_params=initial_params, # Added
-                true_params=true_params if fix_mu else None,  # Only pass true_params if fix_mu is True
-                use_transformations=use_transformations,
-                optimizer_name=optimizer_name,
-                priors=None,
-                stability_penalty_weight=stability_penalty_weight,
-                max_steps=max_steps,
-                verbose=verbose,
-                log_params=log_params,
-                log_interval=1,  # Log at every step
-                rtol=1e-6,
-                atol=1e-6,
-                fix_mu=fix_mu
-            )
+            try:
+                # Run optimization with error handling
+                result = run_optimization(
+                    filter_type=filter_type,
+                    returns=returns,
+                    initial_params=initial_params, # Added
+                    true_params=true_params if fix_mu else None,  # Only pass true_params if fix_mu is True
+                    use_transformations=use_transformations,
+                    optimizer_name=optimizer_name,
+                    priors=None,
+                    stability_penalty_weight=stability_penalty_weight,
+                    max_steps=max_steps,
+                    verbose=verbose,
+                    log_params=log_params,
+                    log_interval=1,  # Log at every step
+                    rtol=1e-6,
+                    atol=1e-6,
+                    fix_mu=fix_mu
+                )
 
-            results.append(result)
+                results.append(result)
 
-            # Print immediate result based on result code
-            if hasattr(result, 'result_code') and result.result_code is not None:
-                # Use the result code to determine status
-                # Get the result code as an enum value
+                # Print immediate result based on result code
+                if hasattr(result, 'result_code') and result.result_code is not None:
+                    # Use the result code to determine status
+                    # Get the result code as an enum value
 
-                # Check the result code against known enum values
-                if result.result_code == optx.RESULTS.successful:
-                    success_str = "converged"
-                elif result.result_code == optx.RESULTS.max_steps_reached:
-                    success_str = "reached max steps (did not converge)"
-                elif result.result_code == optx.RESULTS.nonlinear_max_steps_reached:
-                    success_str = "reached nonlinear max steps (did not converge)"
-                elif result.result_code == optx.RESULTS.nonlinear_divergence:
-                    success_str = "diverged"
-                elif result.result_code == optx.RESULTS.singular:
-                    success_str = "singular matrix encountered"
-                elif result.result_code == optx.RESULTS.breakdown:
-                    success_str = "iterative breakdown"
-                elif result.result_code == optx.RESULTS.stagnation:
-                    success_str = "stagnation in iterative solve"
-                else:
-                    success_str = str(result.result_code)
-            else:
-                # Fall back to the old method if result_code is not available
-                # For short runs, we know it's unlikely to have actually converged
-                if max_steps <= 10:
-                    if result.success:
-                        success_str = "completed (likely not converged)"
-                    else:
-                        success_str = "failed"
-                else:
-                    if result.success:
+                    # Check the result code against known enum values
+                    if result.result_code == optx.RESULTS.successful:
                         success_str = "converged"
+                    elif result.result_code == optx.RESULTS.max_steps_reached:
+                        success_str = "reached max steps (did not converge)"
+                    elif result.result_code == optx.RESULTS.nonlinear_max_steps_reached:
+                        success_str = "reached nonlinear max steps (did not converge)"
+                    elif result.result_code == optx.RESULTS.nonlinear_divergence:
+                        success_str = "diverged"
+                    elif result.result_code == optx.RESULTS.singular:
+                        success_str = "singular matrix encountered"
+                    elif result.result_code == optx.RESULTS.breakdown:
+                        success_str = "iterative breakdown"
+                    elif result.result_code == optx.RESULTS.stagnation:
+                        success_str = "stagnation in iterative solve"
                     else:
-                        # Check if we reached max steps or had an error
-                        if result.steps >= max_steps:
-                            success_str = "reached max steps (did not converge)"
+                        success_str = str(result.result_code)
+                else:
+                    # Fall back to the old method if result_code is not available
+                    # For short runs, we know it's unlikely to have actually converged
+                    if max_steps <= 10:
+                        if result.success:
+                            success_str = "completed (likely not converged)"
                         else:
                             success_str = "failed"
+                    else:
+                        if result.success:
+                            success_str = "converged"
+                        else:
+                            # Check if we reached max steps or had an error
+                            if result.steps >= max_steps:
+                                success_str = "reached max steps (did not converge)"
+                            else:
+                                success_str = "failed"
 
-            # Print a more detailed summary of the optimization result
-            if result.success:
-                print(f"Optimization {success_str} with final loss: {result.final_loss:.4e}")
-            else:
-                if jnp.isfinite(result.final_loss):
-                    print(f"Optimization {success_str} with final loss: {result.final_loss:.4e} (not converged)")
+                # Print a more detailed summary of the optimization result
+                if result.success:
+                    print(f"Optimization {success_str} with final loss: {result.final_loss:.4e}")
                 else:
-                    print(f"Optimization {success_str} with final loss: {result.final_loss} (not converged)")
-            print(f"Steps: {result.steps}, Time: {result.time_taken:.2f}s")
+                    if jnp.isfinite(result.final_loss):
+                        print(f"Optimization {success_str} with final loss: {result.final_loss:.4e} (not converged)")
+                    else:
+                        print(f"Optimization {success_str} with final loss: {result.final_loss} (not converged)")
+                print(f"Steps: {result.steps}, Time: {result.time_taken:.2f}s")
 
-        except Exception as e:
-            # Create a minimal result object with error information
-            error_message = str(e)
-            # Truncate error message if it's too long
-            if len(error_message) > 100:
-                error_message = error_message[:97] + "..."
+            except Exception as e:
+                # Create a minimal result object with error information
+                error_message = str(e)
+                # Truncate error message if it's too long
+                if len(error_message) > 100:
+                    error_message = error_message[:97] + "..."
 
-            # Create a dummy result with error information
-            dummy_result = OptimizerResult(
-                optimizer_name=optimizer_name,
-                uses_transformations=use_transformations,
-                fix_mu=fix_mu,
-                final_loss=float('nan'),  # Set to NaN initially
-                steps=0,
-                time_taken=0.0,
-                success=False,
-                final_params=None,
-                param_history=None,
-                loss_history=None,
-                error_message=error_message,
-                result_code=None
-            )
+                # Create a dummy result with error information
+                dummy_result = OptimizerResult(
+                    filter_type=filter_type,
+                    optimizer_name=optimizer_name,
+                    uses_transformations=use_transformations,
+                    fix_mu=fix_mu,
+                    prior_config_name="No Priors",
+                    success=False,
+                    result_code=None,
+                    final_loss=float('nan'),  # Set to NaN initially
+                    steps=0,
+                    time_taken=0.0,
+                    error_message=error_message,
+                    final_params=None,
+                    param_history=None,
+                    loss_history=None
+                )
 
-            results.append(dummy_result)
-            print(f"Error running optimization with {optimizer_name}: {error_message}")
+                results.append(dummy_result)
+                print(f"Error running optimization with {optimizer_name}: {error_message}")
 
     # 6. Print results table
     if results:

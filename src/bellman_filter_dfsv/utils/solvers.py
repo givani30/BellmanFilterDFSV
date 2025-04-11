@@ -134,29 +134,35 @@ def create_optimizer(
 
     elif optimizer_name == "Adam":
         # Apply gradient clipping and handle NaN/Inf values
-        optimizer = optax.chain(
+        # Create base optimizer with gradient clipping
+        base_optimizer = optax.chain(
             optax.clip_by_global_norm(1.0),
-            optax.adam(learning_rate=scheduler),
-            optax.apply_if_finite(10)
+            optax.adam(learning_rate=scheduler)
         )
+        # Wrap with apply_if_finite to handle NaN/Inf values
+        optimizer = optax.apply_if_finite(base_optimizer, 10)
         return optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=verbose_set)
 
     elif optimizer_name == "AdamW":
         # Apply gradient clipping and handle NaN/Inf values
-        optimizer = optax.chain(
+        # Create base optimizer with gradient clipping
+        base_optimizer = optax.chain(
             optax.clip_by_global_norm(1.0),
-            optax.adamw(learning_rate=scheduler),
-            optax.apply_if_finite(10)
+            optax.adamw(learning_rate=scheduler)
         )
+        # Wrap with apply_if_finite to handle NaN/Inf values
+        optimizer = optax.apply_if_finite(base_optimizer, 10)
         return optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=verbose_set)
 
     elif optimizer_name == "SGD":
         # Apply gradient clipping with momentum and Nesterov acceleration
-        optimizer = optax.chain(
+        # Create base optimizer with gradient clipping
+        base_optimizer = optax.chain(
             optax.clip_by_global_norm(1.0),
-            optax.sgd(learning_rate=sgd_scheduler, momentum=0.9, nesterov=True),
-            optax.apply_if_finite(10)
+            optax.sgd(learning_rate=sgd_scheduler, momentum=0.9, nesterov=True)
         )
+        # Wrap with apply_if_finite to handle NaN/Inf values
+        optimizer = optax.apply_if_finite(base_optimizer, 10)
         return optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=verbose_set)
 
     elif optimizer_name == "DogLegBFGS":
@@ -172,52 +178,64 @@ def create_optimizer(
         return IndirectTrustRegionBFGS(rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=verbose_set)
 
     elif optimizer_name == "GradientDescent":
-        optimizer = optax.chain(
+        # Create base optimizer with gradient clipping
+        base_optimizer = optax.chain(
             optax.clip_by_global_norm(1.0),
-            optax.sgd(learning_rate=scheduler, momentum=0.0),
-            optax.apply_if_finite(10)
+            optax.sgd(learning_rate=scheduler, momentum=0.0)
         )
+        # Wrap with apply_if_finite to handle NaN/Inf values
+        optimizer = optax.apply_if_finite(base_optimizer, 10)
         return optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=verbose_set)
 
     elif optimizer_name == "RMSProp":
-        optimizer = optax.chain(
+        # Create base optimizer with gradient clipping
+        base_optimizer = optax.chain(
             optax.clip_by_global_norm(1.0),
-            optax.rmsprop(learning_rate=scheduler),
-            optax.apply_if_finite(10)
+            optax.rmsprop(learning_rate=scheduler)
         )
+        # Wrap with apply_if_finite to handle NaN/Inf values
+        optimizer = optax.apply_if_finite(base_optimizer, 10)
         return optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=verbose_set)
 
     elif optimizer_name == "Adagrad":
-        optimizer = optax.chain(
+        # Create base optimizer with gradient clipping
+        base_optimizer = optax.chain(
             optax.clip_by_global_norm(1.0),
-            optax.adagrad(learning_rate=scheduler),
-            optax.apply_if_finite(10)
+            optax.adagrad(learning_rate=scheduler)
         )
+        # Wrap with apply_if_finite to handle NaN/Inf values
+        optimizer = optax.apply_if_finite(base_optimizer, 10)
         return optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=verbose_set)
 
     elif optimizer_name == "Adadelta":
-        optimizer = optax.chain(
+        # Create base optimizer with gradient clipping
+        base_optimizer = optax.chain(
             optax.clip_by_global_norm(1.0),
-            optax.adadelta(learning_rate=scheduler),
-            optax.apply_if_finite(10)
+            optax.adadelta(learning_rate=scheduler)
         )
+        # Wrap with apply_if_finite to handle NaN/Inf values
+        optimizer = optax.apply_if_finite(base_optimizer, 10)
         return optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=verbose_set)
 
     elif optimizer_name == "Adafactor":
-        optimizer = optax.chain(
+        # Create base optimizer with gradient clipping
+        base_optimizer = optax.chain(
             optax.clip_by_global_norm(1.0),
-            optax.adafactor(learning_rate=scheduler),
-            optax.apply_if_finite(10)
+            optax.adafactor(learning_rate=scheduler)
         )
+        # Wrap with apply_if_finite to handle NaN/Inf values
+        optimizer = optax.apply_if_finite(base_optimizer, 10)
         return optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=verbose_set)
 
     elif optimizer_name == "Lion":
         # Lion optimizer (Facebook AI, 2023)
-        optimizer = optax.chain(
+        # Create base optimizer with gradient clipping
+        base_optimizer = optax.chain(
             optax.clip_by_global_norm(1.0),
-            optax.lion(learning_rate=scheduler),
-            optax.apply_if_finite(10)
+            optax.lion(learning_rate=scheduler)
         )
+        # Wrap with apply_if_finite to handle NaN/Inf values
+        optimizer = optax.apply_if_finite(base_optimizer, 10)
         return optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=verbose_set)
 
     else:
