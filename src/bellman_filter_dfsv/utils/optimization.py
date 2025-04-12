@@ -548,7 +548,8 @@ def run_optimization(
                 args=returns,
                 has_aux=True,  # Specify that the objective function returns an auxiliary value (empty tuple in this case)
                 options={},  # Use empty options dictionary
-                max_steps=max_steps
+                max_steps=max_steps,
+                throw=False, # Don't raise errors, check sol.result
             )
             # Create a minimal parameter history with just the final parameters
             param_history = [sol.value]
