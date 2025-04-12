@@ -385,7 +385,15 @@ def run_optimization(
     learning_rate: float = 1e-3,
     rtol: float = 1e-5,
     atol: float = 1e-5,
-    verbose: bool = False
+    verbose: bool = False,
+    # Scheduler parameters
+    scheduler_type: str = "warmup_cosine",
+    max_learning_rate: float = 1e-2,
+    min_learning_rate: float = 1e-6,
+    warmup_steps: int = None,  # Will be set to max_steps*0.1 if None
+    cycle_period: int = 100,  # For cyclic schedulers
+    step_size_factor: float = 0.5,  # For step decay
+    step_interval: int = 100  # For step decay
 ) -> OptimizerResult:
     """Run optimization for a specific filter type and configuration.
 
@@ -426,6 +434,15 @@ def run_optimization(
         verbose: Whether to enable verbose output from the optimizer, showing
             progress at each step. This works with both the direct optimizer and
             the parameter logging implementation.
+        scheduler_type: Type of learning rate scheduler to use ('cosine', 'exponential',
+            'linear', 'warmup_cosine', 'constant', 'cyclic', 'step_decay', 'one_cycle').
+        max_learning_rate: Maximum learning rate for schedulers with peaks.
+        min_learning_rate: Minimum learning rate that schedulers will decay to.
+        warmup_steps: Number of warmup steps for schedulers that support warmup.
+            If None, defaults to 10% of max_steps.
+        cycle_period: Number of steps per cycle for cyclic schedulers.
+        step_size_factor: Factor to reduce learning rate at each step for step decay.
+        step_interval: Number of steps between learning rate reductions for step decay.
 
     Returns:
         OptimizerResult: A namedtuple containing optimization results and metadata,
@@ -480,16 +497,28 @@ def run_optimization(
         true_mu=true_params.mu if (fix_mu and true_params is not None) else None
     )
 
-    # Create optimizer
+    # Set default warmup_steps if None
+    if warmup_steps is None:
+        warmup_steps = int(max_steps * 0.1)
+
+    # Initialize error_message variable
+    error_message = None
+
+    # Create optimizer with scheduler parameters
     optimizer = create_optimizer(
         optimizer_name=optimizer_name,
         learning_rate=learning_rate,
         decay_steps=max_steps,
         rtol=rtol,
         atol=atol,
-        warmup_steps=int(max_steps*0.1),
+        warmup_steps=warmup_steps,
         verbose=verbose,
-        min_learning_rate=1e-5
+        min_learning_rate=min_learning_rate,
+        max_learning_rate=max_learning_rate,
+        scheduler_type=scheduler_type,
+        cycle_period=cycle_period,
+        step_size_factor=step_size_factor,
+        step_interval=step_interval
     )
     #Wrap optimizer with best so far to keep best loss value
     optimizer = optx.BestSoFarMinimiser(optimizer)

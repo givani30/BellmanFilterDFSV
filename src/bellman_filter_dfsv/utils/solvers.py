@@ -20,7 +20,11 @@ def create_learning_rate_scheduler(
     decay_steps: int = 1000,
     min_lr: float = 1e-6,
     warmup_steps: int = 0,
-    scheduler_type: str = "cosine"
+    scheduler_type: str = "cosine",
+    cycle_period: int = 100,  # For cyclic schedulers
+    step_size_factor: float = 0.5,  # For step decay
+    step_interval: int = 100,  # For step decay
+    peak_lr: float = None  # For one-cycle and warmup schedulers
 ) -> Callable:
     """Create a learning rate scheduler.
 
@@ -29,7 +33,12 @@ def create_learning_rate_scheduler(
         decay_steps: Number of steps for learning rate decay.
         min_lr: Minimum learning rate.
         warmup_steps: Number of warmup steps (for schedulers that support warmup).
-        scheduler_type: Type of scheduler ('cosine', 'exponential', 'linear', 'warmup_cosine', 'constant').
+        scheduler_type: Type of scheduler ('cosine', 'exponential', 'linear', 'warmup_cosine',
+                       'constant', 'cyclic', 'step_decay', 'one_cycle').
+        cycle_period: Number of steps per cycle for cyclic schedulers.
+        step_size_factor: Factor to reduce learning rate at each step for step decay.
+        step_interval: Number of steps between learning rate reductions for step decay.
+        peak_lr: Peak learning rate for one-cycle and warmup schedulers. Defaults to 10*init_lr if None.
 
     Returns:
         A learning rate scheduler function.
@@ -37,6 +46,10 @@ def create_learning_rate_scheduler(
     Raises:
         ValueError: If the scheduler type is unknown.
     """
+    # Set default peak_lr if not provided
+    if peak_lr is None:
+        peak_lr = init_lr * 10
+
     if scheduler_type == "cosine":
         return optax.cosine_decay_schedule(
             init_value=init_lr,
@@ -59,7 +72,7 @@ def create_learning_rate_scheduler(
     elif scheduler_type == "warmup_cosine":
         return optax.warmup_cosine_decay_schedule(
             init_value=init_lr,
-            peak_value=init_lr*10,
+            peak_value=peak_lr,
             warmup_steps=warmup_steps,
             decay_steps=decay_steps,
             end_value=min_lr
@@ -67,6 +80,50 @@ def create_learning_rate_scheduler(
     elif scheduler_type == "constant":
         # Return a constant learning rate scheduler
         return lambda count: jnp.ones_like(count, dtype=jnp.float32) * init_lr
+    elif scheduler_type == "cyclic":
+        # Triangular cyclic learning rate scheduler
+        def cyclic_schedule(count):
+            # Convert to float32 for numerical stability
+            count = count.astype(jnp.float32)
+            cycle = jnp.floor(1 + count / (2 * cycle_period))
+            x = jnp.abs(count / cycle_period - 2 * cycle + 1)
+            lr_range = init_lr - min_lr
+            return min_lr + lr_range * jnp.maximum(0, (1 - x))
+        return cyclic_schedule
+    elif scheduler_type == "step_decay":
+        # Step decay learning rate scheduler
+        def step_decay_schedule(count):
+            # Number of steps completed
+            steps = count.astype(jnp.float32)
+            # Number of decay steps
+            decay_steps = jnp.floor(steps / step_interval)
+            # Calculate learning rate
+            lr = init_lr * (step_size_factor ** decay_steps)
+            # Ensure learning rate doesn't go below minimum
+            return jnp.maximum(lr, min_lr)
+        return step_decay_schedule
+    elif scheduler_type == "one_cycle":
+        # One-cycle learning rate scheduler (warmup then cooldown)
+        # First half: linear warmup from init_lr to peak_lr
+        # Second half: cosine annealing from peak_lr to min_lr
+        half_cycle = decay_steps // 2
+        warmup_schedule = optax.linear_schedule(
+            init_value=init_lr,
+            end_value=peak_lr,
+            transition_steps=half_cycle
+        )
+        cooldown_schedule = optax.cosine_decay_schedule(
+            init_value=peak_lr,
+            decay_steps=half_cycle,
+            alpha=min_lr / peak_lr
+        )
+
+        def one_cycle_schedule(count):
+            is_warmup = count < half_cycle
+            warmup_lr = warmup_schedule(count)
+            cooldown_lr = cooldown_schedule(count - half_cycle)
+            return jnp.where(is_warmup, warmup_lr, cooldown_lr)
+        return one_cycle_schedule
     else:
         raise ValueError(f"Unknown scheduler type: {scheduler_type}")
 
@@ -81,6 +138,9 @@ def create_optimizer(
     decay_steps: int = 1000,
     warmup_steps: int = 100,
     scheduler_type: str = "warmup_cosine",
+    cycle_period: int = 100,  # For cyclic schedulers
+    step_size_factor: float = 0.5,  # For step decay
+    step_interval: int = 100,  # For step decay
     verbose: bool = False
 ) -> Union[optx.AbstractMinimiser, optx.OptaxMinimiser]:
     """Create an optimizer based on name.
@@ -94,7 +154,11 @@ def create_optimizer(
         min_learning_rate: Minimum learning rate for schedulers.
         decay_steps: Number of steps for learning rate decay.
         warmup_steps: Number of warmup steps (for schedulers that support warmup).
-        scheduler_type: Type of scheduler ('cosine', 'exponential', 'linear', 'warmup_cosine').
+        scheduler_type: Type of scheduler ('cosine', 'exponential', 'linear', 'warmup_cosine',
+                       'constant', 'cyclic', 'step_decay', 'one_cycle').
+        cycle_period: Number of steps per cycle for cyclic schedulers.
+        step_size_factor: Factor to reduce learning rate at each step for step decay.
+        step_interval: Number of steps between learning rate reductions for step decay.
         verbose: Whether to enable verbose output from the optimizer.
 
     Returns:
@@ -112,16 +176,21 @@ def create_optimizer(
         decay_steps=decay_steps,
         min_lr=min_learning_rate,
         warmup_steps=warmup_steps,
-        scheduler_type=scheduler_type
+        scheduler_type=scheduler_type,
+        cycle_period=cycle_period,
+        step_size_factor=step_size_factor,
+        step_interval=step_interval,
+        peak_lr=max_learning_rate
     )
 
-    # Create SGD scheduler with warmup
+    # Create SGD scheduler with warmup - SGD often needs a different schedule
     sgd_scheduler = create_learning_rate_scheduler(
-        init_lr=max_learning_rate,
+        init_lr=learning_rate,
         decay_steps=decay_steps,
         min_lr=min_learning_rate,
         warmup_steps=warmup_steps,
-        scheduler_type="warmup_cosine"
+        scheduler_type="warmup_cosine",
+        peak_lr=max_learning_rate
     )
 
     # Configure optimizer based on name
