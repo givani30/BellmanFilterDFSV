@@ -488,7 +488,8 @@ def run_optimization(
         rtol=rtol,
         atol=atol,
         warmup_steps=int(max_steps*0.1),
-        verbose=verbose
+        verbose=verbose,
+        min_learning_rate=1e-5
     )
     #Wrap optimizer with best so far to keep best loss value
     optimizer = optx.BestSoFarMinimiser(optimizer)
@@ -611,17 +612,18 @@ def run_optimization(
         # For max_steps_reached, check if the loss is reasonable (not too high)
         if sol.result == optx.RESULTS.max_steps_reached:
             # If we reached max steps but the loss is still very high, it didn't really converge
-            if final_loss > 1000:  # Threshold for "high" loss
                 success = False
-
-        error_message = None
+                error_message = "Max steps reached without convergence"
         steps = sol.stats.get('num_steps', len(param_history) - 1)
 
     except Exception as e:
         # Handle optimization failure
         success = False
         error_message = str(e)
-        final_loss = float('inf')
+        try:
+            final_loss, _ = objective_fn(sol.value, returns)
+        except Exception:
+            final_loss = float('inf')
 
         # Try to use the last parameters from the solver if available
         # Otherwise fall back to initial parameters

@@ -465,10 +465,11 @@ def main():
     initial_params = create_stable_initial_params(N, K)
     # 5. Run optimizations
     results = []
-    test_optimizers=["BFGS", "ArmijoBFGS", "RMSProp", "AdamW", "DampedTrustRegionBFGS"]
+    # Use all available optimizers
     print(f"\nRunning optimizations with max_steps={max_steps}, stability_penalty_weight={stability_penalty_weight}...")
     # Run all available optimizers with both fixed and unfixed mu
-    for optimizer_name in test_optimizers:
+    optimizer_test=["AdamW"]
+    for optimizer_name in optimizer_test:
         for fix_mu in [True, False]:  # Run with both fixed and unfixed mu
             print(f"\n--- Running: Optimizer={optimizer_name} | Transform={'Yes' if use_transformations else 'No'} | Fix_mu={'Yes' if fix_mu else 'No'} ---")
 
@@ -487,10 +488,10 @@ def main():
                     verbose=verbose,
                     log_params=log_params,
                     log_interval=1,  # Log at every step
-                    rtol=1e-6,
-                    atol=1e-6,
+                    rtol=1e-5,
+                    atol=1e-5,
                     fix_mu=fix_mu
-                )
+                )       
 
                 results.append(result)
 

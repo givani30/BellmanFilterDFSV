@@ -1,3 +1,25 @@
+"""Bellman Filter implementation for Dynamic Factor Stochastic Volatility (DFSV) models.
+
+This module provides a JAX-based implementation of the Bellman filter, a
+recursive algorithm for state estimation in dynamic systems. It is
+specifically tailored for Dynamic Factor Stochastic Volatility (DFSV) models,
+which are commonly used in financial econometrics.
+
+Key Features:
+    - JAX-based implementation for automatic differentiation and JIT compilation
+    - Block coordinate descent for efficient state updates
+    - BIF pseudo-likelihood calculation for improved stability
+    - Support for parameter estimation via likelihood maximization
+
+The filter estimates factors (f) and log-volatilities (h) using a block
+coordinate descent approach within the update step. This version uses the
+BIF pseudo-likelihood calculation (Lange et al., 2024) for potentially
+improved stability and parameter estimation.
+
+See Also:
+    - DFSVBellmanInformationFilter: Information form of the Bellman filter
+    - DFSVFilter: Base class for DFSV filters
+"""
 from functools import partial
 from typing import Any, Dict, Tuple, Union, Callable
 
@@ -32,15 +54,38 @@ from .base import DFSVFilter  # Import base class from sibling module
 class DFSVBellmanFilter(DFSVFilter):
     """Bellman Filter for Dynamic Factor Stochastic Volatility (DFSV) models.
 
-    This class implements a Bellman filter for state estimation in DFSV models,
-    using dynamic programming principles. It recursively computes optimal state
-    estimates and covariances. JAX is used for automatic differentiation and
-    JIT compilation to optimize the posterior distribution efficiently.
+    This class implements a Bellman filter for state estimation in DFSV models.
+    It uses dynamic programming to recursively compute optimal state estimates
+    and covariances, leveraging JAX for automatic differentiation and JIT
+    compilation. This version incorporates the BIF pseudo-likelihood
+    calculation (Lange et al., 2024) for improved stability.
 
-    The filter estimates factors (f) and log-volatilities (h) using a block
-    coordinate descent approach within the update step. This version uses the
-    BIF pseudo-likelihood calculation (Lange et al., 2024) for potentially
-    improved stability and parameter estimation.
+    Mathematical Details:
+        State Space Model:
+            y_t = Λf_t + ε_t                            (Observation)
+            f_{t+1} = Φ_f f_t + ν_{t+1}               (Factor Evolution)
+            h_{t+1} = μ + Φ_h(h_t - μ) + η_{t+1}      (Log-Volatility Evolution)
+
+        Filter Structure:
+            1. Prediction Step:
+               α_{t|t-1} = F_t α_{t-1|t-1}
+               P_{t|t-1} = F_t P_{t-1|t-1} F_t' + Q_t
+
+            2. Update Step:
+               α_{t|t} = α_{t|t-1} + K_t v_t
+               P_{t|t} = (I - K_t H_t) P_{t|t-1}
+               where K_t is Kalman gain, v_t is innovation
+
+        BIF Pseudo-Likelihood:
+            L(Θ) = Σ[ℓ(y_t|α_{t|t}) - KL_penalty]
+            where KL_penalty approximates p(α_t|y_{1:t}) || p(α_t|y_{1:t-1})
+
+    Implementation Notes:
+        - Uses JAX for efficient computation and automatic differentiation
+        - Employs block coordinate descent for state updates
+        - Implements FIM eigenvalue regularization for stability
+        - Handles state-dependent process noise in predictions
+        - Uses Woodbury identity for O(NK²) matrix operations
 
     Attributes:
         N (int): Number of observed time series.
