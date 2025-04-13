@@ -1,136 +1,178 @@
 #!/usr/bin/env python
-"""
-Run a single optimization replicate for the batch optimization study.
+"""Run a single optimization replicate with configurations loaded from GCS.
 
-This script parses command-line arguments for a single replicate run,
-to be used in the batch optimization study framework.
-
-Phase 1, Steps 1 & 2: Implements argument parsing and imports only.
+This script reads configuration from environment variables and GCS, then executes
+a single optimization replicate for the batch optimization study framework.
 """
 
 import os
 import sys
 import time
-import argparse
-import cloudpickle
 import json
+import logging
+from typing import Dict, Any, List
+
+from google.cloud import storage
+from google.api_core import retry
+import cloudpickle
 import gcsfs
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-# Project-specific imports (for future extensibility)
+# Project-specific imports
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.utils.optimization import run_optimization, FilterType
+from bellman_filter_dfsv.utils.optimization import run_optimization, FilterType, get_objective_function, create_filter
 from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformationFilter
 from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
-from bellman_filter_dfsv.utils.solvers import get_available_optimizers
-# Refactored helpers
 from bellman_filter_dfsv.models.simulation_helpers import create_stable_dfsv_params
 from bellman_filter_dfsv.utils.optimization_helpers import create_stable_initial_params
 from bellman_filter_dfsv.utils.analysis import calculate_accuracy
 from bellman_filter_dfsv.models.simulation import simulate_DFSV
 
-def parse_args():
-    """Parse command-line arguments for a single optimization replicate."""
-    parser = argparse.ArgumentParser(
-        description="Run a single optimization replicate for the batch optimization study."
-    )
-    available_optimizers=get_available_optimizers()
-    parser.add_argument('--N', type=int, required=True, help='Number of assets.')
-    parser.add_argument('--K', type=int, required=True, help='Number of factors.')
-    parser.add_argument('--T', type=int, required=True, help='Time series length.')
-    parser.add_argument('--filter_type', type=str, required=True, choices=['BIF','BF', 'PF'],
-                        help="Filter type to use ('BIF' or 'PF').")
-    parser.add_argument('--optimizer_name', type=str, required=True,
-                        choices=available_optimizers.keys(),
-                        help=f"Optimizer to use ({', '.join(available_optimizers.keys())}).")
-    parser.add_argument('--num_particles', type=int,
-                        help="Number of particles (required if filter_type is 'PF').")
-    parser.add_argument('--stability_penalty', type=float, default=1000.0,
-                        help="Stability penalty weight (default: 1000.0).")
-    parser.add_argument('--max_steps', type=int, default=1000,
-                        help="Maximum number of optimization steps (default: 1000).")
-    parser.add_argument('--replicate_seed', type=int, required=True,
-                        help="Random seed for this replicate.")
-    parser.add_argument('--fix_mu', action='store_true',
-                        help="Fix the long-run mean parameter mu during optimization.")
-    parser.add_argument('--output_dir', type=str, required=True,
-                        help="Directory to save outputs for this replicate.")
-    parser.add_argument('--save_format', type=str, default='pkl', choices=['pkl', 'npz'],
-                        help="Format to save results ('pkl' or 'npz').")
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-    args = parser.parse_args()
+def load_config_from_gcs(config_uri: str, task_index: int) -> Dict[str, Any]:
+    """Load configuration from GCS and select task-specific config.
 
-    # Conditional requirement: --num_particles is required if filter_type == 'PF'
-    if args.filter_type == 'PF' and args.num_particles is None:
-        parser.error("--num_particles is required when --filter_type is 'PF'.")
+    Args:
+        config_uri: GCS URI (gs://bucket-name/path/to/config.json)
+        task_index: Index of the configuration to select
 
-    return args
+    Returns:
+        Dictionary containing the selected configuration
 
+    Raises:
+        ValueError: If URI is invalid or task_index is out of range
+        Exception: For GCS access or JSON parsing errors
+    """
+    logger.info(f"Loading configuration from {config_uri} for task index {task_index}")
+    try:
+        # Check if it's a GCS URI or a local path
+        if config_uri.startswith('gs://'):
+            # GCS Path Logic
+            bucket_name = config_uri.split('/')[2]
+            blob_path = '/'.join(config_uri.split('/')[3:])
 
+            # Initialize GCS client and get blob
+            client = storage.Client()
+            bucket = client.bucket(bucket_name)
+            blob = bucket.blob(blob_path)
+
+            # Download and parse JSON with retry
+            @retry.Retry(predicate=retry.if_transient_error)
+            def download_and_parse():
+                logger.info(f"Attempting to download GCS blob: {blob_path}")
+                json_str = blob.download_as_string(timeout=60) # Add timeout
+                logger.info("GCS Blob downloaded successfully.")
+                return json.loads(json_str)
+
+            configs = download_and_parse()
+            logger.info("GCS Configuration JSON parsed successfully.")
+        else:
+            # Local Path Logic
+            logger.info(f"Assuming local path: {config_uri}")
+            if not os.path.exists(config_uri):
+                 raise FileNotFoundError(f"Local configuration file not found: {config_uri}")
+            with open(config_uri, 'r') as f:
+                configs = json.load(f)
+            logger.info("Local configuration JSON parsed successfully.")
+
+        # Validate and select configuration (common logic)
+        if not isinstance(configs, list):
+            raise ValueError("Config file must contain a list of configurations")
+        if task_index >= len(configs):
+            raise ValueError(f"Task index {task_index} exceeds config list length {len(configs)}")
+
+        selected_config = configs[task_index]
+        logger.info(f"Selected configuration for task {task_index}: {selected_config}")
+        return selected_config
+
+    except Exception as e:
+        logger.error(f"Error loading configuration: {str(e)}", exc_info=True)
+        raise
+
+def determine_optimizer(filter_type: str) -> str:
+    """Determine the appropriate optimizer based on filter type.
+
+    Args:
+        filter_type: Either 'PF' or 'BIF'
+
+    Returns:
+        Optimizer name string
+
+    Raises:
+        ValueError: If filter_type is not 'PF' or 'BIF'
+    """
+    if filter_type == 'PF':
+        return 'ArmijoBFGS'
+    elif filter_type == 'BIF':
+        return 'DampedTrustRegionBFGS'
+    else:
+        raise ValueError(f"Unsupported filter_type for optimizer determination: {filter_type}")
 
 def _calculate_param_errors(true_params, est_params):
-    """Calculate RMSE for each parameter field between true and estimated params."""
+    """Calculate RMSE and Mean Error for each parameter field."""
     def safe_rmse(a, b):
         a = np.asarray(a)
         b = np.asarray(b)
-        if a.shape != b.shape:
-            return float('nan')
+        if a.shape != b.shape: return float('nan')
         return float(np.sqrt(np.nanmean((a - b) ** 2)))
-    
+
     def safe_mean_error(a, b):
         a = np.asarray(a)
         b = np.asarray(b)
-        if a.shape != b.shape:
-            return float('nan')
-        return float(np.nanmean(b - a))  # estimated - true
-        
+        if a.shape != b.shape: return float('nan')
+        return float(np.nanmean(b - a)) # estimated - true
+
     errors = {}
-    for field in ['lambda_r', 'Phi_f', 'Phi_h', 'sigma2', 'Q_h']:
+    for field in DFSVParamsDataclass.__dataclass_fields__:
+        if field == 'mu' and not hasattr(est_params, 'mu'): # Handle fixed mu case
+            continue
         try:
             true_val = getattr(true_params, field)
             est_val = getattr(est_params, field)
             errors[field + '_rmse'] = safe_rmse(true_val, est_val)
             errors[field + '_mean_error'] = safe_mean_error(true_val, est_val)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Could not calculate error for field {field}: {e}")
             errors[field + '_rmse'] = float('nan')
             errors[field + '_mean_error'] = float('nan')
     return errors
 
-def _get_loss_at_true_params(true_params, returns, args):
+def _get_loss_at_true_params(true_params, returns, config):
     """Compute the loss at the true parameters using the same objective as optimization."""
-    from bellman_filter_dfsv.utils.optimization import get_objective_function, FilterType, create_filter
     try:
-        filter_type_enum = FilterType[args.filter_type]
+        filter_type_enum = FilterType[config['filter_type']]
         filter_instance = create_filter(
-            filter_type_enum, args.N, args.K,
-            args.num_particles if args.filter_type == "PF" else 5000
+            filter_type_enum, config['N'], config['K'],
+            config.get('num_particles') # Use .get for optional num_particles
         )
-        # Use the same settings as optimization
         objective_fn = get_objective_function(
             filter_type=filter_type_enum,
             filter_instance=filter_instance,
-            stability_penalty_weight=args.stability_penalty,
+            stability_penalty_weight=config.get('stability_penalty', 0.0), # Use default if missing
             priors=None,
             is_transformed=False,
-            fix_mu=args.fix_mu,
-            true_mu=true_params.mu if args.fix_mu else None
+            fix_mu=config.get('fix_mu', False),
+            true_mu=true_params.mu if config.get('fix_mu', False) else None
         )
         loss, _ = objective_fn(true_params, returns)
         return float(loss)
     except Exception as e:
-        print(f"Error calculating loss at true parameters: {e}")
+        logger.error(f"Error calculating loss at true parameters: {e}", exc_info=True)
         return float('nan')
 
 def _serialize_for_json(obj):
     """Convert JAX/NumPy types to Python types for JSON serialization."""
     if isinstance(obj, (jnp.ndarray, np.ndarray)):
         return obj.tolist()
-    if isinstance(obj, (np.float32, np.float64, float)):
+    if isinstance(obj, (np.float32, np.float64, jnp.float32, jnp.float64, float)):
         return float(obj)
-    if isinstance(obj, (np.int32, np.int64, np.integer, int)):
+    if isinstance(obj, (np.int32, np.int64, np.integer, jnp.int32, jnp.int64, int)):
         return int(obj)
     if obj is None or isinstance(obj, (str, bool)):
         return obj
@@ -138,207 +180,247 @@ def _serialize_for_json(obj):
         return {k: _serialize_for_json(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return [_serialize_for_json(x) for x in obj]
-    return str(obj)
+    # Handle DFSVParamsDataclass specifically if needed, or rely on default str()
+    if isinstance(obj, DFSVParamsDataclass):
+         # Convert dataclass to dict first
+         from dataclasses import asdict
+         return _serialize_for_json(asdict(obj))
+    return str(obj) # Fallback
 
 def save_metrics_json(metrics_dict, filepath, fs=None):
     """Save metrics dictionary to JSON, handling GCS and serialization."""
-    data = _serialize_for_json(metrics_dict)
-    if fs is not None:
-        with fs.open(filepath, "w") as f:
-            json.dump(data, f, indent=2)
-    else:
-        with open(filepath, "w") as f:
-            json.dump(data, f, indent=2)
+    logger.info(f"Saving metrics to JSON: {filepath}")
+    try:
+        data = _serialize_for_json(metrics_dict)
+        if fs is not None:
+            with fs.open(filepath, "w") as f:
+                json.dump(data, f, indent=2)
+        else:
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            with open(filepath, "w") as f:
+                json.dump(data, f, indent=2)
+        logger.info("Metrics saved successfully.")
+    except Exception as e:
+        logger.error(f"Error saving metrics JSON: {e}", exc_info=True)
+        raise
 
 def save_params_pkl(params_dict, filepath, fs=None):
     """Save parameters dictionary to PKL using cloudpickle, handling GCS."""
-    if fs is not None:
-        with fs.open(filepath, "wb") as f:
-            cloudpickle.dump(params_dict, f)
-    else:
-        with open(filepath, "wb") as f:
-            cloudpickle.dump(params_dict, f)
+    logger.info(f"Saving parameters to PKL: {filepath}")
+    try:
+        if fs is not None:
+            with fs.open(filepath, "wb") as f:
+                cloudpickle.dump(params_dict, f)
+        else:
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            with open(filepath, "wb") as f:
+                cloudpickle.dump(params_dict, f)
+        logger.info("Parameters saved successfully.")
+    except Exception as e:
+        logger.error(f"Error saving parameters PKL: {e}", exc_info=True)
+        raise
 
 def main():
     """Main function for single replicate optimization script."""
-    args = parse_args()
+    start_time = time.time()
+    logger.info("Starting optimization replicate script.")
 
-    # Set JAX precision
+    # --- Configuration Loading ---
+    try:
+        task_index_str = os.environ.get('BATCH_TASK_INDEX')
+        config_gcs_uri = os.environ.get('CONFIG_GCS_URI')
+        base_output_dir_uri = os.environ.get('BASE_OUTPUT_DIR_URI')
+
+        if not all([task_index_str, config_gcs_uri, base_output_dir_uri]):
+            missing = [v for v, k in [('BATCH_TASK_INDEX', task_index_str),
+                                      ('CONFIG_GCS_URI', config_gcs_uri),
+                                      ('BASE_OUTPUT_DIR_URI', base_output_dir_uri)] if not k]
+            raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+
+        task_index = int(task_index_str)
+        logger.info(f"Environment variables loaded: TASK_INDEX={task_index}, CONFIG_URI={config_gcs_uri}, OUTPUT_URI={base_output_dir_uri}")
+
+        # Load the specific configuration for this task
+        config = load_config_from_gcs(config_gcs_uri, task_index)
+
+        # Determine optimizer and add to config
+        config['optimizer_name'] = determine_optimizer(config['filter_type'])
+        logger.info(f"Determined optimizer: {config['optimizer_name']} for filter type {config['filter_type']}")
+
+        # Construct unique output directory URI
+        output_dir_suffix = f"task_{task_index:05d}_{config['filter_type']}_N{config['N']}_K{config['K']}_seed{config['replicate_seed']}"
+        config['output_dir'] = os.path.join(base_output_dir_uri, output_dir_suffix) # Use os.path.join for GCS paths too
+        logger.info(f"Constructed output directory: {config['output_dir']}")
+
+    except Exception as e:
+        logger.error(f"Configuration failed: {e}", exc_info=True)
+        sys.exit(1) # Exit if configuration fails
+
+    # --- Setup ---
     jax.config.update("jax_enable_x64", True)
+    logger.info("JAX configured for x64 precision.")
 
-    # Print configuration
-    print(f"Running optimization for N={args.N}, K={args.K}, T={args.T}, filter_type={args.filter_type}, "
-          f"optimizer={args.optimizer_name}, num_particles={args.num_particles}, "
-          f"stability_penalty={args.stability_penalty}, max_steps={args.max_steps}, "
-          f"replicate_seed={args.replicate_seed}, fix_mu={args.fix_mu}")
+    # Print final configuration being used
+    logger.info(f"Running with configuration: {json.dumps(config, indent=2)}")
 
     # Set global random seeds for reproducibility
-    np.random.seed(args.replicate_seed)
-    # JAX PRNG is handled in create_stable_dfsv_params, but if needed, could be passed as argument in future refactor
+    np.random.seed(config['replicate_seed'])
+    # JAX PRNG key generation will be handled within functions needing randomness
 
-    # Generate true parameters
-    true_params = create_stable_dfsv_params(N=args.N, K=args.K)
-
-    # Generate simulation data (use a different seed for data)
-    returns, true_factors, true_log_vols = simulate_DFSV(
-        true_params, T=args.T, seed=args.replicate_seed + 1
-    )
-    # Convert to jax array for consistency
-    returns = jnp.asarray(returns)
-
-    # Determine if mu should be fixed
-    true_params_for_opt = true_params if args.fix_mu else None
-
-    # Map filter_type string to FilterType enum
-    filter_type_enum = FilterType[args.filter_type]
-
-    # Only pass num_particles if filter_type is PF, else None
-    num_particles = args.num_particles if args.filter_type == "PF" else None
-
-    # Create initial parameters for optimization
-    initial_params_for_opt = create_stable_initial_params(N=args.N, K=args.K)
-
-    # Run optimization
-    result = None
-    start_opt_call_time = time.time()
-    optimization_error_msg = None # Initialize error message
+    # --- Data Generation ---
     try:
-        result = run_optimization(
-            filter_type=filter_type_enum,
-            returns=returns,
-            initial_params=initial_params_for_opt,
-            true_params=true_params_for_opt,
-            fix_mu=args.fix_mu,
-            optimizer_name=args.optimizer_name,
-            priors=None,
-            stability_penalty_weight=args.stability_penalty,
-            max_steps=args.max_steps,
-            num_particles=num_particles,
-            verbose=True
+        logger.info("Generating true parameters...")
+        true_params = create_stable_dfsv_params(N=config['N'], K=config['K'])
+        logger.info("Generating simulation data...")
+        returns, true_factors, true_log_vols = simulate_DFSV(
+            true_params, T=config['T'], seed=config['replicate_seed'] + 1 # Use different seed for data
         )
+        returns = jnp.asarray(returns) # Convert to JAX array
+        logger.info(f"Simulation data generated (T={config['T']}).")
     except Exception as e:
-        print(f"Error during optimization: {e}")
+        logger.error(f"Data generation failed: {e}", exc_info=True)
+        sys.exit(1)
+
+    # --- Optimization ---
+    try:
+        logger.info("Creating initial parameters for optimization...")
+        initial_params_for_opt = create_stable_initial_params(N=config['N'], K=config['K'])
+
+        # Determine if mu should be fixed
+        fix_mu = config.get('fix_mu', False)
+        true_params_for_opt = true_params if fix_mu else None
+
+        filter_type_enum = FilterType[config['filter_type']]
+        num_particles = config.get('num_particles') if config['filter_type'] == "PF" else None
+
+        logger.info(f"Starting optimization with {config['optimizer_name']}...")
         result = None
-        optimization_error_msg = str(e) # Capture the error message
-    finally:
-        end_opt_call_time = time.time()
-        # Note: run_optimization_call_duration_s is calculated here but result.time_taken should be preferred for opt time.
-        run_optimization_call_duration_s = end_opt_call_time - start_opt_call_time
-
-    # Initialize accuracy metrics to NaN
-    factor_rmse = float('nan')
-    factor_corr = float('nan')
-    vol_rmse = float('nan')
-    vol_corr = float('nan')
-    param_errors = {} # Initialize param_errors before the try block
-
-    # Calculate accuracies if we have valid parameters, regardless of formal convergence
-    if result is not None and result.final_params is not None:
-        print("Starting state estimation accuracy calculation...")
+        start_opt_call_time = time.time()
+        optimization_error_msg = None
         try:
-            # Create appropriate filter instance
-            if args.filter_type == "BIF":
-                filter_instance = DFSVBellmanInformationFilter(N=args.N, K=args.K)
-            else:  # PF
-                filter_instance = DFSVParticleFilter(
-                    N=args.N, K=args.K,
-                    num_particles=args.num_particles,
-                    seed=args.replicate_seed + 2  # Different seed than simulation
-                )
+            result = run_optimization(
+                filter_type=filter_type_enum,
+                returns=returns,
+                initial_params=initial_params_for_opt,
+                true_params=true_params_for_opt, # Pass true params only if fix_mu is True
+                fix_mu=fix_mu,
+                optimizer_name=config['optimizer_name'],
+                priors=None, # Add priors from config if needed later
+                stability_penalty_weight=config.get('stability_penalty', 0.0),
+                max_steps=config.get('max_steps', 1000),
+                num_particles=num_particles,
+                verbose=True # Or control via config
+            )
+        except Exception as e:
+            logger.error(f"Error during optimization call: {e}", exc_info=True)
+            result = None
+            optimization_error_msg = str(e)
+        finally:
+            end_opt_call_time = time.time()
+            run_optimization_call_duration_s = end_opt_call_time - start_opt_call_time
+            logger.info(f"run_optimization call finished in {run_optimization_call_duration_s:.2f} seconds.")
 
-            # Run filter with estimated parameters
+        if result:
+            logger.info(f"Optimization finished. Success: {result.success}, Steps: {result.steps}, Final Loss: {result.final_loss:.4f}, Time: {result.time_taken:.2f}s")
+            if not result.success:
+                 logger.warning(f"Optimization did not converge successfully. Result code: {result.result_code}, Message: {result.error_message}")
+        else:
+            logger.error("Optimization failed to produce a result object.")
+
+    except Exception as e:
+        logger.error(f"Optimization setup failed: {e}", exc_info=True)
+        sys.exit(1)
+
+    # --- Analysis & Results ---
+    factor_rmse, factor_corr = float('nan'), float('nan')
+    vol_rmse, vol_corr = float('nan'), float('nan')
+    param_errors = {}
+    loss_at_true = float('nan')
+
+    if result is not None and result.final_params is not None:
+        logger.info("Calculating state estimation accuracy...")
+        try:
+            filter_instance = create_filter(
+                filter_type_enum, config['N'], config['K'], num_particles
+            )
             filtered_states, _, _ = filter_instance.filter(observations=returns, params=result.final_params)
+            filtered_factors = filtered_states[:, :config['K']]
+            filtered_log_vols = filtered_states[:, config['K']:]
 
-            # Get filtered states
-            filtered_factors = filtered_states[:, :args.K]
-            filtered_log_vols = filtered_states[:, args.K:]
-
-            # Calculate accuracies
             factor_rmse, factor_corr = calculate_accuracy(true_factors, filtered_factors)
             vol_rmse, vol_corr = calculate_accuracy(true_log_vols, filtered_log_vols)
-            print(f"State estimation accuracy metrics calculated successfully:")
-            # Print mean values using np.nanmean
-            print(f"Factor Mean RMSE: {np.nanmean(factor_rmse):.4f}, Mean Correlation: {np.nanmean(factor_corr):.4f}")
-            print(f"Log-Vol Mean RMSE: {np.nanmean(vol_rmse):.4f}, Mean Correlation: {np.nanmean(vol_corr):.4f}")
+            logger.info(f"State estimation accuracy: Factor RMSE={np.nanmean(factor_rmse):.4f}, Corr={np.nanmean(factor_corr):.4f}; "
+                        f"Vol RMSE={np.nanmean(vol_rmse):.4f}, Corr={np.nanmean(vol_corr):.4f}")
 
-            # Calculate parameter estimation errors if optimization was successful
+            logger.info("Calculating parameter estimation errors...")
             param_errors = _calculate_param_errors(true_params, result.final_params)
-            print("Parameter estimation errors calculated successfully:")
-            for param, error in param_errors.items():
-                 # Revert to float() as _calculate_param_errors returns scalars
-                print(f"{param}: {float(error):.4f}")
+            logger.info("Parameter errors calculated.")
 
-            # Calculate loss at true parameters
-            loss_at_true = _get_loss_at_true_params(true_params, returns, args)
-            # Use .item() here too, just in case _get_loss_at_true_params returns an array
-            print(f"Loss at true parameters: {loss_at_true:.4f}")
-
+            logger.info("Calculating loss at true parameters...")
+            loss_at_true = _get_loss_at_true_params(true_params, returns, config)
+            logger.info(f"Loss at true parameters: {loss_at_true:.4f}")
 
         except Exception as e:
-            print(f"Error during accuracy calculation: {e}")
-            # Metrics remain as NaN due to initialization above
-    
-    
-    # Prepare and Save Results
-    print("\nPreparing results for saving...")
-    
-    # Initialize filesystem
-    fs = gcsfs.GCSFileSystem() if args.output_dir.startswith("gs://") else None
-    if not fs and not os.path.exists(args.output_dir):
-        os.makedirs(args.output_dir)
-    
-    # Construct base filename from config details
-    base_filename = f"replicate_{args.N}N_{args.K}K_{args.T}T_{args.filter_type}_{args.optimizer_name}"
-    base_filename += f"_P{args.num_particles}" if args.num_particles else ""
-    base_filename += f"_fixmu" if args.fix_mu else ""
-    base_filename += f"_seed{args.replicate_seed}"
-    
-    # Assemble metrics dictionary
+            logger.error(f"Error during post-optimization analysis: {e}", exc_info=True)
+    else:
+        logger.warning("Skipping post-optimization analysis as final parameters are not available.")
+
+    # --- Saving Results ---
+    logger.info("Preparing results for saving...")
+    fs = gcsfs.GCSFileSystem() if config['output_dir'].startswith("gs://") else None
+
+    # Use the constructed output_dir from config
+    base_filename = f"replicate_results" # Simpler base name, details are in the path/metrics
+
     metrics_dict = {
-        "config": vars(args),
+        "config": config, # Save the loaded and augmented config
         "results": {
             "success": result.success if result else False,
-            "final_loss": float(result.final_loss) if result else float('inf'), # Use result.final_loss directly
-            "steps": result.steps if result else -1, # Use -1 if result is None
-            "optimization_time_s": result.time_taken if result else -1.0, # Use time_taken from result object
-            "error_message": result.error_message if result and result.error_message else optimization_error_msg, # Use captured error if result is None
-            "result_code": str(result.result_code) if result and result.result_code else None, # Convert enum/object to string
-            "loss_at_true_params": loss_at_true if 'loss_at_true' in locals() else float('nan') # Keep this field
+            "final_loss": float(result.final_loss) if result and result.final_loss is not None else float('inf'),
+            "steps": result.steps if result else -1,
+            "optimization_time_s": result.time_taken if result else -1.0,
+            "error_message": result.error_message if result and result.error_message else optimization_error_msg,
+            "result_code": str(result.result_code) if result and result.result_code else None,
+            "loss_at_true_params": loss_at_true
         },
         "accuracy": {
             "state_estimation": {
-                "factor_rmse": factor_rmse,
-                "factor_correlation": factor_corr,
-                "volatility_rmse": vol_rmse,
-                "volatility_correlation": vol_corr
+                # Save mean values directly for easier aggregation later
+                "factor_rmse_mean": float(np.nanmean(factor_rmse)),
+                "factor_correlation_mean": float(np.nanmean(factor_corr)),
+                "volatility_rmse_mean": float(np.nanmean(vol_rmse)),
+                "volatility_correlation_mean": float(np.nanmean(vol_corr))
             },
-            "parameter_estimation": param_errors if 'param_errors' in locals() else {}
+            "parameter_estimation": param_errors # Already calculated
+        },
+        "timing": {
+             "run_optimization_call_duration_s": run_optimization_call_duration_s if 'run_optimization_call_duration_s' in locals() else -1.0,
+             "total_script_duration_s": time.time() - start_time
         }
     }
-    
-    # Assemble parameters dictionary
+
     params_to_save = {
         'true_params': true_params,
         'estimated_params': result.final_params if result and result.final_params is not None else None,
+        'initial_params': initial_params_for_opt,
         'optimization_status': {
             'success': result.success if result else False,
-            'result_code': str(result.result_code) if result else "FAILED"
+            'result_code': str(result.result_code) if result else "OPTIMIZATION_FAILED_OR_NOT_RUN"
         }
     }
-    
-    # Construct full filepaths
-    metrics_filepath = os.path.join(args.output_dir, f"{base_filename}_metrics.json")
-    params_filepath = os.path.join(args.output_dir, f"{base_filename}_params.pkl")
-    
-    # Save results
+
+    metrics_filepath = os.path.join(config['output_dir'], f"{base_filename}_metrics.json")
+    params_filepath = os.path.join(config['output_dir'], f"{base_filename}_params.pkl")
+
     try:
         save_metrics_json(metrics_dict, metrics_filepath, fs)
         save_params_pkl(params_to_save, params_filepath, fs)
-        print(f"Results saved successfully:\n  {metrics_filepath}\n  {params_filepath}")
     except Exception as e:
-        print(f"Error saving results: {e}")
-    
-    print("\nReplicate finished.")
+        # Error already logged in save functions, just note failure here
+        logger.error("Failed to save one or more result files.")
+
+    total_duration = time.time() - start_time
+    logger.info(f"Replicate finished in {total_duration:.2f} seconds.")
 
 if __name__ == "__main__":
     main()
