@@ -33,7 +33,7 @@ import jax.scipy.linalg  # Added import
 # import jaxopt # Removed unused import
 import numpy as np
 import optimistix as optx
-from jax import jit
+# Removed jit import in favor of eqx.filter_jit
 
 # Update imports to use models.dfsv instead
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
@@ -232,23 +232,23 @@ class DFSVBellmanFilter(DFSVFilter):
     def _setup_jax_functions(self):
         """Sets up and JIT-compiles the core JAX functions used by the filter."""
         # JIT the imported implementation functions
-        self.build_covariance_jit = jit(build_covariance_impl)
-        self.fisher_information_jit = jit(
+        self.build_covariance_jit = eqx.filter_jit(build_covariance_impl)
+        self.fisher_information_jit = eqx.filter_jit(
             partial(observed_fim_impl, K=self.K)
         )
-        self.log_posterior_jit = jit(
+        self.log_posterior_jit = eqx.filter_jit(
             partial(log_posterior_impl, K=self.K, build_covariance_fn=self.build_covariance_jit)
         )
         # Use BIF penalty function (imported from _bellman_impl)
-        self.kl_penalty_jit = jit(bif_likelihood_penalty_impl)
+        self.kl_penalty_jit = eqx.filter_jit(bif_likelihood_penalty_impl)
 
         # Instantiate the BFGS solver for the h update step once
         self.h_solver = optx.BFGS(rtol=1e-4, atol=1e-6)
 
         # Create JIT versions of core steps for scan
         # These assume inputs are correctly typed/shaped JAX arrays
-        self.predict_jax = jit(self.__predict_jax)
-        self.update_jax = jit(self.__update_jax)
+        self.predict_jax = eqx.filter_jit(self.__predict_jax)
+        self.update_jax = eqx.filter_jit(self.__update_jax)
 
         # JIT the imported _block_coordinate_update_impl
         # Pass static K and JITted dependencies via partial application

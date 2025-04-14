@@ -16,7 +16,7 @@ Mathematical Framework:
     y_t = Λf_t + ε_t                            (Observation)
     f_{t+1} = Φ_f f_t + ν_{t+1}               (Factor Evolution)
     h_{t+1} = μ + Φ_h(h_t - μ) + η_{t+1}      (Log-Volatility Evolution)
-    
+
     where:
     - f_t: K-dimensional factor vector
     - h_t: K-dimensional log-volatility vector
@@ -40,6 +40,7 @@ from typing import Callable
 import jax
 import jax.numpy as jnp
 import jax.scipy.linalg
+import equinox as eqx
 
 # Type hint for build_covariance function signature
 BuildCovarianceFn = Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], jnp.ndarray]
@@ -64,7 +65,7 @@ def build_covariance_impl(
         2. Components:
            - Σ_f(h_t) = diag(exp(h_t)): State-dependent factor covariance
            - Σ_ε = diag(σ²): Idiosyncratic error covariance
-           
+
         3. Implementation includes jitter (1e-6) for numerical stability
            and enforces matrix symmetry.
 
@@ -250,6 +251,115 @@ def observed_fim_impl(
 
     return J
 
+def expected_fim_impl(
+    lambda_r: jnp.ndarray,
+    sigma2: jnp.ndarray,
+    alpha: jnp.ndarray,
+    observation: jnp.ndarray,
+    K: int, # Pass K explicitly
+) -> jnp.ndarray:
+    """Calculates the Expected Fisher Information Matrix (Expectation of the Negative Hessian).
+
+    Computes J = E[-∇²ℓ(y_t|α_t)] where ℓ(y_t|α_t) is the log-likelihood of observation y_t
+    given state α_t = [f_t', h_t']'. Implements an efficient calculation using the
+    Woodbury matrix identity to handle the observation covariance A_t = ΛΣ_f(h_t)Λ' + Σ_ε.
+
+    Mathematical Derivation:
+        1. Log-likelihood: ℓ(y_t|α_t) = -1/2[log|A_t| + r_t'A_t^{-1}r_t]
+           where r_t = y_t - Λf_t, A_t = ΛΣ_f(h_t)Λ' + Σ_ε
+
+        2. Fisher Information Matrix:
+           J = E[-∇²ℓ(y_t|α_t)] = E[-d^2ℓ/dαdα']
+
+    Args:
+        lambda_r: Factor loading matrix Λ (N, K).
+        sigma2: Idiosyncratic variances diag(Σ_ε) (N,).
+        alpha: State vector α_t = [f_t', h_t']' (state_dim,).
+        observation: Observation vector y_t (N,). (not used in EFIM)
+        K: Number of factors.
+        build_covariance_fn: Function to build the observation covariance matrix
+            Sigma_t = Lambda Sigma_f Lambda^T + Sigma_e. (Note: This dependency
+            might be removable if calculation is done via Woodbury as below).
+
+    Returns:
+        The Expected Fisher Information matrix J (state_dim, state_dim), which is
+        the expectation of the negative Hessian of the log-likelihood.
+    """
+    N = lambda_r.shape[0]
+    state_dim = 2 * K
+
+    # (Checks for alpha, h, exp_h remain the same)
+    alpha = eqx.error_if(alpha, jnp.any(jnp.isnan(alpha) | jnp.isinf(alpha)), "NaN/Inf input alpha")
+    alpha = alpha.flatten()
+    h = alpha[K:]
+    h = eqx.error_if(h, jnp.any(jnp.isnan(h) | jnp.isinf(h)), "NaN/Inf h")
+    exp_h = jnp.exp(h)
+    exp_h = eqx.error_if(exp_h, jnp.any(jnp.isnan(exp_h) | jnp.isinf(exp_h)), "NaN/Inf exp_h")
+
+    # --- Calculate components needed for I_ff ---
+    sigma2_1d = sigma2.flatten() if sigma2.ndim > 1 else sigma2
+    jitter_inv = 1e-8
+    Dinv_diag = 1.0 / (sigma2_1d + jitter_inv)
+    Cinv_diag = 1.0 / (exp_h + jitter_inv)
+    Dinv_diag = eqx.error_if(Dinv_diag, jnp.any(jnp.isnan(Dinv_diag) | jnp.isinf(Dinv_diag)), "NaN/Inf Dinv_diag")
+    Cinv_diag = eqx.error_if(Cinv_diag, jnp.any(jnp.isnan(Cinv_diag) | jnp.isinf(Cinv_diag)), "NaN/Inf Cinv_diag")
+
+    Dinv_lambda_r = lambda_r * Dinv_diag[:, None]
+    M = jnp.diag(Cinv_diag) + lambda_r.T @ Dinv_lambda_r
+    M = eqx.error_if(M, jnp.any(jnp.isnan(M) | jnp.isinf(M)), "NaN/Inf M")
+
+    internal_jitter_M = 1e-6
+    M_jittered = M + internal_jitter_M * jnp.eye(K)
+
+    # --- JAX-compatible Cholesky with pinv fallback ---
+    L_M = jax.scipy.linalg.cholesky(M_jittered, lower=True)
+    cholesky_failed = jnp.any(jnp.isnan(L_M)) # Check if Cholesky produced NaNs
+
+    V = M - jnp.diag(Cinv_diag) # V = Lambda^T D^-1 Lambda
+
+    # Define branches for jax.lax.cond - they now unpack the combined operand
+    def solve_with_pinv(operand_tuple):
+        M_j, L_M_ignore, V_op = operand_tuple # Unpack all operands
+        M_pinv = jnp.linalg.pinv(M_j)
+        Z_op = M_pinv @ V_op
+        return Z_op
+
+    def solve_with_cho(operand_tuple):
+        M_j_ignore, L_M_op, V_op = operand_tuple # Unpack all operands
+        Z_op = jax.scipy.linalg.cho_solve((L_M_op, True), V_op)
+        return Z_op
+
+    # Pass ALL potential operands needed by either branch
+    operands = (M_jittered, L_M, V)
+
+    # Conditionally compute Z = M_inv @ V
+    Z = jax.lax.cond(
+        cholesky_failed,
+        solve_with_pinv,    # function for True (failed) case
+        solve_with_cho,     # function for False (succeeded) case
+        operands            # The combined tuple of operands
+    )
+    # --- End JAX-compatible fallback ---
+
+    I_ff = V - V @ Z # I_ff = Lambda^T A_t^{-1} Lambda
+    # Check I_ff
+    I_ff = eqx.error_if(I_ff, jnp.any(jnp.isnan(I_ff) | jnp.isinf(I_ff)), "NaN/Inf in I_ff")
+
+    # --- Calculate I_hh ---
+    exp_h_outer_sum = jnp.exp(h[:, None] + h[None, :])
+    I_ff_squared = I_ff**2
+    I_hh = 0.5 * exp_h_outer_sum * I_ff_squared
+    # Check I_hh
+    I_hh = eqx.error_if(I_hh, jnp.any(jnp.isnan(I_hh) | jnp.isinf(I_hh)), "NaN/Inf in I_hh")
+
+    # --- Assemble the block-diagonal E-FIM matrix ---
+    EFIM = jnp.zeros((state_dim, state_dim), dtype=I_ff.dtype)
+    EFIM = EFIM.at[:K, :K].set(I_ff)
+    EFIM = EFIM.at[K:, K:].set(I_hh)
+
+    EFIM = (EFIM + EFIM.T) / 2
+
+    return EFIM
 
 def log_posterior_impl(
     lambda_r: jnp.ndarray,

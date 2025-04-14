@@ -17,7 +17,7 @@ import jax.numpy as jnp
 import jax.scipy.linalg
 import jax.scipy.special
 import numpy as np
-from jax import jit
+# Removed jit import in favor of eqx.filter_jit
 import equinox as eqx
 # Local imports
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Only import the dataclass

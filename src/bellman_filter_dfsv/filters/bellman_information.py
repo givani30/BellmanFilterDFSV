@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import jax.scipy.linalg
 import numpy as np
 import optimistix as optx
-from jax import jit
+# Removed jit import in favor of eqx.filter_jit
 
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 
@@ -16,7 +16,8 @@ from ._bellman_impl import (
     bif_likelihood_penalty_impl,
     build_covariance_impl,
     log_posterior_impl,
-    observed_fim_impl,
+    observed_fim_impl, 
+    expected_fim_impl
 )
 from ._bellman_optim import _block_coordinate_update_impl
 
@@ -37,14 +38,14 @@ class DFSVBellmanInformationFilter(DFSVFilter):
             y_t = Λf_t + ε_t                            (Observation)
             f_{t+1} = Φ_f f_t + ν_{t+1}               (Factor Evolution)
             h_{t+1} = μ + Φ_h(h_t - μ) + η_{t+1}      (Log-Volatility Evolution)
-            
+
             where α_t = [f_t', h_t']' is the complete state vector
 
         Filter Structure:
             1. Prediction Step:
                - State: α_{t|t-1} = F_t α_{t-1|t-1}
                - Information: Ω_{t|t-1} via Joseph form/Woodbury identity
-            
+
             2. Update Step:
                - State: α_{t|t} = argmax_α [ℓ(y_t|α) - 1/2||α - α_{t|t-1}||²_{Ω_{t|t-1}}]
                - Information: Ω_{t|t} = Ω_{t|t-1} + J_t
@@ -165,7 +166,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         """
         # --- JIT Helper Functions (Reused & New) ---
         self.build_covariance_jit = eqx.filter_jit(build_covariance_impl)
-        self.fisher_information_jit = eqx.filter_jit(partial(observed_fim_impl,K=self.K))
+        self.fisher_information_jit = eqx.filter_jit(partial(expected_fim_impl,K=self.K))
         self.log_posterior_jit = eqx.filter_jit(partial(log_posterior_impl, K=self.K, build_covariance_fn=self.build_covariance_jit))
         self.bif_penalty_jit = eqx.filter_jit(bif_likelihood_penalty_impl)
 
@@ -198,43 +199,95 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
         # Checkify the matrix inversion helper (but don't JIT it here)
         # self._invert_info_matrix_checked = checkify.checkify(self._invert_info_matrix, errors=checkify.float_checks)
+    @eqx.filter_jit
+    def _invert_info_matrix(self, info_matrix: jnp.ndarray) -> jnp.ndarray:
+        """Numerically stable inversion of information matrices using Cholesky.
 
+        This method converts information form (Ω) to covariance form (P) using:
+        P = Ω^{-1} = (L·L')^{-1} where L is the Cholesky factor of Ω.
+
+        Numerical Considerations:
+            1. Jitter Addition:
+               Ω_j = Ω + εI where ε = 1e-8
+               This ensures positive definiteness for Cholesky
+
+            2. Cholesky-based Inversion:
+               - Factor: Ω_j = L·L' (lower triangular L)
+               - Solve: P = L'^{-1}·L^{-1} via cho_solve
+               This is more stable than direct inversion
+
+            3. Matrix Symmetry:
+               P = (P + P')/2 enforces exact symmetry,
+               correcting potential numerical drift
+
+        Args:
+            info_matrix: Information matrix Ω (state_dim, state_dim)
+
+        Returns:
+            Covariance matrix P = Ω^{-1} (state_dim, state_dim)
+        """
+        # Add jitter for numerical stability before Cholesky
+        jitter = 1e-6
+        matrix_dim = info_matrix.shape[0]
+        info_matrix_jittered = info_matrix + jitter * jnp.eye(matrix_dim, dtype=info_matrix.dtype)
+
+        # Try Cholesky decomposition
+        L_info = jax.scipy.linalg.cholesky(info_matrix_jittered, lower=True)
+
+        # Check if Cholesky succeeded (no NaNs in L_info)
+        cholesky_failed = jnp.any(jnp.isnan(L_info))
+        
+        # Define functions for the two branches
+        def use_cholesky(_):
+            # Use Cholesky decomposition for inversion
+            cov_matrix = jax.scipy.linalg.cho_solve((L_info, True), jnp.eye(matrix_dim, dtype=info_matrix.dtype))
+            return cov_matrix
+        
+        def use_pinv(_):
+            # Fallback to pseudo-inverse
+            return jnp.linalg.pinv(info_matrix)
+        
+        # Use lax.cond to select the appropriate method
+        result = jax.lax.cond(cholesky_failed, use_pinv, use_cholesky, None)
+
+        # Ensure symmetry of the result
+        return (result + result.T) / 2
 
     def initialize_state(
         self, params: Union[Dict[str, Any], DFSVParamsDataclass]
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Initializes the BIF state from unconditional model moments.
-    
+
         For the DFSV model, we initialize using:
             1. Factors: f_0 ~ N(0, I_K) since factors are standardized
             2. Log-Volatilities: h_0 = μ (unconditional mean)
-    
+
         Mathematical Details:
             1. Initial State Vector:
                α_0 = [f_0', h_0']' = [0_K', μ']'
-    
+
             2. Initial Covariance:
                P_0 = block_diag(I_K, P_h)
                where P_h solves the discrete Lyapunov equation:
                P_h = Φ_h·P_h·Φ_h' + Q_h
-    
+
             3. Initial Information:
                Ω_0 = P_0^{-1} (via Cholesky decomposition)
                with fallback to pseudo-inverse if needed
-    
+
         Implementation Notes:
             - Uses base class's _solve_discrete_lyapunov_jax
             - Adds jitter (1e-8) for numerical stability
             - Enforces matrix symmetry
             - Includes pseudo-inverse fallback
-    
+
         Args:
             params: Model parameters containing μ, Φ_h, Q_h.
-    
+
         Returns:
             initial_state: First state estimate α_0 (state_dim, 1).
             initial_info: Initial information Ω_0 (state_dim, state_dim).
-    
+
         Note:
             We assume factors are standardized (E[f_t] = 0, Var[f_t] = I_K)
             and log-volatilities start at their unconditional mean μ.
@@ -261,20 +314,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         ])
 
         # Compute initial information matrix Omega_0 = P_0^{-1}
-        jitter = 1e-8 # Small jitter for numerical stability during inversion
-        initial_cov_jittered = initial_cov + jitter * jnp.eye(self.state_dim, dtype=jnp.float64)
-
-        try:
-            # Prefer Cholesky-based inversion for stability and efficiency with SPD matrices
-            chol_P0 = jax.scipy.linalg.cholesky(initial_cov_jittered, lower=True)
-            initial_info = jax.scipy.linalg.cho_solve((chol_P0, True), jnp.eye(self.state_dim, dtype=jnp.float64))
-        except jnp.linalg.LinAlgError:
-            # Fallback to pseudo-inverse if Cholesky fails (e.g., matrix not positive definite)
-            print("Warning: Cholesky decomposition failed during initial info calculation. Falling back to pinv.")
-            initial_info = jnp.linalg.pinv(initial_cov_jittered)
-
-        # Ensure symmetry
-        initial_info = (initial_info + initial_info.T) / 2
+        initial_info=self._invert_info_matrix(initial_cov)
 
         return initial_state, initial_info
 
@@ -294,7 +334,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
             1. State Dynamics:
                f_t = Φ_f·f_{t-1} + ν_t,   ν_t ~ N(0, diag(exp(h_t)))
                h_t = μ + Φ_h(h_{t-1} - μ) + η_t,   η_t ~ N(0, Q_h)
-               
+
                Combined into α_t = F_t·α_{t-1} + ξ_t,  ξ_t ~ N(0, Q_t)
                where F_t = [Φ_f  0; 0  Φ_h], Q_t = block_diag(Q_f(h_t), Q_h)
 
@@ -360,12 +400,8 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
         # 2. Calculate M = info_post + F_t.T @ Q_t_inv @ F_t
         M = info_post + F_t.T @ Q_t_inv @ F_t
-        M_jittered = M + jitter * jnp.eye(state_dim, dtype=jnp.float64)
-
-        # 3. Invert M stably
-        chol_M = jax.scipy.linalg.cholesky(M_jittered, lower=True)
-        M_inv = jax.scipy.linalg.cho_solve((chol_M, True), jnp.eye(state_dim, dtype=jnp.float64))
-        M_inv = (M_inv + M_inv.T) / 2 # Ensure symmetry
+        # 3. Calculate M_inv = M^-1 
+        M_inv = self._invert_info_matrix(M)
 
         # 4. Calculate predicted information: Omega_pred = Q_t_inv - Q_t_inv @ F_t @ M_inv @ F_t.T @ Q_t_inv
         term = Q_t_inv @ F_t @ M_inv @ F_t.T @ Q_t_inv
@@ -441,20 +477,14 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
         jax_observation = observation.flatten()
 
-        # --- DEBUG PRINTS (Phase 1.3) ---
-        # --- State Update ---
-        # jax.debug.print("--- BIF Update Step ---")
-        # # Initial guess for optimization is the predicted state
-        # jax.debug.print("a_pred (predicted_state): {x}", x=predicted_state.flatten())
         alpha_init_guess = predicted_state.flatten()
-        # jax.debug.print("Omega_pred (predicted_info): {x}", x=predicted_info)
 
         # Run block coordinate update (using the passed JITted function)
         # Note: block_coord_update_fn has h_solver, build_cov_fn, log_post_fn bound
         alpha_updated = block_coord_update_fn(
-            lambda_r,                 # Pass individually
-            sigma2,                  # Pass individually
-            alpha_init_guess,        # Pass individually
+            lambda_r,
+            sigma2,
+            alpha_init_guess,
             predicted_state.flatten(), # Pass individually
             predicted_info,          # Pass individually
             jax_observation,         # Pass individually
@@ -462,25 +492,24 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         )
 
         # --- Information Update ---
-        # --- DEBUG PRINTS (Phase 1.4) ---
-        # Calculate Observed Fisher Information J_observed = -Hessian(log p(y_t|alpha_t))
-        # jax.debug.print("a_updated (alpha_updated): {x}", x=alpha_updated)
-        J_observed = fisher_info_fn(lambda_r, sigma2, alpha_updated, observation)
-        diff = alpha_updated - predicted_state.flatten()
-
-        # jax.debug.print("diff (a_updated - a_pred): {x}", x=diff)
-        # --- Regularize J_observed to ensure PSD ---
-        # jax.debug.print("diff_h (h component): {x}", x=diff[K:])
-        evals_j, evecs_j = jnp.linalg.eigh(J_observed)
-        min_eigenvalue = 1e-8 # Small positive floor
-        evals_j_clipped = jnp.maximum(evals_j, min_eigenvalue)
-        J_observed_psd = evecs_j @ jnp.diag(evals_j_clipped) @ evecs_j.T
-        J_observed_psd = (J_observed_psd + J_observed_psd.T) / 2 # Ensure symmetry
+        # Calculate Fisher Information matrix
+        FIM = fisher_info_fn(lambda_r, sigma2, alpha_updated, observation)
+        
+        
+        # --- Regularize J_observed to ensure PSD NOTE: this is necessary if using the obseved fim. 
+        # Reverted to using E-FIM because of numerical issues during gradient calculation with the needed clipping to ensure PSD---
+        # (Keep this regularization enabled for stability)
+        #Add small jitter to J_observed
+        # J_observed += 1e4 * jnp.eye(state_dim, dtype=jnp.float64)
+        # evals_j, evecs_j = jnp.linalg.eigh(J_observed)
+        # min_eigenvalue = 1e-5 # Small positive floor
+        # evals_j_clipped = jnp.maximum(evals_j, min_eigenvalue)
+        # J_observed_psd = evecs_j @ jnp.diag(evals_j_clipped) @ evecs_j.T
+        # J_observed_psd = (J_observed_psd + J_observed_psd.T) / 2 # Ensure symmetry
         # --- End Regularization ---
 
-
-        # Compute updated information matrix Omega_{t|t} = Omega_{t|t-1} + J_observed_psd
-        updated_info = predicted_info + J_observed_psd + jitter * jnp.eye(state_dim, dtype=jnp.float64)
+        # Compute updated information matrix Omega_{t|t}
+        updated_info = predicted_info + FIM + jitter * jnp.eye(state_dim, dtype=jnp.float64)
         updated_info = (updated_info + updated_info.T) / 2 # Ensure symmetry
 
         # --- Log-Likelihood Contribution ---
@@ -538,15 +567,15 @@ class DFSVBellmanInformationFilter(DFSVFilter):
             params_jax, state_jax, info_jax
         )
 
-        return np.asarray(pred_state_jax), np.asarray(pred_info_jax)
+        return jnp.asarray(pred_state_jax), jnp.asarray(pred_info_jax)
 
     def update(
         self,
         params: Union[Dict[str, Any], DFSVParamsDataclass],
-        predicted_state: np.ndarray,
-        predicted_info: np.ndarray,
-        observation: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray, float]:
+        predicted_state: jnp.ndarray,
+        predicted_info: jnp.ndarray,
+        observation: jnp.ndarray
+    ) -> Tuple[jnp.ndarray, jnp.ndarray, float]:
         """Performs the BIF update step.
 
         Accepts NumPy arrays for predicted state/info and observation, converts
@@ -576,7 +605,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
             params_jax, pred_state_jax, pred_info_jax, obs_jax
         )
 
-        return np.asarray(updated_state_jax), np.asarray(updated_info_jax), float(log_lik_contrib_jax)
+        return jnp.asarray(updated_state_jax), jnp.asarray(updated_info_jax), log_lik_contrib_jax
 
 
     # --- Filtering Methods (Adapted for Information Filter) ---
@@ -621,8 +650,8 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         initial_state_jax, initial_info_jax = self.initialize_state(params_jax)
 
         # Start loop state with initial values (NumPy for loop logic)
-        state_post_prev_np = np.asarray(initial_state_jax)
-        info_post_prev_np = np.asarray(initial_info_jax)
+        state_post_prev_np = jnp.asarray(initial_state_jax)
+        info_post_prev_np = jnp.asarray(initial_info_jax)
 
         # Use tqdm for progress bar if available
         try:
@@ -666,7 +695,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         self.predicted_states = predicted_states_jax
         self.predicted_infos = predicted_infos_jax
         self.log_likelihoods = log_likelihoods_jax
-        self.total_log_likelihood = float(jnp.sum(log_likelihoods_jax)) # Sum JAX array, convert to float
+        self.total_log_likelihood = jnp.sum(log_likelihoods_jax)# Sum JAX array, convert to float
 
         # Return NumPy arrays by calling getter methods
         return self.get_filtered_states(), self.get_filtered_information_matrices(), self.get_total_log_likelihood()
@@ -675,47 +704,47 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         self, params: Union[Dict[str, Any], DFSVParamsDataclass], observations: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, jnp.ndarray]:
         """BIF implementation using JAX's scan primitive for accelerated filtering.
-    
+
         This method uses jax.lax.scan to execute the filter within JAX's compilation
         graph, offering potential speedups over Python loops, especially on GPUs/TPUs.
-    
+
         Mathematical Framework:
             Scan Structure:
                 carry = (α_{t-1|t-1}, Ω_{t-1|t-1}, L_{t-1})
                 where L_t is running log-likelihood sum
-    
+
             For t = 1,...,T:
                 1. Predict:
                    α_{t|t-1} = F_t·α_{t-1|t-1}
                    Ω_{t|t-1} via Woodbury (see __predict_jax_info)
-    
+
                 2. Update:
                    α_{t|t}, Ω_{t|t}, ℓ_t = update_step(α_{t|t-1}, Ω_{t|t-1}, y_t)
                    L_t = L_{t-1} + ℓ_t
-    
+
                 3. Store Results:
                    (α_{t|t-1}, Ω_{t|t-1}, α_{t|t}, Ω_{t|t}, ℓ_t)
-    
+
         Implementation Notes:
             1. JAX Compilation:
                - Single jit-compilation of entire loop
                - In-place updates via functional replacements
                - Pure function requirements satisfied
-    
+
             2. Memory Management:
                - Stores full trajectories for smoothing
                - Uses .at[] updates for JAX arrays
                - Careful shape management for scan
-    
+
             3. Numerical Stability:
                - Maintains symmetry via explicit enforcement
                - Includes all stability measures from step functions
                - Preserves 64-bit precision throughout
-    
+
         Args:
             params: DFSV model parameters (dict/dataclass)
             observations: Data matrix y_{1:T} (T, N)
-    
+
         Returns:
             filtered_states: State estimates α_{t|t} (T, state_dim)
             filtered_infos: Information matrices Ω_{t|t} (T, state_dim, state_dim)
@@ -793,34 +822,34 @@ class DFSVBellmanInformationFilter(DFSVFilter):
     # --- Smoothing Method ---
     def smooth(self, params: DFSVParamsDataclass) -> Tuple[np.ndarray, np.ndarray]:
         """Performs Rauch-Tung-Striebel (RTS) smoothing for the Dynamic Factor SV model.
-    
+
         Given filtered estimates from the BIF, this method performs backward smoothing
         using the standard RTS recursions adapted for our state space model:
-    
+
         Mathematical Details:
             1. Convert Information to Covariance Form:
                P_{t|t} = Ω_{t|t}^{-1}
                P_{t|t-1} = Ω_{t|t-1}^{-1}
-    
+
             2. RTS Recursions (t = T-1,...,1):
                J_t = P_{t|t}·F_{t+1}'·P_{t+1|t}^{-1}
                α_{t|T} = α_{t|t} + J_t(α_{t+1|T} - α_{t+1|t})
                P_{t|T} = P_{t|t} + J_t(P_{t+1|T} - P_{t+1|t})J_t'
-    
+
                where:
                - F_{t+1} is the state transition matrix at t+1
                - J_t is the smoothing gain
-    
+
         Implementation Notes:
             1. Uses Cholesky for stable matrix inversions
             2. Enforces matrix symmetry throughout
             3. Maintains numerics via jitter terms
             4. Returns NumPy arrays for consistency
-    
+
         Returns:
             smoothed_states: State estimates α_{t|T} (T, state_dim)
             smoothed_covariances: State covariances P_{t|T} (T, state_dim, state_dim)
-    
+
         Raises:
             RuntimeError: If filter hasn't been run or covariance computation fails.
         """
@@ -866,7 +895,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
     def get_filtered_states(self) -> np.ndarray | None:
         """Returns the filtered states alpha_{t|t} as a NumPy array."""
         states_jax = getattr(self, 'filtered_states', None)
-        return np.asarray(states_jax) if states_jax is not None else None
+        return states_jax if states_jax is not None else None
 
     def get_filtered_factors(self) -> np.ndarray | None:
         """Returns the filtered factors f_{t|t} as a NumPy array."""
@@ -885,15 +914,15 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         return None
 
     def get_filtered_information_matrices(self) -> np.ndarray | None:
-        """Returns the filtered information matrices Omega_{t|t} as NumPy arrays."""
+        """Returns the filtered information matrices Omega_{t|t} as arrays."""
         infos_jax = getattr(self, 'filtered_infos', None)
-        return np.asarray(infos_jax) if infos_jax is not None else None
+        return infos_jax if infos_jax is not None else None
 
     def get_predicted_states(self) -> np.ndarray | None:
-        """Returns the predicted states alpha_{t|t-1} as a NumPy array with shape (T, state_dim)."""
+        """Returns the predicted states alpha_{t|t-1} as an array with shape (T, state_dim)."""
         states_jax = getattr(self, 'predicted_states', None)
         if states_jax is not None:
-            states_np = np.asarray(states_jax)
+            states_np = states_jax
             # Ensure flat vector shape (T, state_dim)
             if states_np.ndim == 3:
                 states_np = states_np.reshape(states_np.shape[0], states_np.shape[1])
@@ -914,7 +943,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         where:
         - First term is observation fit at mode
         - Second term is KL divergence penalty
-        
+
         The KL penalty approximates the integration over α_t using
         local Gaussian approximations around the modes.
 
@@ -922,7 +951,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
             Log-likelihood contributions (T,) or None if not computed.
         """
         lls_jax = getattr(self, 'log_likelihoods', None)
-        return np.asarray(lls_jax) if lls_jax is not None else None
+        return lls_jax if lls_jax is not None else None
 
     def get_total_log_likelihood(self) -> float | jnp.ndarray | None:
         """Returns the total log-likelihood.
@@ -933,63 +962,29 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
     # --- Methods to derive covariance from information ---
 
-    @eqx.filter_jit
-    def _invert_info_matrix(self, info_matrix: jnp.ndarray) -> jnp.ndarray:
-        """Numerically stable inversion of information matrices using Cholesky.
-    
-        This method converts information form (Ω) to covariance form (P) using:
-        P = Ω^{-1} = (L·L')^{-1} where L is the Cholesky factor of Ω.
-    
-        Numerical Considerations:
-            1. Jitter Addition:
-               Ω_j = Ω + εI where ε = 1e-8
-               This ensures positive definiteness for Cholesky
-    
-            2. Cholesky-based Inversion:
-               - Factor: Ω_j = L·L' (lower triangular L)
-               - Solve: P = L'^{-1}·L^{-1} via cho_solve
-               This is more stable than direct inversion
-    
-            3. Matrix Symmetry:
-               P = (P + P')/2 enforces exact symmetry,
-               correcting potential numerical drift
-    
-        Args:
-            info_matrix: Information matrix Ω (state_dim, state_dim)
-    
-        Returns:
-            Covariance matrix P = Ω^{-1} (state_dim, state_dim)
-        """
-        jitter = 1e-8 # Consistent jitter
-        state_dim = self.state_dim
-        info_jittered = info_matrix + jitter * jnp.eye(state_dim, dtype=jnp.float64)
-        # Perform Cholesky-based inversion
-        chol_info = jax.scipy.linalg.cholesky(info_jittered, lower=True)
-        cov_matrix = jax.scipy.linalg.cho_solve((chol_info, True), jnp.eye(state_dim, dtype=jnp.float64))
-        # Ensure symmetry
-        return (cov_matrix + cov_matrix.T) / 2
+
 
     def get_predicted_covariances(self) -> np.ndarray | None:
         """Computes predicted state covariances from information matrices.
-    
+
         For each time t, converts Ω_{t|t-1} to P_{t|t-1} via Cholesky:
             1. Information Form:
                Ω_{t|t-1} = Q_t^{-1} - Q_t^{-1}·F_t·M^{-1}·F_t'·Q_t^{-1}
-               
+
             2. Covariance Form:
                P_{t|t-1} = F_t·P_{t-1|t-1}·F_t' + Q_t
                where Q_t = block_diag(diag(exp(h_t)), Q_h)
-    
+
         Implementation Details:
             - Uses vmapped _invert_info_matrix for efficiency
             - Cholesky with jitter for stability
             - Vectorized over time dimension
             - 64-bit precision throughout
-    
+
         Warning:
             Computationally expensive due to matrix inversions.
             Intended for post-filtering analysis, not runtime.
-    
+
         Returns:
             Predicted covariances P_{t|t-1} (T, state_dim, state_dim)
             or None if information matrices unavailable.
@@ -999,9 +994,9 @@ class DFSVBellmanInformationFilter(DFSVFilter):
             return None
 
         # Use vmap to apply the inversion function across the time dimension
-        vmapped_inverter = jit(jax.vmap(self._invert_info_matrix, in_axes=0))
+        vmapped_inverter = eqx.filter_jit(jax.vmap(self._invert_info_matrix, in_axes=0))
         pred_covs_jax = vmapped_inverter(pred_infos_jax)
-        return np.asarray(pred_covs_jax)
+        return pred_covs_jax
 
 
     def get_predicted_variances(self) -> np.ndarray | None:
@@ -1057,9 +1052,9 @@ class DFSVBellmanInformationFilter(DFSVFilter):
             return None
 
         # Use vmap to apply the inversion function across the time dimension
-        vmapped_inverter = jit(jax.vmap(self._invert_info_matrix, in_axes=0))
+        vmapped_inverter = eqx.filter_jit(jax.vmap(self._invert_info_matrix, in_axes=0))
         filtered_covs_jax = vmapped_inverter(filtered_infos_jax)
-        self.filtered_covs = np.asarray(filtered_covs_jax) # Store as NumPy
+        self.filtered_covs = filtered_covs_jax
         return self.filtered_covs
 
     def get_filtered_variances(self) -> np.ndarray | None:
@@ -1237,5 +1232,3 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         return eqx.filter_jit(self._log_likelihood_wrt_params_impl)
 
     # _get_transition_matrix is inherited from DFSVFilter base class
-
-

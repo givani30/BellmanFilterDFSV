@@ -11,7 +11,7 @@ from typing import Tuple, Optional, Union, Dict, Any, Callable # Added Callable
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import jit
+import equinox as eqx
 import jax_dataclasses as jdc # Added import
 
 # Assuming DFSVParamsDataclass will be importable from the models directory
@@ -224,7 +224,7 @@ class DFSVFilter:
             return params_dc
 
     @staticmethod
-    @jit
+    @eqx.filter_jit
     def _solve_discrete_lyapunov_jax(
         Phi: jnp.ndarray, Q: jnp.ndarray, num_iters: int = 30
     ) -> jnp.ndarray:
@@ -272,7 +272,7 @@ class DFSVFilter:
         return F_t
 
     @staticmethod
-    @jit
+    @eqx.filter_jit
     def _predict_jax(
         params: DFSVParamsDataclass, state: jnp.ndarray, cov: jnp.ndarray, K: int, state_dim: int
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -579,7 +579,7 @@ class DFSVFilter:
         K_static = self.K
         state_dim_static = self.state_dim
 
-        @jit
+        @eqx.filter_jit
         def _rts_smoother_step(carry, xs_t):
             # carry: (state_{t+1|T}, cov_{t+1|T}) from previous step (or last filtered for init)
             # xs_t: (state_{t|t}, cov_{t|t}, state_{t+1|t}, cov_{t+1|t}) from filtered/predicted results
