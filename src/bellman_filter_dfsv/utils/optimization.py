@@ -523,6 +523,63 @@ def run_optimization(
     #Wrap optimizer with best so far to keep best loss value
     optimizer = optx.BestSoFarMinimiser(optimizer)
 
+    # --- DEBUG: Calculate and print initial gradient ---
+    try:
+        print("\n--- DEBUG: Calculating Initial Gradient (Likelihood Only) ---")
+        # Define a wrapper that returns only the negative log-likelihood component
+        def likelihood_objective_for_grad(params_opt, obs):
+            # Replicate steps from _compute_objective, but only return neg LL
+            # 1. Untransform parameters if needed
+            params_constrained = untransform_params(params_opt) if use_transformations else params_opt
+
+            # 2. Fix mu if requested (using fix_mu and true_params from outer scope)
+            if fix_mu and true_params is not None:
+                 params_constrained = eqx.tree_at(lambda p: p.mu, params_constrained, true_params.mu)
+
+            # 3. Apply identification constraint
+            params_fixed_constrained = apply_identification_constraint(params_constrained)
+
+            # 4. Calculate log likelihood using the filter instance from outer scope
+            # Ensure we are using the correct filter type (BIF in this case)
+            if filter_type == FilterType.BIF:
+                 log_lik = filter_instance.jit_log_likelihood_wrt_params()(params_fixed_constrained, obs)
+            elif filter_type == FilterType.PF:
+                 # Need particle filter specific call if testing PF
+                 log_lik = filter_instance.jit_log_likelihood_wrt_params()(params_fixed_constrained, obs)
+            else: # BF
+                 log_lik = filter_instance.jit_log_likelihood_wrt_params()(params_fixed_constrained, obs)
+
+            # Return negative log likelihood, handle NaNs like in _compute_total_objective
+            safe_neg_ll = jnp.nan_to_num(-log_lik, nan=1e10, posinf=1e10, neginf=1e10)
+            return safe_neg_ll
+
+        # Get the value and gradient function for the likelihood part only
+        value_and_grad_fn = eqx.filter_value_and_grad(likelihood_objective_for_grad, has_aux=False)
+        test_eval=likelihood_objective_for_grad(initial_params_opt, returns)
+        print(f"DEBUG: Test Eval: {test_eval}")
+        # Calculate initial value and gradient
+        initial_value, initial_grad = value_and_grad_fn(initial_params_opt, returns)
+
+        print(f"DEBUG: Initial Objective Value: {initial_value}")
+        print("DEBUG: Initial Gradient Structure:")
+        # Use tree_map to check for NaNs/Infs in the gradient pytree
+        grad_contains_nan = jax.tree_util.tree_reduce(
+            lambda x, y: x or jnp.any(jnp.isnan(y)), initial_grad, initializer=False
+        )
+        grad_contains_inf = jax.tree_util.tree_reduce(
+            lambda x, y: x or jnp.any(jnp.isinf(y)), initial_grad, initializer=False
+        )
+        print(f"DEBUG: Gradient contains NaN? {grad_contains_nan}")
+        print(f"DEBUG: Gradient contains Inf? {grad_contains_inf}")
+        # Optionally print the full gradient structure if needed (can be large)
+        # print(f"DEBUG: Initial Gradient:\n{initial_grad}")
+        print("--- END DEBUG: Initial Gradient ---\n")
+
+    except Exception as grad_e:
+        print(f"--- DEBUG: ERROR calculating initial gradient: {grad_e} ---")
+    # --- END DEBUG ---
+
+
     # Print initial loss if verbose
     if verbose:
         try:

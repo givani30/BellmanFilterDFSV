@@ -304,6 +304,7 @@ def main():
                 initial_params=initial_params_for_opt,
                 true_params=true_params_for_opt, # Pass true params only if fix_mu is True
                 fix_mu=fix_mu,
+                use_transformations=True,
                 optimizer_name=config['optimizer_name'],
                 priors=None, # Add priors from config if needed later
                 stability_penalty_weight=config.get('stability_penalty', 0.0),
@@ -343,7 +344,7 @@ def main():
             filter_instance = create_filter(
                 filter_type_enum, config['N'], config['K'], num_particles
             )
-            filtered_states, _, _ = filter_instance.filter(observations=returns, params=result.final_params)
+            filtered_states, _, _ = filter_instance.filter(result.final_params,returns)
             filtered_factors = filtered_states[:, :config['K']]
             filtered_log_vols = filtered_states[:, config['K']:]
 
