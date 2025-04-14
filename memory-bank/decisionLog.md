@@ -464,4 +464,27 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 3. Added `BestSoFarMinimiser` wrapper to keep track of the best parameter values during optimization.
 4. Improved error handling and reporting in both minimizers.
 5. Added verbose output options to provide more information during the optimization process.
+
+## [11-04-2025 18:15:02] Optimization Stability Improvements
+
+### Decision
+* Implement early stability detection in objective function
+* Add fallback mechanism for unsuccessful BFGS updates
+* Enforce gradient clipping and finite value checks
+
+### Rationale
+* High loss values during optimization were causing significant slowdowns
+* Unstable parameter combinations led to unnecessary computation
+* BFGS updates sometimes produced invalid results requiring recovery
+
+### Implementation Details
+* Added eigenvalue-based stability check for Phi matrices with penalty return
+* Modified `update_h_bfgs` to return initial values on optimization failure
+* Implemented `optax.clip_by_global_norm(1.0)` and `optax.apply_if_finite`
+* Created profiling script to verify improvements
+
+### Results
+* Significant reduction in computation time for infeasible parameter combinations
+* Improved recovery from optimization failures
+* Reduced overall convergence steps in test cases
 6. Updated tests to verify both minimizer approaches work correctly.

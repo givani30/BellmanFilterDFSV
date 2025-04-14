@@ -1,0 +1,5 @@
+#exclude outputs
+outputs/
+output_thesis/
+#exclude git
+.git/

@@ -92,4 +92,20 @@ This file documents recurring patterns and standards used in the project.
 * **Profiling Scripts:** Dedicated scripts (`scripts/profile_*.py`, `scripts/benchmark_*.py`) used to measure performance and identify bottlenecks.
 * **Runtime Error Debugging:** Use `equinox.error_if` to add runtime checks for conditions like NaN/Inf within JIT-compiled functions. Running the code with the environment variable `EQX_ON_ERROR=breakpoint` will then trigger the debugger precisely where the check fails, aiding in pinpointing errors that occur during gradient calculations or within JITted filter steps (Identified [04-04-2025 15:25:00]).
 
+
+## Optimization Stability Patterns [11-04-2025 18:15:33]
+
+### Early Stability Detection
+* Check eigenvalues of Phi matrices before full likelihood calculation
+* Use `jax.lax.cond` for efficient branching in JIT-compiled code
+* Return large penalty values (1e10 + weighted violation) for unstable configurations
+
+### BFGS Update Safety
+* Implement fallback to initial values when optimization fails
+* Use `jnp.where` for conditional updates in JIT context
+
+### Gradient Management
+* Apply `optax.clip_by_global_norm(1.0)` to prevent explosive gradients
+* Use `optax.apply_if_finite` to handle NaN/Inf gracefully
+* Maintain optimization state validity through bounded transformations
 * **JIT Static vs Traced Values:** When using JAX transformations like `@eqx.filter_jit`, ensure that values used to define computation graph structure (e.g., loop bounds, shapes for `jnp.arange`, dimensions for indexing) are static (known at compile time) or marked as static arguments. Using traced values (derived from function arguments that are JAX arrays/pytrees) for these purposes can lead to `ConcretizationTypeError` or `NonConcreteBooleanIndexError`. Vectorized operations often avoid these issues compared to explicit loops or conditional logic based on traced values. (Noted [11-04-2025 16:23:11])

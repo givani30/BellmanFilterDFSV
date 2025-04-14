@@ -1,0 +1,42 @@
+# Coding Standards & Style
+
+- ALWAYS adhere to PEP 8 style.
+- Use functional programming style.
+- Adhere to google standards for documentation.
+
+# JAX & Equinox Usage
+
+- Prefer jax functions over numpy. This project is Jax-based.
+- Prefer @equinox.filter_jit over jax.jit for JIT compilation.
+- Utilize JAX Pytrees (e.g., via `jax_dataclasses`) for model parameters to ensure compatibility with JAX transformations.
+- Prioritize numerical stability in JAX implementations. Refer to `systemPatterns.md` and `decisionLog.md` for established techniques (e.g., Joseph form, FIM regularization).
+- Utilize `equinox.error_if` with `EQX_ON_ERROR=breakpoint` for debugging runtime errors within JIT-compiled code.
+
+# Project Architecture & Patterns
+
+- Adhere to the common filter API defined by the `DFSVFilter` base class (`core/filters/base.py`) for all filter implementations.
+- Employ parameter transformations (e.g., via functions in `utils/transformations.py`) to map between constrained model space and unconstrained optimization space when necessary for optimization.
+- Consult `systemPatterns.md` for documented performance optimization patterns (e.g., Woodbury Identity, Rank-1 FIM) before implementing complex matrix operations.
+
+# Testing
+
+- After making big changes to the source code in /src, run the tests in /tests.
+- Use `pytest` for testing and leverage common fixtures defined in `tests/conftest.py` where applicable.
+
+# Project Management & Workflow
+
+- For orchestrating large tasks, prefer using orchestrator mode.
+- After creating a plan in architect mode, switch to orchestrator mode for implementation.
+- Save all implementation plans in a subfolder of memory-bank called "plans", give it a datestamp.
+- The file memory-bank/thesis_timeline.md details all the project plans and tasks for the upcoming period.
+- All outputs should be saved in the subfolder "outputs" or a subfolder of it.
+
+# External Resources & Formatting
+
+- When you are provided an url, fetch it using the fetch mcp.
+- For dates, use the format DD-MM-YYYY, with optional time stamp [HH:MM:SS]. programming style
+- For dates, use the format DD-MM-YYYY, with optional time stamp [HH:MM:SS]
+-Save all implementation plans in a subfolder of memory-bank called "plans", give it a datestamp
+-The file memory-bank/thesis_timeline.md details all the project plans and tasks for the upcoming period.
+-All outputs should be saved in the subfolder "outputs" or a subfolder of it.
+- After making big changes to the source code in /src, run the tests in /tests

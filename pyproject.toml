@@ -30,6 +30,7 @@ dependencies = [
     "pyarrow>=19.0.1",
     "cloudpickle>=3.1.1",
     "scikit-learn>=1.6.1",
+    "google-cloud-batch>=0.17.35",
 ]
 
 [tool.setuptools.packages.find]

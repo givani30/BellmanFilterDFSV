@@ -16,26 +16,32 @@ DFSV models are used in finance to model the time-varying volatility and correla
 
 ## Project Status
 
-**Status:** Core Implementation Complete, Analysis Phase
+**Status:** Hyperparameter Optimization and Real Data Application
 
 The core implementations of the DFSV model, Bellman Information Filter (BIF), and Particle Filter (PF) are stable and functional, supported by a robust `pytest` test suite. Simulation runs for BIF and PF have been completed.
 
 Current work focuses on:
-*   Analyzing simulation results (BIF vs. PF performance).
-*   Investigating hyperparameter estimation challenges (specifically `mu` identifiability with BIF).
+*   Optimizing hyperparameter estimation, particularly addressing the identifiability of the `mu` parameter within the BIF framework.
+*   Applying the filters to real-world financial data to assess their performance and compare them against benchmarks.
+*   Refining the BIF implementation for improved numerical stability and computational efficiency.
 
 ## Key Features
 
 *   **DFSV Model:** Definition (`DFSVParamsDataclass`) and simulation for the specific model (Boekestijn, 2025).
-*   **Bellman Information Filter (BIF):** Implementation (`DFSVBellmanInformationFilter`) based on Lange (2024), including numerical stability enhancements (eigenvalue clipping).
+    *   The model is defined using a JAX dataclass, ensuring compatibility with JAX transformations.
+    *   Simulation is implemented using `jax.lax.scan` for efficient time series generation.
+*   **Bellman Information Filter (BIF):** Implementation (`DFSVBellmanInformationFilter`) based on Lange (2024), including numerical stability enhancements (eigenvalue clipping, Joseph form).
+    *   The BIF implementation uses a block coordinate descent algorithm to update the state estimates.
+    *   The BIF pseudo-likelihood is used to improve stability and parameter estimation.
+    *   Key JAX functions, such as the covariance builder and Fisher information calculator, are JIT-compiled for performance.
 *   **Particle Filter (PF):** Benchmark Bootstrap/SISR implementation (`DFSVParticleFilter`).
+    *   The PF implementation uses resampling to mitigate particle degeneracy.
 *   **Hyperparameter Estimation:** Framework using JAX optimization (`jaxopt`/`optimistix`) to maximize the BIF pseudo log-likelihood, including a prior regularization system.
+    *   The hyperparameter estimation framework supports various JAX optimizers.
+    *   Parameter transformations are used to map between constrained model space and unconstrained optimization space.
 *   **Consistent API:** Filters inherit from a base class (`DFSVFilter`) defining a common interface.
 *   **JAX Integration:** Extensive use of JAX (`@equinox.filter_jit`, `scan`, `vmap`, pytrees) for performance and automatic differentiation.
 *   **Testing:** Robust test suite using `pytest` with unified tests and common fixtures.
-
-*   Applying the filters to real financial data.
-*   Following the detailed thesis completion plan (`memory-bank/plans/thesis_completion_plan_apr2025_v3.md`).
 
 ## Installation and Setup
 
@@ -70,6 +76,14 @@ Current work focuses on:
 ## Usage Example: Simulating a Simple DFSV Model
 
 The following example demonstrates how to define parameters for a DFSV model (with K=1 factor and N=3 observed series) and simulate data using the `bellman_filter_dfsv` package. This is based on `scripts/simple_dfsv_example.py`.
+
+To run this example:
+
+1.  Ensure you have installed the package as described in the "Installation and Setup" section.
+2.  Navigate to the `scripts/` directory: `cd scripts/`
+3.  Run the script: `python simple_dfsv_example.py`
+
+The script will simulate data from a simple DFSV model and generate plots of the simulated factors, log-volatilities, and returns.
 
 ```python
 import jax.numpy as jnp
@@ -121,14 +135,15 @@ plt.show() # Or plt.savefig('outputs/simple_dfsv_simulation.png')
 
 ```
 
-Explore the `scripts/` and `examples/` directories for more detailed use cases, including filter implementations and parameter estimation examples.
+Explore the `scripts/` and `examples/` directories for more detailed use cases, including filter implementations and parameter estimation examples. To run other examples, navigate to the corresponding directory and execute the Python script. For instance, to run the basic filtering example:
+
+1.  Navigate to the `examples/` directory: `cd examples/`
+2.  Run the script: `python 02_basic_filtering.py`
 
 ## Project Structure
 
 ```python
 BellmanFilterDFSV/
-├── .clinerules           # Custom rules for Roo AI assistant
-├── .coveragerc           # Coverage configuration
 ├── .gitignore            # Git ignore rules
 ├── pyproject.toml        # Build system, dependencies, project metadata
 ├── README.md             # This file
