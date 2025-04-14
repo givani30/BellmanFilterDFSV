@@ -47,6 +47,8 @@ Bellman filter replication code/*
 outputs/
 outputs/*
 jax-trace/*
+batch_outputs/*
+batch_configs/*
 
 #more stuff
 .roomodes

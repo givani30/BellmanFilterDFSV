@@ -27,11 +27,11 @@ def create_stable_initial_params(N: int, K: int) -> DFSVParamsDataclass:
 
     # Factor persistence (diagonal-dominant, stable)
     phi_f_init = 0.3 * jnp.eye(K) + 0.05 * jnp.ones((K, K))
-    phi_f_init = phi_f_init / jnp.linalg.norm(phi_f_init, ord=2) * 0.999
+    phi_f_init = phi_f_init / jnp.linalg.norm(phi_f_init, ord=2) * 0.3
 
     # Log-volatility persistence (diagonal-dominant, stable)
     phi_h_init = 0.8 * jnp.eye(K) + 0.02 * jnp.ones((K, K))
-    phi_h_init = phi_h_init / jnp.linalg.norm(phi_h_init, ord=2) * 0.999
+    phi_h_init = phi_h_init / jnp.linalg.norm(phi_h_init, ord=2) * 0.8
 
     initial_params = DFSVParamsDataclass(
         N=N, K=K,
@@ -40,7 +40,7 @@ def create_stable_initial_params(N: int, K: int) -> DFSVParamsDataclass:
         Phi_h=phi_h_init,
         mu=jnp.zeros(K),
         sigma2=0.1 * jnp.ones(N),
-        Q_h=0.2 * jnp.eye(K)
+        Q_h=0.8 * jnp.eye(K)
     )
 
     return initial_params

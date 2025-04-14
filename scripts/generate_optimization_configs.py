@@ -5,7 +5,8 @@ import hashlib # Using hashlib for more stable hashing
 # --- Parameter Grid Definition ---
 nk_pairs = [(5, 2), (10, 3), (15, 5)]
 t_values = [500, 1000, 2000]
-filter_types = ['BIF', 'PF']
+# filter_types = ['BIF', 'PF']
+filter_types = ['BIF']
 # optimizer_names = ['DampedTrustRegionBFGS'] # Removed as per plan
 num_particles_list = [1000, 5000] # Only for PF
 fix_mu_values = [True, False]

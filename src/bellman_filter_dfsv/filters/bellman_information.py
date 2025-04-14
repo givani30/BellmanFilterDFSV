@@ -806,11 +806,11 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         # predicted_covs_scan = vmapped_inverter(predicted_infos_scan) # Compute predicted covs
 
         # Store NumPy versions for the smoother in the base class attributes
-        self.filtered_states = np.asarray(filtered_states_scan.reshape(T, self.state_dim))
+        self.filtered_states = jnp.asarray(filtered_states_scan.reshape(T, self.state_dim))
         # self.filtered_covs = np.asarray(filtered_covs_scan)
         # Store predicted states (already computed) and predicted covariances (newly computed)
         # Keep predicted states as (T, state_dim, 1) for potential consistency? Or flatten? Let's flatten for now.
-        self.predicted_states = np.asarray(predicted_states_scan.reshape(T, self.state_dim))
+        self.predicted_states = jnp.asarray(predicted_states_scan.reshape(T, self.state_dim))
         # self.predicted_covs = np.asarray(predicted_covs_scan) # Store predicted covs
         self.is_filtered = True # Mark filter as run
 
@@ -1069,7 +1069,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         if filtered_covs_np is None:
             return None
         # Extract diagonal elements for each time step
-        return np.diagonal(filtered_covs_np, axis1=1, axis2=2)
+        return jnp.diagonal(filtered_covs_np, axis1=1, axis2=2)
 
 
     # --- Likelihood Calculation Methods (Adapted for BIF) ---

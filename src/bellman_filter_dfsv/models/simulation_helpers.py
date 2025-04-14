@@ -35,8 +35,8 @@ def create_stable_dfsv_params(N: int = 3, K: int = 2) -> DFSVParamsDataclass:
     key, subkey1 = jax.random.split(key)
     diag_values = jax.random.uniform(subkey1, (K,), minval=0.15, maxval=0.35)
     Phi_f = Phi_f.at[jnp.diag_indices(K)].set(diag_values)
-    # Normalize to ensure spectral norm < 1
-    Phi_f = Phi_f / jnp.linalg.norm(Phi_f, ord=2) * 0.999
+    # # Normalize to ensure spectral norm < 1 # 
+    # Phi_f = Phi_f / jnp.linalg.norm(Phi_f, ord=2) * 0.97
 
     # Log-volatility persistence (diagonal-dominant, stable)
     key, subkey1 = jax.random.split(key)
@@ -44,7 +44,7 @@ def create_stable_dfsv_params(N: int = 3, K: int = 2) -> DFSVParamsDataclass:
     key, subkey1 = jax.random.split(key)
     diag_values = jax.random.uniform(subkey1, (K,), minval=0.9, maxval=0.99)
     Phi_h = Phi_h.at[jnp.diag_indices(K)].set(diag_values)
-    Phi_h = Phi_h / jnp.linalg.norm(Phi_h, ord=2) * 0.999
+    Phi_h = Phi_h / jnp.linalg.norm(Phi_h, ord=2) * 0.97
 
     # Long-run mean for log-volatilities
     mu = jnp.array([-1.0, -0.5] if K == 2 else [-1.0] * K)
@@ -55,7 +55,7 @@ def create_stable_dfsv_params(N: int = 3, K: int = 2) -> DFSVParamsDataclass:
 
     # Log-volatility noise covariance (diagonal)
     key, subkey1 = jax.random.split(key)
-    Q_h_diag = jax.random.uniform(subkey1, (K,), minval=0.1, maxval=0.3)
+    Q_h_diag = jax.random.uniform(subkey1, (K,), minval=0.8, maxval=1.0)
     Q_h = jnp.diag(Q_h_diag)
 
     params = DFSVParamsDataclass(

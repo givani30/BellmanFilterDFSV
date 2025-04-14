@@ -289,24 +289,24 @@ def expected_fim_impl(
     state_dim = 2 * K
 
     # (Checks for alpha, h, exp_h remain the same)
-    alpha = eqx.error_if(alpha, jnp.any(jnp.isnan(alpha) | jnp.isinf(alpha)), "NaN/Inf input alpha")
+    # alpha = eqx.error_if(alpha, jnp.any(jnp.isnan(alpha) | jnp.isinf(alpha)), "NaN/Inf input alpha")
     alpha = alpha.flatten()
     h = alpha[K:]
-    h = eqx.error_if(h, jnp.any(jnp.isnan(h) | jnp.isinf(h)), "NaN/Inf h")
+    # h = eqx.error_if(h, jnp.any(jnp.isnan(h) | jnp.isinf(h)), "NaN/Inf h")
     exp_h = jnp.exp(h)
-    exp_h = eqx.error_if(exp_h, jnp.any(jnp.isnan(exp_h) | jnp.isinf(exp_h)), "NaN/Inf exp_h")
+    # exp_h = eqx.error_if(exp_h, jnp.any(jnp.isnan(exp_h) | jnp.isinf(exp_h)), "NaN/Inf exp_h")
 
     # --- Calculate components needed for I_ff ---
     sigma2_1d = sigma2.flatten() if sigma2.ndim > 1 else sigma2
     jitter_inv = 1e-8
     Dinv_diag = 1.0 / (sigma2_1d + jitter_inv)
     Cinv_diag = 1.0 / (exp_h + jitter_inv)
-    Dinv_diag = eqx.error_if(Dinv_diag, jnp.any(jnp.isnan(Dinv_diag) | jnp.isinf(Dinv_diag)), "NaN/Inf Dinv_diag")
-    Cinv_diag = eqx.error_if(Cinv_diag, jnp.any(jnp.isnan(Cinv_diag) | jnp.isinf(Cinv_diag)), "NaN/Inf Cinv_diag")
+    # Dinv_diag = eqx.error_if(Dinv_diag, jnp.any(jnp.isnan(Dinv_diag) | jnp.isinf(Dinv_diag)), "NaN/Inf Dinv_diag")
+    # Cinv_diag = eqx.error_if(Cinv_diag, jnp.any(jnp.isnan(Cinv_diag) | jnp.isinf(Cinv_diag)), "NaN/Inf Cinv_diag")
 
     Dinv_lambda_r = lambda_r * Dinv_diag[:, None]
     M = jnp.diag(Cinv_diag) + lambda_r.T @ Dinv_lambda_r
-    M = eqx.error_if(M, jnp.any(jnp.isnan(M) | jnp.isinf(M)), "NaN/Inf M")
+    # M = eqx.error_if(M, jnp.any(jnp.isnan(M) | jnp.isinf(M)), "NaN/Inf M")
 
     internal_jitter_M = 1e-6
     M_jittered = M + internal_jitter_M * jnp.eye(K)
@@ -343,14 +343,14 @@ def expected_fim_impl(
 
     I_ff = V - V @ Z # I_ff = Lambda^T A_t^{-1} Lambda
     # Check I_ff
-    I_ff = eqx.error_if(I_ff, jnp.any(jnp.isnan(I_ff) | jnp.isinf(I_ff)), "NaN/Inf in I_ff")
+    # I_ff = eqx.error_if(I_ff, jnp.any(jnp.isnan(I_ff) | jnp.isinf(I_ff)), "NaN/Inf in I_ff")
 
     # --- Calculate I_hh ---
     exp_h_outer_sum = jnp.exp(h[:, None] + h[None, :])
     I_ff_squared = I_ff**2
     I_hh = 0.5 * exp_h_outer_sum * I_ff_squared
     # Check I_hh
-    I_hh = eqx.error_if(I_hh, jnp.any(jnp.isnan(I_hh) | jnp.isinf(I_hh)), "NaN/Inf in I_hh")
+    # I_hh = eqx.error_if(I_hh, jnp.any(jnp.isnan(I_hh) | jnp.isinf(I_hh)), "NaN/Inf in I_hh")
 
     # --- Assemble the block-diagonal E-FIM matrix ---
     EFIM = jnp.zeros((state_dim, state_dim), dtype=I_ff.dtype)

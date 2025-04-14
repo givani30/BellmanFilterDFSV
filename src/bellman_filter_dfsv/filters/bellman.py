@@ -44,6 +44,7 @@ from ._bellman_impl import (  # Removed kl_penalty_impl import
     build_covariance_impl,
     log_posterior_impl,
     observed_fim_impl,
+    expected_fim_impl
 )
 from ._bellman_optim import (
     _block_coordinate_update_impl,  # Import optimization helpers including the shared block update
@@ -234,7 +235,7 @@ class DFSVBellmanFilter(DFSVFilter):
         # JIT the imported implementation functions
         self.build_covariance_jit = eqx.filter_jit(build_covariance_impl)
         self.fisher_information_jit = eqx.filter_jit(
-            partial(observed_fim_impl, K=self.K)
+            partial(expected_fim_impl, K=self.K)
         )
         self.log_posterior_jit = eqx.filter_jit(
             partial(log_posterior_impl, K=self.K, build_covariance_fn=self.build_covariance_jit)
@@ -731,18 +732,18 @@ class DFSVBellmanFilter(DFSVFilter):
 
         # --- Calculate Updated Information Matrix (Omega_post = Omega_pred + J_observed) ---
         # Calculate Observed Fisher Information J_observed = -Hessian(log p(y_t|alpha_t)) at alpha_updated
-        J_observed = self.fisher_information_jit(lambda_r, sigma2, alpha_updated, jax_observation)
+        FIM = self.fisher_information_jit(lambda_r, sigma2, alpha_updated, jax_observation)
 
-        # --- Regularize J_observed to ensure PSD ---
-        evals_j, evecs_j = jnp.linalg.eigh(J_observed)
-        min_eigenvalue = 1e-8 # Small positive floor for J_observed eigenvalues
-        evals_j_clipped = jnp.maximum(evals_j, min_eigenvalue)
-        J_observed_psd = evecs_j @ jnp.diag(evals_j_clipped) @ evecs_j.T
-        J_observed_psd = (J_observed_psd + J_observed_psd.T) / 2 # Ensure symmetry
-        # --- End Regularization ---
+        # --- Regularize J_observed to ensure PSD NOTE: this is necessary if using the obseved fim. ---
+        # evals_j, evecs_j = jnp.linalg.eigh(J_observed)
+        # min_eigenvalue = 1e-8 # Small positive floor for J_observed eigenvalues
+        # evals_j_clipped = jnp.maximum(evals_j, min_eigenvalue)
+        # J_observed_psd = evecs_j @ jnp.diag(evals_j_clipped) @ evecs_j.T
+        # J_observed_psd = (J_observed_psd + J_observed_psd.T) / 2 # Ensure symmetry
+        # # --- End Regularization ---
 
         # Compute updated information matrix Omega_{t|t} = Omega_{t|t-1} + J_observed_psd
-        Omega_post = Omega_pred + J_observed_psd + jitter_post * jnp.eye(state_dim, dtype=jnp.float64) # Add jitter
+        Omega_post = Omega_pred + FIM + jitter_post * jnp.eye(state_dim, dtype=jnp.float64) # Add jitter
         Omega_post = (Omega_post + Omega_post.T) / 2 # Ensure symmetry
 
         # --- Calculate Updated Covariance (P_post = Omega_post^-1) ---

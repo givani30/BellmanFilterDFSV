@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 """
-Comprehensive Optimizer Comparison Script for BIF.
+Particle Filter Optimizer Comparison Script.
 
-This script runs a comprehensive experiment comparing all available optimizers
-for the Bellman Information Filter (BIF) on a DFSV model. It tracks:
+This script runs an experiment comparing selected optimizers (AdamW and BFGS variants)
+for the Particle Filter on a DFSV model. Due to instability with gradient-based optimizers,
+only AdamW is included from the gradient-based family. It tracks:
 - Final loss value
 - Number of steps taken
 - Success status
@@ -302,11 +303,12 @@ def save_results_to_csv(results: List[OptimizerResult]):
     """
     print("\nSaving results to CSV...")
 
-    # Ensure outputs directory exists
-    os.makedirs("outputs", exist_ok=True)
+    # Use the output directory we created
+    output_dir = os.path.join("output_thesis", "particle_filter_optimizer_comparison")
+    os.makedirs(output_dir, exist_ok=True)
 
     # Create CSV file
-    csv_path = os.path.join("outputs", "optimizer_comparison_results.csv")
+    csv_path = os.path.join(output_dir, "optimizer_comparison_results.csv")
     with open(csv_path, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
 
@@ -341,8 +343,9 @@ def save_parameter_errors_to_csv(results: List[OptimizerResult], true_params: DF
     """
     print("\nSaving parameter errors to CSV...")
 
-    # Ensure outputs directory exists
-    os.makedirs("outputs", exist_ok=True)
+    # Use the output directory we created
+    output_dir = os.path.join("output_thesis", "particle_filter_optimizer_comparison")
+    os.makedirs(output_dir, exist_ok=True)
 
     # Get true parameter values as flat arrays for easier comparison
     true_values = {
@@ -355,7 +358,7 @@ def save_parameter_errors_to_csv(results: List[OptimizerResult], true_params: DF
     }
 
     # Create CSV file
-    csv_path = os.path.join("outputs", "parameter_estimation_errors.csv")
+    csv_path = os.path.join(output_dir, "parameter_estimation_errors.csv")
     with open(csv_path, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
 
@@ -404,8 +407,9 @@ def plot_loss_history(results: List[OptimizerResult]):
     """
     print("\nGenerating loss history plots...")
 
-    # Ensure outputs directory exists
-    os.makedirs("outputs", exist_ok=True)
+    # Use the output directory we created
+    output_dir = os.path.join("output_thesis", "particle_filter_optimizer_comparison")
+    os.makedirs(output_dir, exist_ok=True)
 
     # Create figure
     plt.figure(figsize=(12, 8))
@@ -425,24 +429,24 @@ def plot_loss_history(results: List[OptimizerResult]):
     plt.grid(True)
 
     # Save figure
-    plot_path = os.path.join("outputs", "loss_history.png")
+    plot_path = os.path.join(output_dir, "loss_history.png")
     plt.savefig(plot_path)
     print(f"  Loss history plot saved to {plot_path}")
 
 
 def main():
     """Main function to run the optimizer comparison."""
-    print("Starting Comprehensive Optimizer Comparison...")
+    print("Starting Particle Filter Optimizer Comparison...")
 
     # 1. Create model parameters
-    N, K = 5, 2
+    N, K = 10, 5
     true_params = create_simple_model(N=N, K=K)
     print(f"Created model with N={true_params.N}, K={true_params.K}")
     print("True Parameters:")
     print(true_params)
 
     # 2. Generate simulation data
-    T = 1500  # Full experiment with longer time series
+    T = 500  # Full experiment with longer time series
     print(f"\nGenerating {T} time steps of simulation data...")
     returns = create_training_data(true_params, T=T, seed=123)
     print("Simulation data generated.")
@@ -454,7 +458,7 @@ def main():
         print(f"  - {name}: {desc}")
 
     # 4. Define optimization configurations
-    filter_type = FilterType.BIF  # Focus on BIF filter
+    filter_type = FilterType.PF  # Focus on Particle Filter
     use_transformations = True  # Always use transformations for stability
     max_steps = 1000  # Number of optimization steps
     stability_penalty_weight = 1e4  # Weight for stability penalty
@@ -463,12 +467,18 @@ def main():
 
     #4,5 generate initial parameter guess
     initial_params = create_stable_initial_params(N, K)
+    num_particles = 5000
     # 5. Run optimizations
     results = []
-    # Use all available optimizers
+    # Create output directory for results
+    output_dir = os.path.join("output_thesis", "particle_filter_optimizer_comparison")
+    os.makedirs(output_dir, exist_ok=True)
+    print(f"Results will be saved to: {output_dir}")
+
+    # Use only AdamW as gradient-based optimizer and BFGS variants for Particle Filter
     print(f"\nRunning optimizations with max_steps={max_steps}, stability_penalty_weight={stability_penalty_weight}...")
-    # Run all available optimizers with both fixed and unfixed mu
-    optimizer_test=["AdamW"]
+    # Run selected optimizers with both fixed and unfixed mu
+    optimizer_test=["SGD"]
     for optimizer_name in optimizer_test:
         for fix_mu in [True, False]:  # Run with both fixed and unfixed mu
             print(f"\n--- Running: Optimizer={optimizer_name} | Transform={'Yes' if use_transformations else 'No'} | Fix_mu={'Yes' if fix_mu else 'No'} ---")
@@ -479,6 +489,7 @@ def main():
                     filter_type=filter_type,
                     returns=returns,
                     initial_params=initial_params, # Added
+                    num_particles=num_particles,
                     true_params=true_params if fix_mu else None,  # Only pass true_params if fix_mu is True
                     use_transformations=use_transformations,
                     optimizer_name=optimizer_name,
@@ -491,7 +502,7 @@ def main():
                     rtol=1e-5,
                     atol=1e-5,
                     fix_mu=fix_mu
-                )       
+                )
 
                 results.append(result)
 
@@ -587,7 +598,7 @@ def main():
     else:
         print("\nNo results to display. All optimizations failed.")
 
-    print("\nComprehensive Optimizer Comparison completed.")
+    print("\nParticle Filter Optimizer Comparison completed.")
 
 
 if __name__ == "__main__":

@@ -196,6 +196,8 @@ def create_optimizer(
     # Configure optimizer based on name
     if optimizer_name == "BFGS":
         return optx.BFGS(rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=verbose_set)
+    if optimizer_name == "NonlinearCG":
+        return optx.NonlinearCG(rtol=rtol, atol=atol, norm=optx.rms_norm)
 
     # LBFGS is not available in Optimistix
     # elif optimizer_name == "LBFGS":
@@ -474,7 +476,7 @@ class DampedTrustRegionBFGS(optx.AbstractBFGS):
         self.norm = norm
         self.use_inverse = use_inverse
         self.descent = optx.DampedNewtonDescent()
-        self.search = optx.ClassicalTrustRegion()
+        self.search = optx.ClassicalTrustRegion(high_cutoff=0.995, low_cutoff=0.1, high_constant=2.5, low_constant=0.2)
         self.verbose = verbose
 
 
