@@ -447,7 +447,11 @@ def create_output_directory() -> Path:
 
 
 def plot_scatter_comparison(df: pl.DataFrame, output_dir: Path) -> None:
-    """Create scatter plots comparing estimated vs. true parameter elements.
+    """Create scatter plots comparing Bias vs. RMSE for each parameter.
+
+    Each parameter gets its own figure with facets by N and K. The plots show
+    the relationship between estimation bias and RMSE, with filter configuration
+    encoded by color and time series length (T) encoded by marker style.
 
     Args:
         df: DataFrame containing parameter errors
@@ -456,67 +460,104 @@ def plot_scatter_comparison(df: pl.DataFrame, output_dir: Path) -> None:
     # Set up the style
     sns.set_style("whitegrid")
 
-    # Create config label column using concat_str with explicit literals
-    df = df.with_columns([
-        pl.concat_str([
-            pl.lit("N"), pl.col("N").cast(pl.Utf8),
-            pl.lit("-K"), pl.col("config_K").cast(pl.Utf8), # Use config_K and pl.lit()
-            pl.lit("-T"), pl.col("config_T").cast(pl.Utf8)
-        ]).alias("config_label")
-    ])
-
-    # Parameters to plot (diagonals and key elements)
+    # Parameters to analyze
     params_to_plot = {
+        "lambda_r": "Risk Premium Parameters",
         "Phi_f": "State Transition Matrix",
+        "Phi_h": "Volatility Transition Matrix",
         "Q_h": "Volatility Covariance Matrix",
+        "mu": "Mean Level",
         "sigma2": "Observation Noise Variance"
     }
 
-    for param, title in params_to_plot.items():
-        # Create faceted plot
-        g = sns.FacetGrid(
-            data=df.to_pandas(),
-            col="config_label",
-            col_wrap=3,
-            height=4,
-            aspect=1.2,
-            sharex=False, # Allow x-axis to vary per facet
-            sharey=False  # Allow y-axis to vary per facet
-        )
+    # Ensure correct types for grouping columns
+    df = df.with_columns([
+        pl.col("N").cast(pl.Int64),
+        pl.col("K").cast(pl.Int64),
+        pl.col("config_T").cast(pl.Int64),
+        pl.col("filter_config").cast(pl.Categorical)
+    ])
 
-        # Extract bias and RMSE for parameter
+    # Add verification of bias/RMSE columns
+    for param, title in params_to_plot.items():
+        bias_col = f"param_{param}_bias"
+        rmse_col = f"param_{param}_rmse"
+        
+        logging.info(f"\nChecking {param} metrics:")
+        for cfg in df.select("filter_config").unique().sort("filter_config").to_series():
+            cfg_data = df.filter(pl.col("filter_config") == cfg)
+            valid_metrics = cfg_data.filter(
+                pl.col(bias_col).is_not_null() & 
+                pl.col(rmse_col).is_not_null()
+            ).height
+            total = cfg_data.height
+            if valid_metrics < total:
+                logging.warning(f"  {cfg}: Only {valid_metrics}/{total} runs have valid {param} metrics")
+
+    for param, title in params_to_plot.items():
         bias_col = f"param_{param}_bias"
         rmse_col = f"param_{param}_rmse"
 
-        # --- Step 2: Ensure correct types for plotting ---
-        plot_df = df.select([
-            pl.col(bias_col).cast(pl.Float64),
-            pl.col(rmse_col).cast(pl.Float64),
-            pl.col("filter_config").cast(pl.Categorical), # Use filter_config
-            pl.col("config_fix_mu").cast(pl.Boolean), # Use config_fix_mu for style
-            pl.col("config_label").cast(pl.Categorical)   # Faceting column
-        ]).to_pandas() # Convert to pandas *after* casting
+        # Skip if either column is missing
+        if bias_col not in df.columns or rmse_col not in df.columns:
+            logging.info(f"Skipping {param} plot - required columns not found")
+            continue
 
-        # Map scatter plot using filter_config and config_fix_mu
-        g.map_dataframe(
-            sns.scatterplot,
-            x=bias_col,
-            y=rmse_col,
-            hue="filter_config", # Use filter_config for color
-            style="config_fix_mu", # Use config_fix_mu for marker style
-            alpha=0.7
-        )
+        # Get unique N, K combinations
+        configs = df.select(["N", "K"]).unique().sort(["N", "K"])
+        if configs.height == 0:
+            logging.warning(f"No valid configurations found for {param}")
+            continue
 
-        # Customize plot
-        g.fig.suptitle(f"{title} - Estimation Errors by Configuration", y=1.02)
-        g.set_axis_labels("Bias", "RMSE")
-        g.set_titles("{col_name}") # Simplify facet titles
+        # Create plot with subplots for each N, K combination
+        n_configs = configs.height
+        n_cols = min(3, n_configs)  # Maximum 3 columns
+        n_rows = (n_configs + n_cols - 1) // n_cols
+        
+        fig = plt.figure(figsize=(5 * n_cols, 4 * n_rows))
+        plt.suptitle(f"{title} - Bias vs. RMSE Analysis", y=1.02, fontsize=14)
 
-        # Add legend
-        g.add_legend(title="Filter Config / Fix Mu") # Update legend title
+        for idx, (N, K) in enumerate(configs.iter_rows(), 1):
+            ax = plt.subplot(n_rows, n_cols, idx)
 
-        # Save plot
-        plt.savefig(output_dir / f"scatter_{param}_comparison.png", dpi=300, bbox_inches="tight")
+            # Filter data for this N, K combination and prepare for plotting
+            plot_data = df.filter(
+                (pl.col("N") == N) &
+                (pl.col("K") == K)
+            ).select([
+                pl.col(bias_col).cast(pl.Float64),
+                pl.col(rmse_col).cast(pl.Float64),
+                pl.col("filter_config"),
+                pl.col("config_T").cast(pl.Int64)  # Cast T as integer for style
+            ]).to_pandas()
+
+            # Create scatter plot with encoding
+            sns.scatterplot(
+                data=plot_data,
+                x=bias_col,
+                y=rmse_col,
+                hue="filter_config",
+                style="config_T",  # Use T for marker style
+                alpha=0.7,
+                ax=ax
+            )
+
+            # Customize subplot
+            ax.set_title(f"N={N}, K={K}")
+            ax.set_xlabel("Bias")
+            ax.set_ylabel("RMSE")
+            ax.grid(True, alpha=0.3)
+
+            # Update legend
+            handles, labels = ax.get_legend_handles_labels()
+            legend = ax.legend(title="Filter Config / Time Length",
+                           bbox_to_anchor=(1.05, 1),
+                           loc='upper left')
+
+        plt.tight_layout()
+        plt.savefig(output_dir / f"scatter_{param}_comparison.png",
+                   dpi=300,
+                   bbox_inches="tight")
         plt.close()
 
 
@@ -1229,190 +1270,89 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame, output_dir: Path) -> None:
     logging.info(f"\nDetailed fix mu analysis saved to: {output_path}")
 
 
-def plot_time_scaling(df_agg: pl.DataFrame, output_dir: Path) -> List[Dict]:
-    """Create line plots showing how computation time scales with N, K, and T.
+def plot_time_scaling(df_agg: pl.DataFrame, output_dir: Path) -> None:
+    # Validate inputs
+    if df_agg.shape[0] == 0:
+        raise ValueError("Empty DataFrame provided")
+
+    required_cols = ["N", "K", "config_T", "filter_config", "config_fix_mu",
+                    "timing_total_script_duration_s_mean"]
+    missing_cols = [col for col in required_cols if col not in df_agg.columns]
+    if missing_cols:
+        raise ValueError(f"Missing required columns: {missing_cols}")
+
+    logging.info("Creating time scaling plots for %d configurations", df_agg.shape[0])
+    """Create line plots showing how computation time scales with different dimensions.
+
+    Creates separate plots for each dimension (N: assets, K: factors, T: time series length),
+    with lines differentiated by filter configuration and fix_mu setting. Includes error bands
+    and automatically switches to log scale when the timing spread is large.
 
     Args:
         df_agg: DataFrame containing aggregated scalar metrics
         output_dir: Directory to save plots
 
-    Returns:
-        List of dictionaries containing complexity analysis results for all dimensions.
+    Generated files will be named:
+        - time_scaling_N.png: Scaling with number of assets
+        - time_scaling_K.png: Scaling with number of factors
+        - time_scaling_config_T.png: Scaling with time series length
     """
     # Set style for all plots
     sns.set_style("whitegrid")
     plt.rcParams['axes.titlesize'] = 12
     plt.rcParams['axes.labelsize'] = 10
-    
-    all_complexity_results = [] # Initialize list to store results across dimensions
 
-    # Create faceted plots for each dimension (N, K, T)
+    # Define dimensions to plot against
     dimensions = [
-        ("N", "K", "config_T", "Number of Assets"),  # Plot vs N, facet by K and T
-        ("K", "N", "config_T", "Number of Factors"),  # Plot vs K, facet by N and T
-        ("config_T", "N", "K", "Time Series Length")  # Plot vs T, facet by N and K
+        ("N", "Number of Assets"),
+        ("K", "Number of Factors"),
+        ("config_T", "Time Series Length")
     ]
 
-    for x_col, row_col, col_col, x_label in dimensions:
-        # Ensure numerical types for plotting
+    for x_col, x_label in dimensions:
+        # Ensure numerical types for plotting and get valid combinations
         df_plot = df_agg.with_columns([
-            pl.col(x_col).cast(pl.Int64),
-            pl.col(row_col).cast(pl.Int64),
-            pl.col(col_col).cast(pl.Int64)
+            pl.col("N").cast(pl.Int64),
+            pl.col("K").cast(pl.Int64),
+            pl.col("config_T").cast(pl.Int64),
+            pl.col("filter_config").cast(pl.Categorical),
+            pl.col("config_fix_mu").cast(pl.Boolean),
+            pl.col("timing_total_script_duration_s_mean").cast(pl.Float64)
         ])
 
-        # Create figure with specified size
-        g = sns.FacetGrid(
+        # Create figure and plot
+        fig, ax = plt.subplots(figsize=(10, 6))
+        sns.lineplot(
             data=df_plot.to_pandas(),
-            row=row_col,
-            col=col_col,
-            hue="filter_type",
-            height=4,
-            aspect=1.5,
-            palette="Set2"  # Use consistent color palette
-        )
-
-        # Plot timing vs dimension with error bands
-        # Use hue for color and style for markers/dashes if needed, but avoid redundant style="filter_type"
-        g.map_dataframe(
-            sns.lineplot,
             x=x_col,
             y="timing_total_script_duration_s_mean",
-            # style="filter_type", # Removed redundant style mapping
-            errorbar=("ci", 95),  # Add 95% confidence intervals
-            markers=True,  # Add markers to lines
-            dashes=False  # Use solid lines
+            hue="filter_config",
+            style="config_fix_mu",
+            errorbar=("ci", 95),
+            markers=True,
+            dashes=True,
+            palette="Set2",
+            ax=ax
         )
 
         # Customize axes and labels
-        g.set_axis_labels(
-            x_label,
-            "Mean Computation Time (s)"
-        )
+        ax.set_title(f"Computation Time Scaling with {x_label}", pad=20, fontsize=14, weight='bold')
+        ax.set_xlabel(x_label if x_col != "config_T" else "Time Series Length (T)")
+        ax.set_ylabel("Mean Computation Time (s)")
         
-        # Set plot title
-        g.fig.suptitle(
-            f"Computation Time Scaling with {x_label}",
-            y=1.02,
-            fontsize=14,
-            weight='bold'
-        )
-        
-        # Customize each subplot
-        for ax in g.axes.flat:
-            # Rotate x-axis labels
-            ax.tick_params(axis='x', rotation=45)
-            
-            # Add gridlines
-            ax.grid(True, linestyle='--', alpha=0.7)
-            
-            # Set log scale for timing if the spread is large
-            if df_plot.select(pl.col("timing_total_script_duration_s_mean")).max()[0, 0] / \
-               df_plot.select(pl.col("timing_total_script_duration_s_mean")).min()[0, 0] > 10:
-                ax.set_yscale('log')
-                ax.set_ylabel("Mean Computation Time (s, log scale)")
-            
-            # Add subplot dimensions as text
-            row_val = ax.get_title().split(" = ")[-1] if ax.get_title() else ""
-            col_val = g.col_names[ax.get_subplotspec().colspan.start] if g.col_names else ""
-            ax.text(0.02, 0.98, f"{row_col}={row_val}\n{col_col}={col_val}",
-                   transform=ax.transAxes, fontsize=8, va='top')
-            
-            def fit_and_analyze_complexity(x_vals, y_vals):
-                """Helper function to fit polynomial and determine complexity."""
-                # Fit polynomials of different degrees
-                fits = []
-                r2_scores = []
-                for degree in [1, 2, 3]:
-                    coeffs = np.polyfit(x_vals, y_vals, degree)
-                    y_pred = np.polyval(coeffs, x_vals)
-                    r2 = 1 - np.sum((y_vals - y_pred)**2) / np.sum((y_vals - np.mean(y_vals))**2)
-                    fits.append((coeffs, r2))
-                    r2_scores.append(r2)
+        # Rotate x-axis labels and add grid
+        ax.tick_params(axis='x', rotation=45)
+        ax.grid(True, linestyle='--', alpha=0.7)
 
-                # Select best fit based on R² improvement threshold
-                best_degree = 1
-                for i in range(1, len(r2_scores)):
-                    if r2_scores[i] > r2_scores[i-1] * 1.1:  # 10% improvement threshold
-                        best_degree = i + 1
-                
-                coeffs, r2 = fits[best_degree - 1]
-                
-                # Determine complexity class
-                if best_degree == 3:
-                    complexity = "O(n³)"
-                elif best_degree == 2:
-                    complexity = "O(n²)"
-                else:
-                    complexity = "O(n)"
-                
-                return coeffs, r2, complexity, best_degree
+        # Set log scale if spread is large
+        y_vals = df_plot.select(pl.col("timing_total_script_duration_s_mean"))
+        if y_vals.max()[0, 0] / y_vals.min()[0, 0] > 10:
+            ax.set_yscale('log')
+            ax.set_ylabel("Mean Computation Time (s, log scale)")
 
-            # Fit polynomials and add trendlines for each filter type
-            filter_types = df_plot["filter_type"].unique()
-            for idx, filter_type in enumerate(filter_types):
-                filter_data = df_plot.filter(pl.col("filter_type") == filter_type)
-                x_vals = filter_data.select(pl.col(x_col)).to_numpy().flatten()
-                y_vals = filter_data.select(pl.col("timing_total_script_duration_s_mean")).to_numpy().flatten()
-                
-                if len(x_vals) > 3:  # Need at least 4 points for cubic fit
-                    # Analyze complexity
-                    coeffs, r2, complexity, degree = fit_and_analyze_complexity(x_vals, y_vals)
-                    
-                    # Generate smooth fit line
-                    x_fit = np.linspace(min(x_vals), max(x_vals), 100)
-                    y_fit = np.polyval(coeffs, x_fit)
-                    
-                    # Add trendline (without explicit label)
-                    color = sns.color_palette("Set2")[idx]
-                    ax.plot(x_fit, y_fit, '--', alpha=0.5, color=color) # Removed label argument
-                    
-                    # Add complexity and R² annotation
-                    ax.text(0.98, 0.98 - 0.1 * idx,
-                           f"{filter_type}: {complexity}\n(Fit R²={r2:.3f}, Deg={degree})", # Added degree info
-                           transform=ax.transAxes, fontsize=8,
-                           ha='right', va='top', color=color)
-            
-        # Collect complexity analysis results
-        complexity_results = []
-        for ax in g.axes.flat:
-            row_val = ax.get_title().split(" = ")[-1] if ax.get_title() else ""
-            col_val = g.col_names[ax.get_subplotspec().colspan.start] if g.col_names else ""
-            
-            for idx, filter_type in enumerate(filter_types):
-                filter_data = df_plot.filter(
-                    (pl.col("filter_type") == filter_type) &
-                    (pl.col(row_col) == int(row_val)) &
-                    (pl.col(col_col) == int(col_val))
-                )
-                
-                x_vals = filter_data.select(pl.col(x_col)).to_numpy().flatten()
-                y_vals = filter_data.select(pl.col("timing_total_script_duration_s_mean")).to_numpy().flatten()
-                
-                if len(x_vals) > 3:
-                    coeffs, r2, complexity, degree = fit_and_analyze_complexity(x_vals, y_vals)
-                    complexity_results.append({
-                        "filter_type": filter_type,
-                        "dimension": x_label,
-                        f"{row_col}_value": int(row_val),
-                        f"{col_col}_value": int(col_val),
-                        "complexity": complexity,
-                        "polynomial_degree": degree,
-                        "r_squared": r2,
-                        "coefficients": list(coeffs),
-                    })
-        
-        # Save complexity analysis results
-        if complexity_results:
-            df_complexity = pl.DataFrame(complexity_results)
-            output_file = output_dir / f"complexity_analysis_{x_col}.csv"
-            df_complexity.write_csv(output_file)
-            logging.info(f"Saved complexity analysis for {x_label} to {output_file}")
-            all_complexity_results.extend(complexity_results) # Append results for this dimension
-        
-        # Add legend with better positioning and formatting
-        g.add_legend(
-            title="Filter Type",
+        # Add legend with positioning
+        ax.legend(
+            title="Filter Configuration / Fix μ",
             bbox_to_anchor=(1.05, 1),
             loc='upper left',
             frameon=True,
@@ -1420,15 +1360,20 @@ def plot_time_scaling(df_agg: pl.DataFrame, output_dir: Path) -> List[Dict]:
             edgecolor='lightgray'
         )
 
-        # Save plot
-        plt.savefig(
-            output_dir / f"time_scaling_{x_col}.png",
-            dpi=300,
-            bbox_inches="tight"
-        )
-        plt.close()
+        # Adjust layout to prevent legend overlap
+        plt.tight_layout()
 
-    return all_complexity_results # Return the consolidated list
+        # Save plot
+        output_path = output_dir / f"time_scaling_{x_col}.png"
+        plt.savefig(output_path, dpi=300, bbox_inches="tight")
+        plt.close()
+        
+        # Log details about the plot generation
+        logging.info("Generated time scaling plot for %s:", x_label)
+        logging.info("  - Unique filter configs: %d",
+                    df_plot.select("filter_config").n_unique())
+        logging.info("  - Data points: %d", df_plot.height)
+        logging.info("  - Output file: %s", output_path)
 
 
 def aggregate_scalar_metrics(df: pl.DataFrame) -> pl.DataFrame:
@@ -1566,9 +1511,9 @@ def generate_summary_tables(df_success: pl.DataFrame, df_agg_scalars: pl.DataFra
             ("Factor State Correlation", pl.Float64),
         "accuracy_state_estimation_volatility_correlation_mean":
             ("Volatility State Correlation", pl.Float64),
-        "timing_total_script_duration_s_mean":
+        "timing_total_script_duration_s":  # Remove "_mean" suffix here
             ("Computation Time (s)", pl.Float64),
-        "results_steps_mean":
+        "results_steps":  # Remove "_mean" suffix here
             ("Optimization Steps", pl.Int64)
     }
 
@@ -1603,7 +1548,7 @@ def generate_summary_tables(df_success: pl.DataFrame, df_agg_scalars: pl.DataFra
             filter_configs = config_data.select("filter_config").unique().sort("filter_config")
             
             for metric, (metric_name, dtype) in metrics.items():
-                mean_col = f"{metric}_mean"
+                mean_col = f"{metric}_mean"  # This will add the "_mean" suffix
                 std_col = f"{metric}_std"
 
                 # Get values for each filter configuration
@@ -1774,29 +1719,10 @@ def main() -> None:
         plot_error_boxplots(df_success, output_dir)
         plot_k2_eigenvalue_distributions(df_success, output_dir)
 
-        # Add time scaling plots and collect complexity results
-        logging.info("\nAnalyzing computational complexity")
-        all_complexity_results = plot_time_scaling(df_agg_scalars, output_dir)
-
-        if all_complexity_results:
-            df_consolidated_complexity = pl.DataFrame(all_complexity_results)
-            complexity_output_path = output_dir / "consolidated_complexity_analysis.csv"
-            df_consolidated_complexity.write_csv(complexity_output_path)
-            # Log complexity summary
-            logging.info("\nComplexity Analysis Summary:")
-            for filter_cfg in filter_configs.to_series():
-                cfg_results = df_consolidated_complexity.filter(
-                    pl.col("filter_type") == filter_cfg
-                )
-                if cfg_results.height > 0:
-                    logging.info(f"\n  {filter_cfg}:")
-                    dimensions = cfg_results.select("dimension").unique().to_series()
-                    for dim in dimensions:
-                        dim_results = cfg_results.filter(pl.col("dimension") == dim)
-                        complexities = dim_results.select("complexity").unique().to_series()
-                        logging.info(f"    {dim}: {', '.join(complexities)}")
-        else:
-            logging.warning("No complexity analysis results generated.")
+        # Generate time scaling plots
+        logging.info("\nGenerating time scaling plots")
+        plot_time_scaling(df_agg_scalars, output_dir)
+        logging.info("Time scaling plots generated successfully")
 
         logging.info("\nPhase 4 completed successfully")
         phase4_time = datetime.now() - start_time
@@ -1872,9 +1798,9 @@ def main() -> None:
         logging.info("  - Aggregated Parameter Errors: %s", agg_param_errors_path)
         logging.info("\n2. Analysis Outputs:")
         logging.info("  - Visualization Plots: %s/", output_dir)
+        logging.info("  - Time Scaling Plots: %s/time_scaling_*.png", output_dir)
         logging.info("  - Scalar Metrics Analysis: %s", output_dir / "scalar_metrics_analysis.csv")
         logging.info("  - Summary Tables: %s/", output_dir)
-        logging.info("  - Complexity Analysis: %s", output_dir / "consolidated_complexity_analysis.csv")
         logging.info("\n3. Additional Information:")
         logging.info(f"  - Total successful runs analyzed: {df_success.height}")
         logging.info(f"  - Unique filter configurations: {len(filter_configs)}")
