@@ -447,127 +447,187 @@ def create_output_directory() -> Path:
 
 
 def plot_scatter_comparison(df: pl.DataFrame, output_dir: Path) -> None:
-    """Create scatter plots comparing Bias vs. RMSE for each parameter.
+    """Create publication-ready scatter plots comparing Bias vs. RMSE for each parameter."""
+    # Set publication-ready style
+    plt.style.use('seaborn-v0_8-whitegrid')
+    plt.rcParams.update({
+        'font.family': 'serif',
+        'font.size': 10,
+        'axes.labelsize': 11,
+        'axes.titlesize': 12,
+        'xtick.labelsize': 10,
+        'ytick.labelsize': 10,
+        'legend.fontsize': 10,
+        'legend.title_fontsize': 11,
+        'figure.dpi': 300,
+        'lines.markersize': 6,
+        'lines.linewidth': 1.5,
+    })
 
-    Each parameter gets its own figure with facets by N and K. The plots show
-    the relationship between estimation bias and RMSE, with filter configuration
-    encoded by color and time series length (T) encoded by marker style.
+    # Professional color palette
+    colors = ['#0173B2', '#DE8F05', '#029E73']  # Blue, Orange, Green
+    sns.set_palette(colors)
 
-    Args:
-        df: DataFrame containing parameter errors
-        output_dir: Directory to save plots
-    """
-    # Set up the style
-    sns.set_style("whitegrid")
-
-    # Parameters to analyze
-    params_to_plot = {
-        "lambda_r": "Risk Premium Parameters",
-        "Phi_f": "State Transition Matrix",
-        "Phi_h": "Volatility Transition Matrix",
-        "Q_h": "Volatility Covariance Matrix",
-        "mu": "Mean Level",
-        "sigma2": "Observation Noise Variance"
+    # Create mapping for filter config names
+    filter_config_map = {
+        "BIF": "Bellman Filter",
+        "PF-1000": "Particle Filter (1000)",
+        "PF-5000": "Particle Filter (5000)"
     }
 
-    # Ensure correct types for grouping columns
+    params_to_plot = {
+        "lambda_r": "Factor loading Parameters",
+        "Phi_f": "Factor Transition Matrix",
+        "Phi_h": "Log-Volatility Transition Matrix",
+        "Q_h": "Volatility Covariance Matrix",
+        "mu": "Long-run mean of Log-Volatilities",
+        "sigma2": "Idiosyncratic Noise Variance"
+    }
+
+    # First cast numeric columns and create display columns
     df = df.with_columns([
+        # Cast numeric columns
         pl.col("N").cast(pl.Int64),
         pl.col("K").cast(pl.Int64),
         pl.col("config_T").cast(pl.Int64),
-        pl.col("filter_config").cast(pl.Categorical)
+
+        # Create display columns
+        pl.col("filter_config").cast(pl.Utf8).replace(filter_config_map).alias("filter_config_display"),
+        pl.concat_str([
+            pl.lit("T = "),
+            pl.col("config_T").cast(pl.Utf8)
+        ]).alias("time_length_display")
     ])
 
-    # Add verification of bias/RMSE columns
-    for param, title in params_to_plot.items():
-        bias_col = f"param_{param}_bias"
-        rmse_col = f"param_{param}_rmse"
-        
-        logging.info(f"\nChecking {param} metrics:")
-        for cfg in df.select("filter_config").unique().sort("filter_config").to_series():
-            cfg_data = df.filter(pl.col("filter_config") == cfg)
-            valid_metrics = cfg_data.filter(
-                pl.col(bias_col).is_not_null() & 
-                pl.col(rmse_col).is_not_null()
-            ).height
-            total = cfg_data.height
-            if valid_metrics < total:
-                logging.warning(f"  {cfg}: Only {valid_metrics}/{total} runs have valid {param} metrics")
-
     for param, title in params_to_plot.items():
         bias_col = f"param_{param}_bias"
         rmse_col = f"param_{param}_rmse"
 
-        # Skip if either column is missing
         if bias_col not in df.columns or rmse_col not in df.columns:
             logging.info(f"Skipping {param} plot - required columns not found")
             continue
 
-        # Get unique N, K combinations
         configs = df.select(["N", "K"]).unique().sort(["N", "K"])
         if configs.height == 0:
             logging.warning(f"No valid configurations found for {param}")
             continue
 
-        # Create plot with subplots for each N, K combination
         n_configs = configs.height
-        n_cols = min(3, n_configs)  # Maximum 3 columns
+        n_cols = min(3, n_configs)
         n_rows = (n_configs + n_cols - 1) // n_cols
-        
-        fig = plt.figure(figsize=(5 * n_cols, 4 * n_rows))
-        plt.suptitle(f"{title} - Bias vs. RMSE Analysis", y=1.02, fontsize=14)
 
-        # Create a list to store legend handles and labels
-        legend_handles = []
-        legend_labels = []
+        # Reduce figure width while maintaining aspect ratio
+        # A4 paper width is approximately 8.27 inches
+        # Leave some margins, so use about 7.5 inches max width
+        base_width = 2.3  # width per subplot
+        legend_space = 1.5  # space for legend
+        fig_width = min(7.5, base_width * n_cols + legend_space)
+        fig_height = base_width * n_rows
+
+        # Create figure with adjusted size and resolution
+        fig = plt.figure(figsize=(fig_width, fig_height))  # Extra width for legend
+
+        scatter_plots = []
 
         for idx, (N, K) in enumerate(configs.iter_rows(), 1):
             ax = plt.subplot(n_rows, n_cols, idx)
 
-            # Filter data for this N, K combination and prepare for plotting
             plot_data = df.filter(
                 (pl.col("N") == N) &
                 (pl.col("K") == K)
             ).select([
                 pl.col(bias_col).cast(pl.Float64),
                 pl.col(rmse_col).cast(pl.Float64),
-                pl.col("filter_config"),
-                pl.col("config_T").cast(pl.Int64)  # Cast T as integer for style
+                "filter_config_display",
+                "time_length_display"
             ]).to_pandas()
 
-            # Create scatter plot with encoding
+            # Add a larger offset to PF-1000 points to prevent overlap
+            if "PF-1000" in plot_data["filter_config_display"].values:
+                pf1000_mask = plot_data["filter_config_display"] == "Particle Filter (1000)"
+                plot_data.loc[pf1000_mask, bias_col] = plot_data.loc[pf1000_mask, bias_col] + 0.005
+
             scatter = sns.scatterplot(
                 data=plot_data,
                 x=bias_col,
                 y=rmse_col,
-                hue="filter_config",
-                style="config_T",  # Use T for marker style
-                alpha=0.7,
+                hue="filter_config_display",
+                style="time_length_display",
+                alpha=0.8,  # Slightly increased opacity
                 ax=ax,
-                legend=False  # Don't show legend for individual subplots
+                legend=idx == n_configs,
+                # markers=["o", "s", "^"],  # Different markers for different time lengths
+                size="filter_config_display",  # Add size variation
+                sizes={  # Reduced sizes for all filters
+                    "Bellman Filter": 40,
+                    "Particle Filter (1000)": 50,
+                    "Particle Filter (5000)": 40
+                },
+                # linewidth=0.5,
+                # edgecolor='black'
             )
+            scatter_plots.append(scatter)
 
-            # Store legend handles and labels from the first subplot only
-            if idx == 1:
-                legend_handles, legend_labels = ax.get_legend_handles_labels()
-
-            # Customize subplot
-            ax.set_title(f"N={N}, K={K}")
+            # Professional subplot formatting
+            ax.set_title(f"N = {N}, K = {K}", pad=10)
             ax.set_xlabel("Bias")
             ax.set_ylabel("RMSE")
-            ax.grid(True, alpha=0.3)
+            ax.grid(True, alpha=0.3, linestyle='--')
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
 
-        # Add a single legend to the figure
-        fig.legend(legend_handles, legend_labels,
-                  title="Filter Config / Time Length",
-                  bbox_to_anchor=(1.02, 0.5),
-                  loc='center left')
+            if ax.get_legend() is not None:
+                ax.get_legend().remove()
 
+        handles, labels = scatter_plots[-1].get_legend_handles_labels()
+
+        # Split handles and labels
+        n_filters = len(filter_config_map)
+        filter_handles = handles[:n_filters]
+        filter_labels = labels[:n_filters]
+        time_handles = handles[n_filters:]
+        time_labels = labels[n_filters:]
+
+        # Create professional legend
+        legend = fig.legend(
+            filter_handles + time_handles,
+            filter_labels + time_labels,
+            title="Filter Type / Time Series Length",
+            bbox_to_anchor=(1.02, 0.5),
+            loc='center left',
+            ncol=1,
+            frameon=True,
+            framealpha=0.9,
+            edgecolor='lightgray'
+        )
+
+        # Main title with LaTeX-style formatting
+        plt.suptitle(f"{title} - Bias vs. RMSE Analysis", y=1.02, fontsize=13)
+
+        # Adjust layout
         plt.tight_layout()
-        plt.savefig(output_dir / f"scatter_{param}_comparison.png",
-                   dpi=300,
-                   bbox_inches="tight")
+
+        # Save with high quality settings
+        plt.savefig(
+            output_dir / f"scatter_{param}_comparison.pdf",
+            dpi=300,
+            bbox_inches="tight",
+            format="pdf",
+            metadata={'Creator': 'Bellman Filter Analysis'}
+        )
+
+        # Also save as PNG for quick viewing
+        plt.savefig(
+            output_dir / f"scatter_{param}_comparison.png",
+            dpi=300,
+            bbox_inches="tight",
+            facecolor='white',
+            edgecolor='none'
+        )
+
         plt.close()
+
+
 
 
 def calculate_matrix_element_errors(
@@ -728,7 +788,7 @@ def plot_error_boxplots(df: pl.DataFrame, output_dir: Path) -> None:
         pl.col("config_T").cast(pl.Int64),
         pl.col("filter_config").cast(pl.Categorical),
         pl.col("config_fix_mu").cast(pl.Boolean),
-        
+
         # Create config label
         pl.concat_str([
             pl.lit("N"), pl.col("N").cast(pl.Utf8),
@@ -750,7 +810,7 @@ def plot_error_boxplots(df: pl.DataFrame, output_dir: Path) -> None:
             pl.col(metric).cast(pl.Float64)
         ])
         k_values = df_metric.select("K").unique().sort("K")
-        
+
         # Create figure with subplots for different K values
         fig, axes = plt.subplots(
             nrows=len(k_values),
@@ -863,12 +923,12 @@ def plot_k2_eigenvalue_distributions(
 
     for param, title in param_titles.items():
         eig_col = f"param_{param}_eig_rmse"
-        
+
         # Cast eigenvalue metric to float
         df_plot = df_k2.with_columns([
             pl.col(eig_col).cast(pl.Float64)
         ])
-        
+
         # Create figure with two subplots
         fig = plt.figure(figsize=(15, 6))
 
@@ -891,7 +951,7 @@ def plot_k2_eigenvalue_distributions(
 
         # 2. Ellipse visualization
         plt.subplot(1, 2, 2)
-        
+
         # Group by configuration and filter config
         configs = df_plot.unique(["config_label", "filter_config"]).sort(["config_label", "filter_config"])
 
@@ -935,10 +995,10 @@ def plot_k2_eigenvalue_distributions(
 
                 # Create ellipse patch with visual distinction for fix_mu
                 fix_mu = mean_data.select(pl.col("config_fix_mu")).unique()[0, 0]
-                
+
                 # Get color from filter configuration
                 color = color_dict[filter_cfg]
-                
+
                 style_kwargs = {
                     "alpha": 0.3,
                     "color": color,
@@ -947,7 +1007,7 @@ def plot_k2_eigenvalue_distributions(
                     "hatch": hatch_dict[fix_mu],
                     "fill": True
                 }
-                
+
                 ellipse = plt.matplotlib.patches.Ellipse(
                     (0, 0), width, height, angle=angle, **style_kwargs
                 )
@@ -1097,45 +1157,45 @@ def perform_comparative_analysis(df: pl.DataFrame, df_agg: pl.DataFrame) -> None
     # Compare metrics across filter configurations
     filter_configs = df_analysis.select("filter_config").unique().sort("filter_config")
     logging.info("\nMetric Comparison Across Filter Configurations:")
-    
+
     for metric in param_metrics:
         logging.info(f"\nMetric: {metric}")
         stats = []
         base_stats = None
-        
+
         for config in filter_configs.to_series():
             config_stats = df_analysis.filter(
                 pl.col("filter_config") == config
             ).select(
                 pl.col(metric).cast(pl.Float64).mean()
             ).item()
-            
+
             if "BIF" in config:  # Use BIF as baseline for relative comparisons
                 base_stats = config_stats
-            
+
             stats.append(f"{config}: {config_stats:.6f}")
-            
+
             if base_stats is not None and "PF" in config:
                 rel_diff = ((config_stats - base_stats) / base_stats) if base_stats != 0 else float('inf')
                 stats.append(f"(vs BIF: {rel_diff:+.2%})")
-        
+
         logging.info("  " + " | ".join(stats))
 
     # 2. Analyze computational efficiency
     timing_cols = ["results_steps", "timing_total_script_duration_s"]
     logging.info("\nComputational Efficiency Analysis:")
-    
+
     for col in timing_cols:
         logging.info(f"\nMetric: {col}")
         base_time = None
-        
+
         for config in filter_configs.to_series():
             time_stat = df_analysis.filter(
                 pl.col("filter_config") == config
             ).select(
                 pl.col(col).cast(pl.Float64).mean()
             ).item()
-            
+
             if "BIF" in config:
                 base_time = time_stat
                 logging.info(f"  {config}: {time_stat:.2f}")
@@ -1146,11 +1206,11 @@ def perform_comparative_analysis(df: pl.DataFrame, df_agg: pl.DataFrame) -> None
     # 3. Analyze state estimation accuracy
     accuracy_cols = [col for col in df_analysis.columns if col.startswith("accuracy_")]
     logging.info("\nState Estimation Accuracy Analysis:")
-    
+
     for col in accuracy_cols:
         logging.info(f"\nMetric: {col}")
         base_acc = None
-        
+
         # Group by both filter_config and config_fix_mu for detailed analysis
         acc_stats = (
             df_analysis.group_by(["filter_config", "config_fix_mu"])
@@ -1160,13 +1220,13 @@ def perform_comparative_analysis(df: pl.DataFrame, df_agg: pl.DataFrame) -> None
             ])
             .sort(["filter_config", "config_fix_mu"])
         )
-        
+
         for row in acc_stats.iter_rows(named=True):
             config = row["filter_config"]
             fix_mu = row["config_fix_mu"]
             mean_val = row["mean"]
             std_val = row["std"]
-            
+
             if "BIF" in config:
                 base_acc = mean_val
                 logging.info(f"  {config} (fix_mu={fix_mu}): {mean_val:.6f} ± {std_val:.6f}")
@@ -1218,52 +1278,67 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame, output_dir: Path) -> None:
     color_dict = dict(zip(filter_configs, color_palette))
 
     # Create parameter error plots with enhanced visualization
-    fig = plt.figure(figsize=(16, 12))
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    axes = axes.ravel()  # Flatten axes array for easier indexing
+
     plt.suptitle("Parameter Error Analysis by Filter Configuration and Fix μ Setting",
                  y=1.02, fontsize=14, weight='bold')
 
-    for idx, (param, title) in enumerate(params_to_analyze.items(), 1):
-        plt.subplot(2, 2, idx)
-        error_col = f"param_{param}_rmse"
+    for idx, (param, title) in enumerate(params_to_analyze.items()):
+        if idx < len(axes):  # Ensure we don't exceed available subplots
+            error_col = f"param_{param}_rmse"
 
-        if error_col in df.columns:
-            # Calculate statistics for violin plots
-            plot_data = df.with_columns([
-                pl.col(error_col).cast(pl.Float64),
-                pl.col("config_label").cast(pl.Categorical)
-            ]).to_pandas()
+            if error_col in df.columns:
+                # Calculate statistics for violin plots
+                plot_data = df.with_columns([
+                    pl.col(error_col).cast(pl.Float64),
+                    pl.col("config_label").cast(pl.Categorical)
+                ]).to_pandas()
 
-            # Create enhanced violin plot
-            ax = plt.gca()
-            sns.violinplot(
-                data=plot_data,
-                x="filter_config",
-                y=error_col,
-                hue="config_fix_mu",
-                palette=[color_dict[cfg] for cfg in filter_configs],
-                split=True,
-                inner="box",
-                scale="width",
-                cut=0
-            )
+                # Create enhanced violin plot
+                sns.violinplot(
+                    data=plot_data,
+                    x="filter_config",
+                    y=error_col,
+                    hue="config_fix_mu",
+                    palette=[color_dict[cfg] for cfg in filter_configs],
+                    split=True,
+                    inner="box",
+                    scale="width",
+                    cut=0,
+                    ax=axes[idx]
+                )
 
-            # Customize plot
-            plt.title(f"{title} RMSE Distribution", pad=10, fontsize=12)
-            plt.xticks(rotation=45, ha='right')
-            legend = plt.legend(title="Fix μ", labels=["False", "True"])
-            legend.get_frame().set_alpha(0.9)
-            
-            # Add grid
-            ax.grid(True, axis='y', linestyle='--', alpha=0.7)
-            
-            # Adjust y-axis to start at 0 if all values are positive
-            if plot_data[error_col].min() >= 0:
-                ax.set_ylim(bottom=0)
+                # Customize plot
+                axes[idx].set_title(f"{title} RMSE Distribution", pad=10, fontsize=12)
+                axes[idx].set_xticklabels(axes[idx].get_xticklabels(), rotation=45, ha='right')
+                legend = axes[idx].legend(title="Fix μ", labels=["False", "True"])
+                legend.get_frame().set_alpha(0.9)
 
-    plt.tight_layout()
-    plt.savefig(output_dir / "fix_mu_param_errors.png", dpi=300, bbox_inches="tight",
-                facecolor='white', edgecolor='none')
-    plt.close()
+                # Add grid
+                axes[idx].grid(True, axis='y', linestyle='--', alpha=0.7)
+
+                # Adjust y-axis to start at 0 if all values are positive
+                if plot_data[error_col].min() >= 0:
+                    axes[idx].set_ylim(bottom=0)
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust layout to accommodate suptitle
+
+    # Create output directory if it doesn't exist
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save the figure
+    save_path = output_dir / "fix_mu_param_errors.png"
+    plt.savefig(
+        save_path,
+        dpi=300,
+        bbox_inches="tight",
+        facecolor='white',
+        edgecolor='none'
+    )
+    plt.close(fig)  # Explicitly close the figure
+
+    logging.info(f"Saved parameter error plots to: {save_path}")
 
     # Prepare metrics for refined aggregation
     agg_metrics = [
@@ -1271,14 +1346,14 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame, output_dir: Path) -> None:
         *[f"param_{p}_bias" for p in params_to_analyze],
         *scalar_metrics
     ]
-    
+
     # Cast all metrics to float for aggregation
     cast_exprs = [pl.col(m).cast(pl.Float64) for m in agg_metrics if m in df.columns]
     df_analysis = df.with_columns(cast_exprs)
 
     # Group by refined configuration
     group_cols = ["filter_config", "N", "K", "config_T", "config_fix_mu", "config_label"]
-    
+
     # Create aggregation expressions
     agg_expressions = []
     for metric in agg_metrics:
@@ -1294,12 +1369,12 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame, output_dir: Path) -> None:
     # Log detailed analysis by filter configuration
     logging.info("\nFix Mu Analysis Results by Filter Configuration:")
     filter_configs = df_agg.select("filter_config").unique().sort("filter_config")
-    
+
     for filter_cfg in filter_configs.to_series():
         logging.info(f"\n{filter_cfg} Results:")
         df_filter = df_agg.filter(pl.col("filter_config") == filter_cfg)
 
-        for config in df_filter.select("config_label").unique().sort().to_series():
+        for config in df_filter.select("config_label").unique().sort("config_label").to_series():
             df_config = df_filter.filter(pl.col("config_label") == config)
             logging.info(f"\nConfiguration: {config}")
 
@@ -1320,7 +1395,7 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame, output_dir: Path) -> None:
                     t_mean, t_std = fix_true.row(0)[:2]
                     f_mean, f_std = fix_false.row(0)[:2]
                     diff_pct = ((t_mean - f_mean) / f_mean) * 100 if f_mean != 0 else float('inf')
-                    
+
                     logging.info(
                         f"{metric}:\n"
                         f"  Fix=True:  {t_mean:.6f} ± {t_std:.6f}\n"
@@ -1328,25 +1403,25 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame, output_dir: Path) -> None:
                         f"  Effect:    {diff_pct:+.2f}%"
                     )
 
-    # Create enhanced time series plots with faceting by metric type
+    # Create time series plots for different metric groups
     metric_groups = {
-        "Timing": ["timing_total_script_duration_s"],
-        "State Estimation": [
-            "accuracy_state_estimation_factor_correlation_mean",
-            "accuracy_state_estimation_volatility_correlation_mean"
-        ]
+        "Parameter Errors": [m for m in agg_metrics if "param_" in m and "_rmse" in m],
+        "State Estimation": [m for m in scalar_metrics if "accuracy_state_estimation" in m],
+        "Timing": [m for m in scalar_metrics if "timing_" in m]
     }
 
     for group_name, metrics in metric_groups.items():
-        # Create figure with subplots for each metric
-        fig = plt.figure(figsize=(15, 6 * len(metrics)))
-        plt.suptitle(f"{group_name} Analysis by Time Series Length",
-                    y=1.02, fontsize=14, weight='bold')
+        if not metrics:  # Skip if no metrics in group
+            continue
+
+        # Create new figure for each group
+        fig = plt.figure(figsize=(15, 5 * len(metrics)))
+        plt.suptitle(f"{group_name} Analysis by Time Series Length", y=1.02, fontsize=14, weight='bold')
 
         for idx, metric in enumerate(metrics, 1):
             if metric in df.columns:
-                plt.subplot(len(metrics), 1, idx)
-                
+                ax = plt.subplot(len(metrics), 1, idx)
+
                 # Prepare data with proper casting
                 plot_data = df.with_columns([
                     pl.col(metric).cast(pl.Float64),
@@ -1354,7 +1429,7 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame, output_dir: Path) -> None:
                     pl.col("filter_config").cast(pl.Categorical),
                     pl.col("config_fix_mu").cast(pl.Boolean)
                 ]).to_pandas()
-                
+
                 # Create enhanced line plot
                 g = sns.lineplot(
                     data=plot_data,
@@ -1366,26 +1441,27 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame, output_dir: Path) -> None:
                     dashes=True,
                     err_style="band",
                     ci=95,
-                    palette=color_dict
+                    palette=color_dict,
+                    ax=ax
                 )
-                
+
                 # Customize plot
                 title = metric.replace('_', ' ').title()
                 if "correlation" in metric:
                     title = title.replace("Mean", "")
-                    plt.ylim(-1, 1)
+                    ax.set_ylim(-1, 1)
                 elif "timing" in metric:
-                    plt.yscale('log')
-                    plt.ylabel("Time (seconds, log scale)")
-                
-                plt.title(title, pad=10, fontsize=12)
-                plt.xlabel("Time Series Length (T)")
-                
+                    ax.set_yscale('log')
+                    ax.set_ylabel("Time (seconds, log scale)")
+
+                ax.set_title(title, pad=10, fontsize=12)
+                ax.set_xlabel("Time Series Length (T)")
+
                 # Enhance grid
-                plt.grid(True, linestyle='--', alpha=0.7)
-                
+                ax.grid(True, linestyle='--', alpha=0.7)
+
                 # Improve legend
-                legend = g.legend(
+                legend = ax.legend(
                     title="Filter Configuration / Fix μ",
                     bbox_to_anchor=(1.05, 1),
                     loc='upper left',
@@ -1395,14 +1471,19 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame, output_dir: Path) -> None:
                 legend.get_frame().set_alpha(0.9)
 
         plt.tight_layout()
+
+        # Save figure
+        output_path = output_dir / f"fix_mu_time_series_{group_name.lower().replace(' ', '_')}.png"
         plt.savefig(
-            output_dir / f"fix_mu_time_series_{group_name.lower()}.png",
+            output_path,
             dpi=300,
             bbox_inches="tight",
             facecolor='white',
             edgecolor='none'
         )
-        plt.close()
+        plt.close(fig)  # Explicitly close the figure
+
+        logging.info(f"Saved {group_name} time series plot to: {output_path}")
 
         # Log analysis results
         logging.info(f"\n{group_name} Analysis Results:")
@@ -1412,7 +1493,7 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame, output_dir: Path) -> None:
                     pl.col(metric).cast(pl.Float64).mean().alias("mean"),
                     pl.col(metric).cast(pl.Float64).std().alias("std")
                 ])
-                
+
                 logging.info(f"\nMetric: {metric}")
                 for row in stats.iter_rows(named=True):
                     fix_mu = "Fix μ" if row["config_fix_mu"] else "Free μ"
@@ -1427,110 +1508,119 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame, output_dir: Path) -> None:
     logging.info(f"\nDetailed fix mu analysis saved to: {output_path}")
 
 
-def plot_time_scaling(df_agg: pl.DataFrame, output_dir: Path) -> None:
-    # Validate inputs
-    if df_agg.shape[0] == 0:
-        raise ValueError("Empty DataFrame provided")
-
-    required_cols = ["N", "K", "config_T", "filter_config", "config_fix_mu",
-                    "timing_total_script_duration_s_mean"]
-    missing_cols = [col for col in required_cols if col not in df_agg.columns]
-    if missing_cols:
-        raise ValueError(f"Missing required columns: {missing_cols}")
-
-    logging.info("Creating time scaling plots for %d configurations", df_agg.shape[0])
-    """Create line plots showing how computation time scales with different dimensions.
-
-    Creates separate plots for each dimension (N: assets, K: factors, T: time series length),
-    with lines differentiated by filter configuration and fix_mu setting. Includes error bands
-    and automatically switches to log scale when the timing spread is large.
-
-    Args:
-        df_agg: DataFrame containing aggregated scalar metrics
-        output_dir: Directory to save plots
-
-    Generated files will be named:
-        - time_scaling_N.png: Scaling with number of assets
-        - time_scaling_K.png: Scaling with number of factors
-        - time_scaling_config_T.png: Scaling with time series length
-    """
+def create_time_scaling_plots(df_agg: pl.DataFrame, output_dir: Path) -> None:
+    """Create line plots showing how computation time scales with dimensions."""
     # Set style for all plots
     sns.set_style("whitegrid")
-    plt.rcParams['axes.titlesize'] = 12
-    plt.rcParams['axes.labelsize'] = 10
+    plt.rcParams.update({
+        'font.family': 'serif',
+        'font.size': 10,
+        'axes.labelsize': 11,
+        'axes.titlesize': 12,
+        'xtick.labelsize': 10,
+        'ytick.labelsize': 10,
+        'legend.fontsize': 10,
+        'legend.title_fontsize': 11
+    })
 
-    # Define dimensions to plot against
-    dimensions = [
-        ("N", "Number of Assets"),
-        ("K", "Number of Factors"),
-        ("config_T", "Time Series Length")
-    ]
+    # Professional color palette for filter types
+    palette = {
+        'BIF': '#0173B2',    # Blue
+        'PF-1000': '#DE8F05', # Orange
+        'PF-5000': '#029E73'  # Green
+    }
 
-    for x_col, x_label in dimensions:
-        # Ensure numerical types for plotting and get valid combinations
-        df_plot = df_agg.with_columns([
-            pl.col("N").cast(pl.Int64),
-            pl.col("K").cast(pl.Int64),
-            pl.col("config_T").cast(pl.Int64),
-            pl.col("filter_config").cast(pl.Categorical),
-            pl.col("config_fix_mu").cast(pl.Boolean),
-            pl.col("timing_total_script_duration_s_mean").cast(pl.Float64)
-        ])
+    # Prepare data
+    df_plot = df_agg.with_columns([
+        pl.col("N").cast(pl.Int64),
+        pl.col("K").cast(pl.Int64),
+        pl.col("config_T").cast(pl.Int64),
+        pl.col("filter_config").cast(pl.Categorical),
+        pl.col("timing_total_script_duration_s_mean").cast(pl.Float64),
+        pl.concat_str([
+            pl.lit("N="), pl.col("N").cast(pl.Utf8),
+            pl.lit(", K="), pl.col("K").cast(pl.Utf8)
+        ]).alias("NK_label"),
+        pl.concat_str([
+            pl.lit("T="), pl.col("config_T").cast(pl.Utf8)
+        ]).alias("T_label")
+    ]).to_pandas()
 
-        # Create figure and plot
-        fig, ax = plt.subplots(figsize=(10, 6))
-        sns.lineplot(
-            data=df_plot.to_pandas(),
-            x=x_col,
-            y="timing_total_script_duration_s_mean",
-            hue="filter_config",
-            style="config_fix_mu",
-            errorbar=("ci", 95),
-            markers=True,
-            dashes=True,
-            palette="Set2",
-            ax=ax
-        )
+    # Create figure with two subplots
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
 
-        # Customize axes and labels
-        ax.set_title(f"Computation Time Scaling with {x_label}", pad=20, fontsize=14, weight='bold')
-        ax.set_xlabel(x_label if x_col != "config_T" else "Time Series Length (T)")
-        ax.set_ylabel("Mean Computation Time (s)")
-        
-        # Rotate x-axis labels and add grid
-        ax.tick_params(axis='x', rotation=45)
-        ax.grid(True, linestyle='--', alpha=0.7)
+    # 1. Scaling with T
+    g1 = sns.lineplot(
+        data=df_plot,
+        x="config_T",
+        y="timing_total_script_duration_s_mean",
+        hue="filter_config",
+        style="NK_label",
+        palette=palette,
+        markers=True,
+        dashes=True,
+        marker="o",
+        markersize=6,
+        linewidth=1.5,
+        ax=ax1
+    )
 
-        # Set log scale if spread is large
-        y_vals = df_plot.select(pl.col("timing_total_script_duration_s_mean"))
-        if y_vals.max()[0, 0] / y_vals.min()[0, 0] > 10:
-            ax.set_yscale('log')
-            ax.set_ylabel("Mean Computation Time (s, log scale)")
+    # Customize first plot
+    ax1.set_yscale('log')
+    ax1.set_title("Scaling with Time Series Length (T)",
+                  pad=20, fontsize=12)
+    ax1.set_xlabel("Time Series Length (T)")
+    ax1.set_ylabel("Mean Computation Time (s, log scale)")
+    ax1.tick_params(axis='x', rotation=45)
+    ax1.grid(True, linestyle='--', alpha=0.7)
 
-        # Add legend with positioning
-        ax.legend(
-            title="Filter Configuration / Fix μ",
-            bbox_to_anchor=(1.05, 1),
-            loc='upper left',
-            frameon=True,
-            framealpha=0.95,
-            edgecolor='lightgray'
-        )
+    # 2. Scaling with N
+    g2 = sns.lineplot(
+        data=df_plot,
+        x="N",
+        y="timing_total_script_duration_s_mean",
+        hue="filter_config",
+        style="T_label",  # Use T for line style
+        palette=palette,
+        markers=True,
+        dashes=True,
+        marker="o",
+        markersize=6,
+        linewidth=1.5,
+        ax=ax2
+    )
 
-        # Adjust layout to prevent legend overlap
-        plt.tight_layout()
+    # Customize second plot
+    ax2.set_yscale('log')
+    ax2.set_title("Scaling with Number of Assets (N)",
+                  pad=20, fontsize=12)
+    ax2.set_xlabel("Number of Assets (N)")
+    ax2.set_ylabel("Mean Computation Time (s, log scale)")
+    ax2.grid(True, linestyle='--', alpha=0.7)
 
-        # Save plot
-        output_path = output_dir / f"time_scaling_{x_col}.png"
-        plt.savefig(output_path, dpi=300, bbox_inches="tight")
-        plt.close()
-        
-        # Log details about the plot generation
-        logging.info("Generated time scaling plot for %s:", x_label)
-        logging.info("  - Unique filter configs: %d",
-                    df_plot.select("filter_config").n_unique())
-        logging.info("  - Data points: %d", df_plot.height)
-        logging.info("  - Output file: %s", output_path)
+    # Add overall title
+    fig.suptitle("Computation Time Scaling Analysis",
+                 y=1.05, fontsize=14, weight='bold')
+
+    # Adjust legends
+    ax1.legend(
+        title="Filter Configuration / (N,K)",
+        bbox_to_anchor=(1.05, 1),
+        loc='upper left',
+        frameon=True
+    )
+    ax2.legend(
+        title="Filter Configuration / T",
+        bbox_to_anchor=(1.05, 1),
+        loc='upper left',
+        frameon=True
+    )
+
+    plt.tight_layout()
+    plt.savefig(output_dir / "time_scaling.png", dpi=300, bbox_inches="tight")
+    plt.close()
+
+    logging.info("Generated time scaling plots")
 
 
 def aggregate_scalar_metrics(df: pl.DataFrame) -> pl.DataFrame:
@@ -1561,7 +1651,7 @@ def aggregate_scalar_metrics(df: pl.DataFrame) -> pl.DataFrame:
         pl.col("config_T").cast(pl.Int64),
         pl.col("filter_config").cast(pl.Categorical),
         pl.col("config_fix_mu").cast(pl.Boolean),
-        
+
         # Cast metrics with proper types
         *[pl.col(metric).cast(dtype).fill_null(0)
           for metric, dtype in scalar_metrics.items()
@@ -1687,7 +1777,7 @@ def generate_summary_tables(df_success: pl.DataFrame, df_agg_scalars: pl.DataFra
     for fix_mu in [True, False]:
         fix_mu_suffix = "_fixmu" if fix_mu else "_freeμ"
         filtered_groups = config_groups.filter(pl.col("config_fix_mu") == fix_mu)
-        
+
         # Process each configuration
         for config_row in filtered_groups.iter_rows(named=True):
             N, K, T = config_row["N"], config_row["K"], config_row["config_T"]
@@ -1699,7 +1789,7 @@ def generate_summary_tables(df_success: pl.DataFrame, df_agg_scalars: pl.DataFra
                 (pl.col("config_T") == T) &
                 (pl.col("config_fix_mu") == fix_mu)
             )
-            
+
             config_data = (
                 df_param_summary if table_type == "param_errors"
                 else df_agg_scalars
@@ -1708,7 +1798,7 @@ def generate_summary_tables(df_success: pl.DataFrame, df_agg_scalars: pl.DataFra
             # Prepare comparison data
             comparison_rows = []
             filter_configs = config_data.select("filter_config").unique().sort("filter_config")
-            
+
             for metric, (metric_name, dtype) in metrics.items():
                 mean_col = f"{metric}_mean"  # This will add the "_mean" suffix
                 std_col = f"{metric}_std"
@@ -1723,7 +1813,7 @@ def generate_summary_tables(df_success: pl.DataFrame, df_agg_scalars: pl.DataFra
                             pl.col(std_col).cast(dtype)
                         ])
                     )
-                    
+
                     if values.height > 0:
                         mean_val, std_val = values.row(0)
                         filter_values[filter_cfg] = f"{mean_val:.6f} ± {std_val:.6f}"
@@ -1750,7 +1840,7 @@ def generate_summary_tables(df_success: pl.DataFrame, df_agg_scalars: pl.DataFra
 
 def main() -> None:
     """Main execution function for optimization results analysis.
-    
+
     This function orchestrates the complete analysis pipeline:
     1. Data Loading and Preparation
     2. Parameter Error Analysis
@@ -1764,7 +1854,25 @@ def main() -> None:
     # Convert paths
     metrics_path = Path(args.metrics_csv)
     params_path = Path(args.params_npz)
+#Plot styling
+    plt.style.use('seaborn-v0_8-whitegrid')
+    plt.rcParams.update({
+        'font.family': 'serif',
+        'font.size': 10,
+        'axes.labelsize': 11,
+        'axes.titlesize': 12,
+        'xtick.labelsize': 10,
+        'ytick.labelsize': 10,
+        'legend.fontsize': 10,
+        'legend.title_fontsize': 11,
+        'figure.dpi': 300,
+        'lines.markersize': 6,
+        'lines.linewidth': 1.5,
+    })
 
+    # Professional color palette
+    colors = ['#0173B2', '#DE8F05', '#029E73']  # Blue, Orange, Green
+    sns.set_palette(colors)
     try:
         # Create output directory for all results
         output_dir = create_output_directory()
@@ -1775,7 +1883,7 @@ def main() -> None:
         logging.info("\nPhase 1: Data Loading and Preparation")
         logging.info("Loading metrics from: %s", metrics_path)
         logging.info("Loading parameters from: %s", params_path)
-        
+
         start_time = datetime.now()
         df_metrics = load_and_validate_metrics(metrics_path)
         df_success = filter_successful_runs(df_metrics)
@@ -1804,7 +1912,7 @@ def main() -> None:
         for cfg in filter_configs.to_series():
             count = df_success.filter(pl.col("filter_config") == cfg).height
             logging.info(f"  {cfg}: {count} runs")
-            
+
         fix_mu_counts = df_success.group_by("config_fix_mu").agg(
             pl.count().alias("count")
         ).sort("config_fix_mu")
@@ -1824,7 +1932,7 @@ def main() -> None:
         start_time = datetime.now()
         df_param_errors = create_param_errors_df(df_success, true_params_dict, estimated_params_dict)
         df_success = df_success.join(df_param_errors, on="unique_id", how="left")
-        
+
         # Log summary of parameter errors
         error_cols = [col for col in df_param_errors.columns if col.endswith(("_rmse", "_bias"))]
         logging.info("\nParameter Error Summary:")
@@ -1838,7 +1946,7 @@ def main() -> None:
             logging.info(f"  {col}:")
             logging.info(f"    Mean ± Std: {row[0]:.6f} ± {row[1]:.6f}")
             logging.info(f"    Median: {row[2]:.6f}")
-            
+
         logging.info("\nPhase 2 completed successfully")
         phase2_time = datetime.now() - start_time
         logging.info(f"Time taken: {phase2_time}")
@@ -1851,7 +1959,7 @@ def main() -> None:
         # Save and log Phase 3 results
         output_path = output_dir / "scalar_metrics_analysis.csv"
         df_agg_scalars.write_csv(output_path)
-        
+
         # Log summary statistics for key metrics
         logging.info("\nScalar Metrics Summary by Filter Configuration:")
         for cfg in filter_configs.to_series():
@@ -1866,7 +1974,7 @@ def main() -> None:
                 for col in acc_cols:
                     mean_val = cfg_data.select(pl.col(col).mean()).item()
                     logging.info(f"    {col}: {mean_val:.4f}")
-                    
+
         logging.info("\nPhase 3 completed successfully")
         phase3_time = datetime.now() - start_time
         logging.info(f"Time taken: {phase3_time}")
@@ -1874,7 +1982,7 @@ def main() -> None:
         # Phase 4: Comparative Analysis & Visualization
         logging.info("\nPhase 4: Comparative Analysis & Visualization")
         start_time = datetime.now()
-        
+
         logging.info("Generating visualization plots...")
         plot_scatter_comparison(df_success, output_dir)
         plot_error_heatmaps(df_success, output_dir)
@@ -1888,8 +1996,13 @@ def main() -> None:
 
         # Generate time scaling plots
         logging.info("\nGenerating time scaling plots")
-        plot_time_scaling(df_agg_scalars, output_dir)
+        create_time_scaling_plots(df_agg_scalars, output_dir)
         logging.info("Time scaling plots generated successfully")
+
+        # Generate fix mu effect analysis plots
+        logging.info("\nGenerating fix mu effect analysis plots")
+        analyze_fix_mu_effect(df_success, output_dir)
+        logging.info("Fix mu effect analysis plots generated successfully")
 
         logging.info("\nPhase 4 completed successfully")
         phase4_time = datetime.now() - start_time
@@ -1927,11 +2040,11 @@ def main() -> None:
         # Step 9: Final Output Saving
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         logging.info("\nStep 9: Saving final outputs...")
-        
+
         # Identify all parameter error columns
         param_error_cols = [col for col in df_success.columns if col.startswith("param_")]
         logging.info("Found %d parameter error metrics to aggregate", len(param_error_cols))
-        
+
         # Create final aggregation expressions for parameter errors
         agg_expressions = []
         for col in param_error_cols:
@@ -1941,7 +2054,7 @@ def main() -> None:
                 pl.col(col).std().alias(f"{col}_std"),
                 pl.col(col).count().alias(f"{col}_count")
             ])
-        
+
         # Refined aggregation of parameter errors
         df_agg_param_errors = df_success.group_by([
             "filter_config",
@@ -1956,31 +2069,30 @@ def main() -> None:
             "config_T",
             "config_fix_mu"
         ])
-        
+
         # Save output files with detailed logging
-        output_base = Path("outputs")
-        full_data_path = output_base / f"analysis_full_data_{timestamp_str}.csv"
-        agg_scalars_path = output_base / f"analysis_agg_scalars_{timestamp_str}.csv"
-        agg_param_errors_path = output_base / f"analysis_agg_param_errors_{timestamp_str}.csv"
+        # Change from output_base to output_dir for consistency
+        full_data_path = output_dir / f"analysis_full_data_{timestamp_str}.csv"
+        agg_scalars_path = output_dir / f"analysis_agg_scalars_{timestamp_str}.csv"
+        agg_param_errors_path = output_dir / f"analysis_agg_param_errors_{timestamp_str}.csv"
 
         # Save with informative logging
         df_success.write_csv(full_data_path)
         logging.info("1. Saved full per-replicate data:")
         logging.info("   - Path: %s", full_data_path)
         logging.info("   - Rows: %d, Columns: %d", df_success.height, df_success.width)
-        
+
+        # Save aggregated scalar metrics
         df_agg_scalars.write_csv(agg_scalars_path)
-        logging.info("\n2. Saved aggregated scalar metrics:")
+        logging.info("2. Saved aggregated scalar metrics:")
         logging.info("   - Path: %s", agg_scalars_path)
-        logging.info("   - Configurations: %d", df_agg_scalars.height)
-        logging.info("   - Metrics: %d", len([col for col in df_agg_scalars.columns if col.endswith(('_mean', '_std', '_median'))]))
-        
+        logging.info("   - Rows: %d, Columns: %d", df_agg_scalars.height, df_agg_scalars.width)
+
+        # Save aggregated parameter errors
         df_agg_param_errors.write_csv(agg_param_errors_path)
-        logging.info("\n3. Saved aggregated parameter errors:")
+        logging.info("3. Saved aggregated parameter errors:")
         logging.info("   - Path: %s", agg_param_errors_path)
-        logging.info("   - Configurations: %d", df_agg_param_errors.height)
-        logging.info("   - Parameter metrics: %d", len(param_error_cols))
-        logging.info("   - Total statistics: %d", len([col for col in df_agg_param_errors.columns if col.endswith(('_mean', '_std', '_median', '_count'))]))
+        logging.info("   - Rows: %d, Columns: %d", df_agg_param_errors.height, df_agg_param_errors.width)
 
         phase5_time = datetime.now() - start_time
         logging.info("\nPhase 5 completed successfully")
