@@ -17,6 +17,8 @@ This file tracks the project's progress, key milestones, and next steps.
 *   [09-04-2025 03:18:00] - Refactored optimization orchestration (`optimization.py`).
 *   [09-04-2025 03:18:00] - Developed unified filter optimization script (`unified_filter_optimization.py`).
 ## Completed Tasks
+*   [15-04-2025 17:28:00] - Completed overhaul of `scripts/analysis/analyze_optimization_results.py` (Plan: `memory-bank/plans/results_analysis_refinement_plan_v8_15-04-2025.md`). Key CSV outputs saved to `outputs/`.
+
 *   [01-04-2025 01:06:39] - Initialized Memory Bank.
 *   [01-04-2025 01:11:45] - Analyzed code structure (`src/`, `core/filters/bellman.py`, `models/dfsv.py`, `core/filters/particle.py`).
 *   [01-04-2025 01:11:45] - Documented initial system patterns in `systemPatterns.md`.
@@ -90,4 +92,6 @@ This file tracks the project's progress, key milestones, and next steps.
 * Collect long-term performance metrics
 * Consider additional optimization patterns for documentation
 * Update thesis documentation with new stability improvements
+
+*   [14-04-2025 02:30:00] - Completed debugging BIF gradient NaN error in `scripts/run_optimization_replicate.py`. Root cause identified as unstable differentiation of `jnp.linalg.eigh` on OFIM within the update step. Resolved by user implementing EFIM in `_bellman_impl.py`. Removed associated debugging code.
 *   [11-04-2025 16:23:11] - Task Completed: Optimization analysis and implementation for `transformations.py` complete, tests passing.

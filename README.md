@@ -4,7 +4,7 @@ This repository contains the Python code for a Quantitative Finance thesis proje
 
 ## Project Purpose
 
-DFSV models are used in finance to model the time-varying volatility and correlation of multiple asset returns by relating them to a smaller set of unobserved latent factors, each with its own stochastic volatility process. This project focuses on the specific DFSV model outlined in Boekestijn (2025) and provides tools to:
+DFSV models are used in finance to model the time-varying volatility and correlation of multiple asset returns by relating them to a smaller set of unobserved latent factors, each with its own stochastic volatility process. This project focuses on the specific DFSV model outlined in  and provides tools to:
 
 *   Define the DFSV model parameters using a JAX-compatible structure (`DFSVParamsDataclass`).
 *   Simulate realistic financial time series data based on the specified DFSV model.
@@ -16,18 +16,22 @@ DFSV models are used in finance to model the time-varying volatility and correla
 
 ## Project Status
 
-**Status:** Hyperparameter Optimization and Real Data Application
+**Status:** Thesis Writing & Real Data Application Preparation
 
-The core implementations of the DFSV model, Bellman Information Filter (BIF), and Particle Filter (PF) are stable and functional, supported by a robust `pytest` test suite. Simulation runs for BIF and PF have been completed.
+The core implementations of the DFSV model, Bellman Information Filter (BIF), and Particle Filter (PF) are stable and functional, validated by a comprehensive `pytest` test suite.
+
+Key milestones achieved:
+*   Extensive simulation studies comparing BIF and PF performance (state estimation, parameter recovery) are complete.
+*   Hyperparameter estimation studies have been conducted, analyzing filter performance under different configurations.
+*   Numerical stability challenges (e.g., BIF gradient calculation, `mu` parameter identifiability) have been investigated and addressed through techniques like using EFIM, FIM regularization, and adopting flexible strategies for handling `mu`.
 
 Current work focuses on:
-*   Optimizing hyperparameter estimation, particularly addressing the identifiability of the `mu` parameter within the BIF framework.
-*   Applying the filters to real-world financial data to assess their performance and compare them against benchmarks.
-*   Refining the BIF implementation for improved numerical stability and computational efficiency.
+*   Analyzing and integrating the simulation and estimation results into the thesis document.
+*   Preparing for the application of the developed filters to real-world financial data.
 
 ## Key Features
 
-*   **DFSV Model:** Definition (`DFSVParamsDataclass`) and simulation for the specific model (Boekestijn, 2025).
+*   **DFSV Model:** Definition (`DFSVParamsDataclass`) and simulation for the specific model.
     *   The model is defined using a JAX dataclass, ensuring compatibility with JAX transformations.
     *   Simulation is implemented using `jax.lax.scan` for efficient time series generation.
 *   **Bellman Information Filter (BIF):** Implementation (`DFSVBellmanInformationFilter`) based on Lange (2024), including numerical stability enhancements (eigenvalue clipping, Joseph form).

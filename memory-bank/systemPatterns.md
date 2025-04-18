@@ -33,7 +33,7 @@ This file documents recurring patterns and standards used in the project.
   * Provides option to log parameters during optimization with `log_params=True` flag.
   * Uses `BestSoFarMinimiser` to keep track of the best parameter values during optimization.
   * Defaults to using the built-in Optimistix minimizer when `log_params=False` for better performance.
-  * **Note:** `mu` fixing logic aligned with established strategy to always fix `mu` for BIF when true parameters are available (Decision [11-04-2025 17:30:00]).
+  * **Note:** `mu` fixing logic previously aligned with BIF strategy (Decision [11-04-2025 17:30:00]). Now supports both fixed and unfixed `mu` approaches (Decision [16-04-2025 02:52:23]).
 * **Unified Experiment Script (`unified_filter_optimization.py`):**
   * Provides a framework for comparative experiments across filters and optimizers.
   * Supports running multiple filter types (BIF, PF) with different optimizers (AdamW, DampedTrustRegionBFGS).
@@ -66,7 +66,7 @@ This file documents recurring patterns and standards used in the project.
 
     * **Numerical Stability:** Debugging revealed that the calculated Expected FIM (`J_observed` in the update step) could become numerically non-positive semi-definite (non-PSD) for certain state values, leading to filter instability. To mitigate this, the implementation now includes eigenvalue clipping regularization: negative eigenvalues of `J_observed` are clipped to a small positive value (`1e-8`) before the matrix is used in the information update (`updated_info = predicted_info + J_observed_psd + jitter`). (See Decision [04-05-2025 16:00:00]).
 
-    * **Identifiability Constraints:** While fixing `mu` is the primary strategy for addressing its estimation bias, constraints on the factor loading matrix `lambda_r` (e.g., lower-triangular with fixed diagonal) remain important for resolving rotational/scale ambiguity in the latent factors and other parameters. (See Decision [04-05-2025 21:14:00])
+    * **Identifiability Constraints:** While fixing `mu` was initially used to address estimation bias (especially in BIF), recent studies show both fixed and unfixed approaches are viable. Constraints on the factor loading matrix `lambda_r` (e.g., lower-triangular with fixed diagonal) remain important for resolving rotational/scale ambiguity in the latent factors and other parameters. (See Decisions [04-05-2025 21:14:00] and [16-04-2025 02:52:23])
     * **Location:** `src/bellman_filter_dfsv/core/filters/bellman_information.py`.
 * **Bellman Smoother (Lange, 2024, Sec. 6):**
   * Extends the Bellman filter using forward *and* backward value functions (`V_t`, `W_t`) to compute smoothed state estimates `a_{t|n}`.
@@ -82,7 +82,7 @@ This file documents recurring patterns and standards used in the project.
   * This approach avoids sampling/integration and allows standard gradient-based optimization.
 * **Particle Filter Strategy:** Implements a Bootstrap Filter (SISR) using `jax.lax.scan` for the main loop, with ESS-triggered Systematic Resampling to mitigate particle degeneracy.
 * **Optimization Pattern (Woodbury Identity & MDL):** Applied to `log_posterior_impl` (`_bellman_impl.py`) to avoid direct O(N^3) Cholesky decomposition/inversion of the N x N observation covariance matrix `A = D + UCU.T`. Replaced with operations involving the inverse of the K x K matrix `M = C^-1 + U.T D^-1 U`, reducing complexity significantly when N >> K (Implemented [01-04-2025 11:46:00]). Also applied to `fisher_information_impl` for `A_inv` applications (Implemented [01-04-2025 12:05:00]).
-* **Optimization Pattern (Rank-1 FIM Reformulation):** Utilized the rank-1 structure of `dSigma_k = exp(h_k) * lambda_k * lambda_k.T` to reformulate the calculation of the `I_hh` block in `fisher_information_impl`. Changed the O(K^2*N^2) `einsum` calculation `trace(B_k B_l)` to the equivalent `exp(h_k + h_l) * (lambda_k.T @ A_inv @ lambda_l)^2`, where the inner term is reused from the `I_ff` calculation. This avoids the expensive `einsum` (Implemented [01-04-2025 12:05:00]).
+* **Optimization Pattern (Rank-1 FIM Reformulation):** Utilized the rank-1 structure of `dSigma_k = exp(h_k) * lambda_k * lambda_k.T` to reformulate the calculation of the `Omega_hh` block in `fisher_information_impl`. Changed the O(K^2*N^2) `einsum` calculation `trace(B_k B_l)` to the equivalent `exp(h_k + h_l) * (lambda_k.T @ A_inv @ lambda_l)^2`, where the inner term is reused from the `Omega_ff` calculation. This avoids the expensive `einsum` (Implemented [01-04-2025 12:05:00]).
 * **Optimization Pattern (Diagonal Covariance):** Optimized particle filter likelihood calculation (`compute_log_likelihood_particle`) to exploit known diagonal structure of observation noise covariance `R_t`, avoiding redundant `vmap`ped decompositions (Implemented [01-04-2025 05:13:00]).
 
 ## Testing Patterns
@@ -108,4 +108,15 @@ This file documents recurring patterns and standards used in the project.
 * Apply `optax.clip_by_global_norm(1.0)` to prevent explosive gradients
 * Use `optax.apply_if_finite` to handle NaN/Inf gracefully
 * Maintain optimization state validity through bounded transformations
+
+
+---
+**[14-04-2025 02:30:00] - Numerical Stability: Differentiating Eigendecomposition**
+- **Pattern:** Automatic differentiation (AD) through eigenvalue decomposition (`jnp.linalg.eigh`) can be numerically unstable, especially if the input matrix has near-degenerate (close) eigenvalues. The backward pass calculation involves terms like `1 / (λ_i - λ_j)`, which can lead to NaN/Inf if eigenvalues are very close.
+- **Context:** Encountered during BIF gradient calculation (`value_and_grad`) when differentiating the regularization step involving `jnp.linalg.eigh(J_observed)` in `__update_jax_info`.
+- **Solution/Mitigation:**
+    - **Jittering:** Add a small multiple of the identity matrix (`jitter * jnp.eye(...)`) to the input matrix *before* calling `eigh`. This perturbs eigenvalues slightly, potentially separating near-degenerate ones and stabilizing the gradient. (Standard practice).
+    - **Expected FIM:** Replace the Observed FIM (which requires differentiating the Hessian/`eigh`) with the Expected FIM if its analytical form is more stable under differentiation. (Implemented by user in this case).
+    - **Custom VJP:** Define a custom vector-Jacobian product for the `eigh` operation or the surrounding regularization block, implementing a numerically stable backward pass manually. (More complex).
+    - **Stop Gradient:** Use `jax.lax.stop_gradient` on the `eigh` outputs or the resulting regularized matrix if the gradient information through this specific step is not critical for optimization.
 * **JIT Static vs Traced Values:** When using JAX transformations like `@eqx.filter_jit`, ensure that values used to define computation graph structure (e.g., loop bounds, shapes for `jnp.arange`, dimensions for indexing) are static (known at compile time) or marked as static arguments. Using traced values (derived from function arguments that are JAX arrays/pytrees) for these purposes can lead to `ConcretizationTypeError` or `NonConcreteBooleanIndexError`. Vectorized operations often avoid these issues compared to explicit loops or conditional logic based on traced values. (Noted [11-04-2025 16:23:11])

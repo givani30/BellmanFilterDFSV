@@ -3,6 +3,7 @@
 - ALWAYS adhere to PEP 8 style.
 - Use functional programming style.
 - Adhere to google standards for documentation.
+- When writing equations in markdown. Prefer LaTeX notation over unicode characters.
 
 # JAX & Equinox Usage
 

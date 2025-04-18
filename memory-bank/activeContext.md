@@ -4,6 +4,8 @@ This file tracks the project's current status, including recent changes, current
 
 *
 
+
+*   [14-04-2025 02:30:00] - BIF gradient NaN/Inf debugging task completed. Ready for next task.
 ## Current Focus
 
 *   [11-04-2025 18:15:00] - Enhanced parameter logging in optimization process with improved `minimize_with_logging` function and better performance options.
@@ -14,12 +16,29 @@ This file tracks the project's current status, including recent changes, current
 
 *   [07-04-2025 23:28:15] - Debugging BIF (`bellman_information.py`) prediction/update steps to resolve inaccurate predicted covariances/information matrices. This is blocking the BIF EM implementation plan.
 
-*   [04-06-2025 17:43:00] - Mu investigation complete. Final strategy: Fix `mu`. Focus shifts to simulation analysis & real data application using this strategy.
+*   [04-06-2025 17:43:00] - Mu investigation complete. Initial strategy (for BIF): Fix `mu`. Focus shifts to simulation analysis & real data application using this strategy. This strategy has since been revised (see Decision [16-04-2025 02:52:23]).
 *   [04-06-2025 17:10:00] - Completed Phase 2.2: Fixed *both* `mu` elements to `[-1.0, -1.0]`. Successful convergence, reasonable estimates for other params.
 *   [NEW TASK] Test Particle Filter (PF) and base Bellman Filter (BF, covariance-based) performance in hyperparameter optimization (potentially fixing `mu` for BF as well, TBD).
 *   [04-06-2025 03:45:00] - Test framework unification complete and all tests pass. Project is stable and awaiting the next task.
 
 ## Recent Changes
+
+*   **[16-04-2025 02:53:19]** Updated Memory Bank documentation regarding `mu` fixing strategy:
+    - Added new decision log entry documenting that fixing `mu` is no longer the default strategy.
+    - Modified historical entry [04-06-2025 17:43:00] to clarify it was an initial BIF-specific strategy.
+    - Reflects findings from recent hyperparameter studies showing both fixed and unfixed `mu` approaches are viable.
+
+
+*   **[15-04-2025 17:28:00]** Completed overhaul of `scripts/analysis/analyze_optimization_results.py` as per plan `memory-bank/plans/results_analysis_refinement_plan_v8_15-04-2025.md`.
+    - Key outputs generated and saved to `outputs/`: Summary tables (CSV), `analysis_full_data_<timestamp>.csv`, `analysis_agg_scalars_<timestamp>.csv`, `analysis_agg_param_errors_<timestamp>.csv`.
+
+*   **[14-04-2025 02:30:00]** Debugged NaN/Inf error occurring during BIF gradient calculation (`value_and_grad` on likelihood).
+    - Initial error pointed to linear solver failure during gradient computation.
+    - Forward pass of likelihood calculation succeeded.
+    - Error persisted despite bypassing internal BFGS optimizer (`update_h_bfgs`).
+    - Final error trace (with update step non-JITted) pointed to `FloatingPointError` during differentiation of `jnp.linalg.eigh` applied to the Observed Fisher Information (OFIM) matrix (`J_observed`) in `__update_jax_info`.
+    - **Resolution:** User implemented the Expected Fisher Information (EFIM) in `src/bellman_filter_dfsv/filters/_bellman_impl.py` instead of OFIM, which resolved the gradient instability.
+- Removed temporary debugging checks (`eqx.error_if`) added during the session.
 
 *   [11-04-2025 18:15:00] - Enhanced parameter logging in optimization process with improved `minimize_with_logging` function, added `BestSoFarMinimiser` wrapper, and optimized performance by using built-in Optimistix minimizer when detailed logging is not needed.
 
@@ -44,6 +63,8 @@ This file tracks the project's current status, including recent changes, current
 
 *   [11-04-2025 17:30:00] - `mu` fixing logic in `optimization.py` has been aligned with established strategy (Decision [04-06-2025 17:40:11]) and `unified_filter_optimization.py` implementation.
 
+
+- (Resolved) [14-04-2025 02:30:00] - BIF gradient calculation produced NaN/Inf. Resolved by switching from OFIM to EFIM.
 ## Open Questions/Issues
 
 *   [07-04-2025 23:28:15] - BIF filter (`bellman_information.py`) generates inaccurate predicted covariance/information matrices, causing downstream smoother tests (`test_smooth_state_accuracy`) to fail. Root cause investigation needed. BIF EM plan paused.

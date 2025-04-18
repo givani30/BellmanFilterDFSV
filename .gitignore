@@ -67,3 +67,6 @@ test_batch_results/*
 2008.11477v16.pdf
 QF_Thesis_Proposal_GBoekestijn.pdf
 !memory-bank/thesis_timeline.md
+output_thesis/
+cloudbatchconfig.txt
+QF_Thesis_Proposal.pdf

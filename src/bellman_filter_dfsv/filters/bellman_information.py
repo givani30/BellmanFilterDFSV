@@ -16,7 +16,7 @@ from ._bellman_impl import (
     bif_likelihood_penalty_impl,
     build_covariance_impl,
     log_posterior_impl,
-    observed_fim_impl, 
+    observed_fim_impl,
     expected_fim_impl
 )
 from ._bellman_optim import _block_coordinate_update_impl
@@ -29,8 +29,10 @@ class DFSVBellmanInformationFilter(DFSVFilter):
     """Bellman Information Filter (BIF) for the Dynamic Factor Stochastic Volatility model.
 
     This filter implements the Bellman filter methodology (Lange, 2024) adapted for the
-    DFSV model, propagating the information state (α_t, Ω_t) instead of the traditional
-    covariance form. This approach offers improved numerical stability and a natural
+    DFSV model. The BIF notation was introduced by Boekestijn (2025) to distinguish this
+    information-form implementation from Lange's original covariance-form Bellman filter.
+    The BIF propagates the information state (α_t, Ω_t) instead of the traditional
+    covariance form (α_t, P_t). This approach offers improved numerical stability and a natural
     framework for handling the model's state-dependent volatility structure.
 
     Mathematical Framework:
@@ -236,17 +238,17 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
         # Check if Cholesky succeeded (no NaNs in L_info)
         cholesky_failed = jnp.any(jnp.isnan(L_info))
-        
+
         # Define functions for the two branches
         def use_cholesky(_):
             # Use Cholesky decomposition for inversion
             cov_matrix = jax.scipy.linalg.cho_solve((L_info, True), jnp.eye(matrix_dim, dtype=info_matrix.dtype))
             return cov_matrix
-        
+
         def use_pinv(_):
             # Fallback to pseudo-inverse
             return jnp.linalg.pinv(info_matrix)
-        
+
         # Use lax.cond to select the appropriate method
         result = jax.lax.cond(cholesky_failed, use_pinv, use_cholesky, None)
 
@@ -400,7 +402,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
         # 2. Calculate M = info_post + F_t.T @ Q_t_inv @ F_t
         M = info_post + F_t.T @ Q_t_inv @ F_t
-        # 3. Calculate M_inv = M^-1 
+        # 3. Calculate M_inv = M^-1
         M_inv = self._invert_info_matrix(M)
 
         # 4. Calculate predicted information: Omega_pred = Q_t_inv - Q_t_inv @ F_t @ M_inv @ F_t.T @ Q_t_inv
@@ -434,13 +436,13 @@ class DFSVBellmanInformationFilter(DFSVFilter):
             1. Posterior Mode Finding:
                α_{t|t} = argmax_α [ℓ(y_t|α) - 1/2||α - α_{t|t-1}||²_{Ω_{t|t-1}}]
                       = argmin_α [-ℓ(y_t|α) + 1/2||α - α_{t|t-1}||²_{Ω_{t|t-1}}]
-               
+
                where ℓ(y_t|α) is observation log-likelihood
 
             2. Information Update:
                Ω_{t|t} = Ω_{t|t-1} + J_observed
                where J_observed = -∇²ℓ(y_t|α_{t|t})
-               
+
                Note: J_observed eigenvalues are clipped to ensure PSD
 
             3. Pseudo Log-Likelihood:
@@ -494,9 +496,9 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         # --- Information Update ---
         # Calculate Fisher Information matrix
         FIM = fisher_info_fn(lambda_r, sigma2, alpha_updated, observation)
-        
-        
-        # --- Regularize J_observed to ensure PSD NOTE: this is necessary if using the obseved fim. 
+
+
+        # --- Regularize J_observed to ensure PSD NOTE: this is necessary if using the obseved fim.
         # Reverted to using E-FIM because of numerical issues during gradient calculation with the needed clipping to ensure PSD---
         # (Keep this regularization enabled for stability)
         #Add small jitter to J_observed

@@ -487,4 +487,30 @@ Reduced complexity significantly, achieving large speedups verified by profiling
 * Significant reduction in computation time for infeasible parameter combinations
 * Improved recovery from optimization failures
 * Reduced overall convergence steps in test cases
+
+
+---
+**[14-04-2025 02:30:00] - Switched BIF Update from Observed FIM to Expected FIM**
+- **Decision:** Replaced the calculation and use of the Observed Fisher Information (OFIM) matrix (`J_observed`) in the BIF update step (`__update_jax_info`) with the Expected Fisher Information (EFIM). Implementation details are in `src/bellman_filter_dfsv/filters/_bellman_impl.py`.
+- **Rationale:** Encountered persistent NaN/Inf errors (`FloatingPointError: invalid value (nan) encountered in dot_general`) during the gradient calculation (`value_and_grad`) of the BIF log-likelihood. Debugging traced the instability to the differentiation of `jnp.linalg.eigh` applied to the OFIM. This is a known numerical issue when differentiating eigendecomposition, especially with near-degenerate eigenvalues. The EFIM typically has a more stable analytical form that avoids this specific differentiation path.
+- **Implications:** This should significantly improve the numerical stability of BIF parameter optimization, particularly the gradient calculations. It might slightly alter the theoretical properties compared to using the exact OFIM, but is a standard approach for stability.
+
+
+---
+
+**Decision [16-04-2025 02:52:23]:** Revise strategy for handling the long-run mean log-volatility parameter (`mu`) in Bellman filter hyperparameter estimation.
+
+**Rationale:**
+*   Decision [04-06-2025 17:40:11] established fixing `mu` as the standard strategy for BIF hyperparameter estimation due to identified bias in the BIF pseudo-likelihood.
+*   Recent hyperparameter studies explored both fixed and unfixed `mu` for both the Bellman Information Filter (BIF) and the covariance-based Bellman Filter (BF).
+*   Preliminary results from these studies suggest that the impact of fixing `mu` is less significant than initially believed.
+*   Therefore, fixing `mu` is no longer the default strategy. The choice of whether to fix or estimate `mu` will now be determined on a case-by-case basis, considering factors such as the specific filter used, the availability of prior information, and the goals of the analysis.
+
+**Implementation Details/Implications:**
+*   The strategy of fixing `mu` is no longer universally applied.
+*   Further analysis of the hyperparameter study results is ongoing to refine the guidelines for when to fix or estimate `mu`.
+*   This decision impacts the hyperparameter estimation workflow for both BIF and BF (`src/bellman_filter_dfsv/core/likelihood.py`, `scripts/test_bif_priors_optimizers.py`, etc.). Future estimation runs should incorporate a mechanism to choose whether to fix `mu` based on the specific context.
+
+**Implication:**
+The decision to fix or estimate `mu` will now be made on a case-by-case basis, informed by ongoing analysis of hyperparameter study results.
 6. Updated tests to verify both minimizer approaches work correctly.

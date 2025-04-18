@@ -1,3 +1,4 @@
 !memory-bank/
 memory-bank/completed/
 !outputs/*.md
+!outputs/*.csv
