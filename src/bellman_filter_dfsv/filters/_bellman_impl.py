@@ -96,54 +96,6 @@ def build_covariance_impl(
     return A
 
 
-# def fisher_information_impl(
-#     lambda_r: jnp.ndarray,
-#     sigma2: jnp.ndarray,
-#     alpha: jnp.ndarray,
-#     observation: jnp.ndarray,
-#     K: int, # Pass K explicitly
-#     build_covariance_fn: BuildCovarianceFn # Pass build_covariance dependency
-# ) -> jnp.ndarray:
-#     """
-#     Static implementation of fisher_information. (Note: This calculates an approximation, not the full Observed FIM)
-#
-#     Args:
-#         lambda_r (jnp.ndarray): Factor loading matrix (N, K).
-#         sigma2 (jnp.ndarray): Idiosyncratic variances (N, N) or (N,).
-#         alpha (jnp.ndarray): State vector [f, h] (2K,).
-#         K (int): Number of factors.
-#         build_covariance_fn (Callable): Function to build the covariance matrix.
-#
-#     Returns:
-#         jnp.ndarray: Fisher information matrix (2K, 2K).
-#     """
-#     # ... implementation commented out ...
-
-# This is the old fisher_information_impl - keeping it commented out
-# def fisher_information_impl(
-#     lambda_r: jnp.ndarray,
-#     sigma2: jnp.ndarray,
-#     alpha: jnp.ndarray,
-#     observation: jnp.ndarray,
-#     K: int, # Pass K explicitly
-# ) -> jnp.ndarray:
-#     """
-#     Static implementation of the Observed Fisher Information (Negative Hessian).
-#
-#     Computes J = - d^2(log_lik) / d(alpha) d(alpha)^T using efficient Woodbury identity approach.
-#
-#     Args:
-#         lambda_r (jnp.ndarray): Factor loading matrix (N, K).
-#         sigma2 (jnp.ndarray): Idiosyncratic variances (N, N) or (N,).
-#         alpha (jnp.ndarray): State vector [f, h] (2K,).
-#         observation (jnp.ndarray): Observation vector (N,).
-#         K (int): Number of factors.
-#
-#     Returns:
-#         jnp.ndarray: Observed Fisher Information matrix (Negative Hessian) (2K, 2K).
-#     """
-    # ... implementation commented out ...
-
 def observed_fim_impl(
     lambda_r: jnp.ndarray,
     sigma2: jnp.ndarray,

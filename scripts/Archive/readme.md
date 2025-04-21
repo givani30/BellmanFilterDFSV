@@ -1,0 +1,1 @@
+This folder contains older script which are no longer used in the main project. They were used for various experiments and testing during the development phase.

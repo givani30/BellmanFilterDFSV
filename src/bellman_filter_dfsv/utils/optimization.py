@@ -249,8 +249,9 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
     Returns:
         A tuple containing the optimization solution and parameter history.
     """
-    # Initialize parameter history
+    # Initialize parameter and loss history
     param_history = [initial_params]
+    loss_history = []
     y = initial_params
 
     # Prepare options
@@ -293,6 +294,7 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
     # Calculate initial loss for verbose output
     if verbose:
         initial_loss, _ = objective_fn(initial_params, static_args)
+        loss_history.append(float(initial_loss))
         print(f"Initial loss: {float(initial_loss):.4f}")
 
     while not converged and step_count < max_steps:
@@ -306,6 +308,7 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
             # Log parameters at specified intervals
             if step_count % log_interval == 0:
                 param_history.append(y)
+                loss_history.append(state.best_loss)
 
             # Check for convergence
             converged, result = terminate(y=y, state=state)
@@ -353,6 +356,11 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
         if final_y is not None and (not param_history or param_history[-1] is not final_y):
             param_history.append(final_y)
 
+        # Make sure the final loss is in the loss history
+        final_loss, _ = objective_fn(final_y, static_args)
+        if not loss_history or loss_history[-1] != final_loss:
+            loss_history.append(float(final_loss))
+
     except Exception as e:
         if throw:
             raise e
@@ -365,7 +373,7 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
                 aux=None,
                 state=state
             )
-    return sol, param_history
+    return sol, param_history,loss_history
 
 def run_optimization(
     filter_type: FilterType,
@@ -522,7 +530,8 @@ def run_optimization(
     )
     #Wrap optimizer with best so far to keep best loss value
     optimizer = optx.BestSoFarMinimiser(optimizer)
-
+    #Initialize loss history:
+    loss_history = []
     # Print initial loss if verbose
     if verbose:
         try:
@@ -574,7 +583,7 @@ def run_optimization(
         else:
             # Use implementation with parameter logging
             print("Starting optimization with parameter logging...")
-            sol, param_history = minimize_with_logging(
+            sol, param_history,loss_history = minimize_with_logging(
                 objective_fn=objective_fn,
                 initial_params=initial_params_opt, # Use potentially transformed initial params
                 solver=optimizer,
@@ -624,16 +633,16 @@ def run_optimization(
                 if verbose:
                     print(f"Error processing parameter history: {e}")
 
-        # Extract loss history from optimizer state if available
-        loss_history = []
-        if log_params:
-            for p in param_history:
-                try:
-                    p_transformed = transform_params(p) if use_transformations else p
-                    loss, _ = objective_fn(p_transformed, returns)
-                    loss_history.append(float(loss))
-                except Exception:
-                    loss_history.append(float('inf'))
+        # # Calculate loss history from parameter history NOTE: not needed anymore, loss is directly extracted from the optimizer
+        # loss_history = []
+        # if log_params:
+        #     for p in param_history:
+        #         try:
+        #             p_transformed = transform_params(p) if use_transformations else p
+        #             loss, _ = objective_fn(p_transformed, returns)
+        #             loss_history.append(float(loss))
+        #         except Exception:
+        #             loss_history.append(float('inf'))
 
         # Check if optimization was successful
         # Only consider it successful if the result is 'successful' AND the loss is finite

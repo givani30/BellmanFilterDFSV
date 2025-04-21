@@ -26,12 +26,14 @@ import numpy as np
 # Project specific imports
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.models.simulation import simulate_DFSV
+from bellman_filter_dfsv.models.simulation_helpers import create_stable_dfsv_params
 from bellman_filter_dfsv.utils.transformations import apply_identification_constraint
 from bellman_filter_dfsv.utils.optimization import (
     run_optimization,
     FilterType,
     OptimizerResult
 )
+from bellman_filter_dfsv.utils.optimization_helpers import create_stable_initial_params
 
 
 
@@ -44,69 +46,7 @@ jax.config.update("jax_enable_x64", True)
 
 # --- Model and Data Generation Functions ---
 
-def create_simple_model(N: int = 3, K: int = 2) -> DFSVParamsDataclass:
-    """Create a simple DFSV model with reasonable parameters.
-
-    Args:
-        N: Number of observed series.
-        K: Number of factors.
-
-    Returns:
-        DFSVParamsDataclass: Model parameters.
-    """
-    # Set random seed for reproducibility
-    key = jax.random.PRNGKey(42)
-    key, subkey1 = jax.random.split(key)
-
-    # Factor loadings (lower triangular with diagonal fixed to 1)
-    lambda_r_init = jax.random.normal(subkey1, (N, K)) * 0.5 + 0.5
-    lambda_r = jnp.tril(lambda_r_init)
-    diag_indices = jnp.diag_indices(n=min(N, K), ndim=2)
-    lambda_r = lambda_r.at[diag_indices].set(1.0)
-
-    # Factor persistence (diagonal-dominant with eigenvalues < 1)
-    # Off-diagonal elements
-    key, subkey1 = jax.random.split(key)
-    Phi_f = jax.random.uniform(subkey1, (K, K), minval=0.01, maxval=0.1)
-    # Diagonal elements
-    key, subkey1 = jax.random.split(key)
-    diag_values = jax.random.uniform(subkey1, (K,), minval=0.15, maxval=0.35)
-    Phi_f = Phi_f.at[jnp.diag_indices(K)].set(diag_values)
-    #Make sure Phi_f is stable by normalizing
-    Phi_f = Phi_f / jnp.linalg.norm(Phi_f, ord=2)*0.999
-
-    # Log-volatility persistence (diagonal-dominant with eigenvalues < 1)
-    # Off-diagonal elements
-    key, subkey1 = jax.random.split(key)
-    Phi_h = jax.random.uniform(subkey1, (K, K), minval=0.01, maxval=0.1)
-    # Diagonal elements
-    key, subkey1 = jax.random.split(key)
-    diag_values = jax.random.uniform(subkey1, (K,), minval=0.9, maxval=0.99)
-    Phi_h = Phi_h.at[jnp.diag_indices(K)].set(diag_values)
-    #Make sure Phi_h is stable by normalizing
-    Phi_h = Phi_h / jnp.linalg.norm(Phi_h, ord=2)*0.999
-    
-    # Long-run mean for log-volatilities
-    mu = jnp.array([-1.0, -0.5] if K == 2 else [-1.0] * K)
-
-    # Idiosyncratic variance (diagonal)
-    key, subkey1 = jax.random.split(key)
-    sigma2 = jax.random.uniform(subkey1, (N,), minval=0.05, maxval=0.1)
-
-    # Log-volatility noise covariance (diagonal)
-    key, subkey1 = jax.random.split(key)
-    Q_h_diag = jax.random.uniform(subkey1, (K,), minval=0.1, maxval=0.3)
-    Q_h = jnp.diag(Q_h_diag)
-
-    # Create parameter object
-    params = DFSVParamsDataclass(
-        N=N, K=K, lambda_r=lambda_r, Phi_f=Phi_f, Phi_h=Phi_h,
-        mu=mu, sigma2=sigma2, Q_h=Q_h
-    )
-
-    # Ensure constraint is applied correctly
-    params = apply_identification_constraint(params)
-    return params
+# Using the imported create_stable_dfsv_params function from simulation_helpers
 
 
 def create_training_data(params: DFSVParamsDataclass, T: int = 1000, seed: int = 42) -> jnp.ndarray:
@@ -127,44 +67,29 @@ def create_training_data(params: DFSVParamsDataclass, T: int = 1000, seed: int =
 # Using create_filter from the main code
 
 
-def create_initial_params(N: int, K: int) -> DFSVParamsDataclass:
-    """Create initial parameter values for optimization.
-
-    Args:
-        N: Number of observed series.
-        K: Number of factors.
-        data_variance: Variance of the data (for scaling sigma2).
-
-    Returns:
-        DFSVParamsDataclass: Initial parameter values.
-    """
-    # Create lower triangular lambda_r with diagonal fixed to 1
-    lambda_r_init = jnp.zeros((N, K))
-    diag_indices = jnp.diag_indices(min(N, K))
-    lambda_r_init = lambda_r_init.at[diag_indices].set(1.0)
-    lambda_r_init = jnp.tril(lambda_r_init)
-
-    # Different initial values for factor and volatility persistence
-    # Lower persistence for factors, higher for volatilities (following working script)
-    # Initialize with small non-zero off-diagonal elements to encourage their estimation
-    phi_f_init = 0.3 * jnp.eye(K) + 0.05 * jnp.ones((K, K))  # Add small off-diagonal values
-    phi_h_init = 0.8 * jnp.eye(K) + 0.02 * jnp.ones((K, K))  # Add small off-diagonal values
-
-    # Create initial parameters
-    initial_params = DFSVParamsDataclass(
-        N=N, K=K,
-        lambda_r=lambda_r_init,
-        Phi_f=phi_f_init,
-        Phi_h=phi_h_init,
-        mu=jnp.zeros(K),
-        sigma2=0.1 * jnp.ones(N),
-        Q_h=0.2 * jnp.eye(K)
-    )
-
-    return initial_params
+# Using the imported create_stable_initial_params function from optimization_helpers
 
 
 # Using run_optimization from the main code
+
+
+def determine_optimizer(filter_type_str):
+    """Determine the appropriate optimizer based on filter type.
+
+    Args:
+        filter_type_str: String representation of filter type.
+
+    Returns:
+        String name of the optimizer to use.
+    """
+    # For BIF and BF, use BFGS
+    # For PF, use AdamW
+    if filter_type_str in ["BIF", "BF"]:
+        return "DampedTrustRegionBFGS"
+    elif filter_type_str == "PF":
+        return "ArmijoBFGS"
+    else:
+        raise ValueError(f"Unknown filter type: {filter_type_str}")
 
 
 
@@ -331,83 +256,88 @@ def main():
     """Main function to run the unified filter optimization."""
     print("Starting Unified Filter Optimization...")
 
+    # Configuration parameters - easily modifiable
+    N = 5           # Number of observed variables
+    K = 3           # Number of factors
+    T = 500         # Number of time steps
+    seed = 123      # Random seed for reproducibility
+    max_steps = 200 # Maximum optimization steps
+    stability_penalty_weight = 1000.0  # Weight for stability penalty
+    num_particles = 5000  # Number of particles for PF
+
+    print(f"Configuration: N={N}, K={K}, T={T}, seed={seed}, max_steps={max_steps}")
+
     # 1. Create model parameters
-    N, K = 5, 3
-    true_params = create_simple_model(N=N, K=K)
+    true_params = create_stable_dfsv_params(N=N, K=K)
     print(f"Created model with N={true_params.N}, K={true_params.K}")
     print("True Parameters:")
     print(true_params)
 
     # 2. Generate simulation data
-    T = 500  # Full experiment with longer time series
     print(f"\nGenerating {T} time steps of simulation data...")
-    returns = create_training_data(true_params, T=T, seed=123)
+    returns = create_training_data(true_params, T=T, seed=seed)
     print("Simulation data generated.")
 
     # 3. Define optimization configurations
     # Run all three filters
     filter_types = [FilterType.BIF, FilterType.PF]
 
-    # Use both AdamW and DampedTrustRegionBFGS optimizers
-    optimizers = ["AdamW", "DampedTrustRegionBFGS"]
-    use_transformations_options = [True]  # Always use transformations for stability
-    fix_mu_options = [True]  # Run only with fixed fixed mu
-    max_steps = 200  # Increased for better convergence
-    stability_penalty_weight = 1000.0
-    num_particles = 5000
+    # Always use transformations for stability
+    use_transformations = True
 
+    # Never fix mu as requested
+    fix_mu = False
+    # Create initial parameters for optimization
+    initial_params = create_stable_initial_params(N=N, K=K)
     # 4. Run optimizations
     results = []
 
     print(f"\nRunning optimizations with max_steps={max_steps}, stability_penalty_weight={stability_penalty_weight}...")
 
     for filter_type in filter_types:
-        for optimizer_name in optimizers:
-            for use_transformations in use_transformations_options:
-                for fix_mu in fix_mu_options:
-                    print(f"\n--- Running: Filter={filter_type.name} | Optimizer={optimizer_name} | Transform={'Yes' if use_transformations else 'No'} | Fix_mu={'Yes' if fix_mu else 'No'} ---")
+        # Determine the appropriate optimizer for this filter type
+        optimizer_name = determine_optimizer(filter_type.name)
 
-                    # Skip certain filter-optimizer combinations that are known to be problematic
-                    # if (filter_type == FilterType.PF and optimizer_name == "BFGS") or \
-                    #    (filter_type == FilterType.BF and optimizer_name == "AdamW"):
-                    #     print(f"Skipping {filter_type.name} with {optimizer_name} (known compatibility issue)")
-                    #     continue
+        print(f"\n--- Running: Filter={filter_type.name} | Optimizer={optimizer_name} | Transform={'Yes' if use_transformations else 'No'} | Fix_mu={'Yes' if fix_mu else 'No'} ---")
 
-                    try:
-                        # Run optimization with error handling
-                        result = run_optimization(
-                            filter_type=filter_type,
-                            returns=returns,
-                            true_params=true_params if fix_mu else None,  # Only pass true_params if fix_mu is True
-                            use_transformations=use_transformations,
-                            optimizer_name=optimizer_name,
-                            priors=None,
-                            stability_penalty_weight=stability_penalty_weight,
-                            max_steps=max_steps,
-                            num_particles=num_particles,
-                            verbose=True,
-                            prior_config_name="No Priors"
-                        )
+        try:
+            # Run optimization with error handling
+            result = run_optimization(
+                filter_type=filter_type,
+                returns=returns,
+                initial_params=initial_params,
+                true_params=true_params, # Pass true_params for comparison
+                fix_mu=False,  # Explicitly set fix_mu to False
+                use_transformations=use_transformations,
+                optimizer_name=optimizer_name,
+                priors=None,
+                stability_penalty_weight=stability_penalty_weight,
+                max_steps=max_steps,
+                num_particles=num_particles,
+                verbose=True,
+                log_params=True,  # Enable parameter logging
+                prior_config_name="No Priors"
+            )
 
-                        # Add result to list
-                        results.append(result)
-                    except Exception as e:
-                        print(f"Error running optimization: {e}")
-                        # Create a failure result
-                        error_result = OptimizerResult(
-                            filter_type=filter_type,
-                            optimizer_name=optimizer_name,
-                            uses_transformations=use_transformations,
-                            fix_mu=fix_mu,  # Add fix_mu parameter
-                            prior_config_name="No Priors",
-                            success=False,
-                            final_loss=float('inf'),
-                            steps=-1,
-                            time_taken=0.0,
-                            error_message=f"Exception: {str(e)}",
-                            final_params=None
-                        )
-                        results.append(error_result)
+            # Add result to list
+            results.append(result)
+        except Exception as e:
+            print(f"Error running optimization: {e}")
+            # Create a failure result
+            error_result = OptimizerResult(
+                filter_type=filter_type,
+                optimizer_name=optimizer_name,
+                uses_transformations=use_transformations,
+                fix_mu=fix_mu,  # Add fix_mu parameter
+                prior_config_name="No Priors",
+                success=False,
+                final_loss=float('inf'),
+                steps=-1,
+                time_taken=0.0,
+                error_message=f"Exception: {str(e)}",
+                final_params=None
+            )
+            results.append(error_result)
 
     # 5. Print results table
     if results:

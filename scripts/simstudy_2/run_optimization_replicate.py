@@ -108,7 +108,7 @@ def determine_optimizer(filter_type: str) -> str:
         ValueError: If filter_type is not 'PF' or 'BIF'
     """
     if filter_type == 'PF':
-        return 'SGD'
+        return 'ArmijoBFGS'
     elif filter_type == 'BIF':
         return 'DampedTrustRegionBFGS'
     else:

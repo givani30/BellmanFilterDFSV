@@ -54,13 +54,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--metrics-csv",
         type=str,
-        default="outputs/aggregated_optimization_metrics_14-04-2025.csv",
+        default="outputs/aggregated_optimization_metrics_21-04-2025.csv",
         help="Path to the metrics CSV file"
     )
     parser.add_argument(
         "--params-npz",
         type=str,
-        default="outputs/aggregated_optimization_params_14-04-2025.npz",
+        default="outputs/aggregated_optimization_params_21-04-2025.npz",
         help="Path to the parameters NPZ file"
     )
     parser.add_argument(

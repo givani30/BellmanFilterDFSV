@@ -3,13 +3,17 @@ import json
 import hashlib # Using hashlib for more stable hashing
 
 # --- Parameter Grid Definition ---
-nk_pairs = [(5, 2), (10, 3), (15, 5)]
+# Original pairs: [(5, 2), (10, 3), (15, 5)]
+# New pairs to add based on N={5, 10, 15}, K={2, 3, 5} where N > K, excluding originals:
+nk_pairs = [(50,5)]
 t_values = [500, 1000, 2000]
-# filter_types = ['BIF', 'PF']
-filter_types = ['BIF']
+filter_types = ['BIF', 'PF']
+# filter_types = ['PF']
 # optimizer_names = ['DampedTrustRegionBFGS'] # Removed as per plan
-num_particles_list = [1000, 5000] # Only for PF
-fix_mu_values = [True, False]
+num_particles_list = [1000, 5000,10000] # Only for PF
+# num_particles_list = [10000] # Only for PF
+# fix_mu_values = [True, False]
+fix_mu_values = [False] # Let mu be freely estimated
 num_replicates = 5
 
 # --- Default/Placeholder Values ---

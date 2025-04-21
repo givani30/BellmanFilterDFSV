@@ -1,9 +1,0 @@
-{
-    "N_values": [5],
-    "K_values": [2],
-    "T": 50,
-    "num_particles_values": [100],
-    "num_reps": 2,
-    "base_results_dir": "simulation_results_test_refactored",
-    "save_format": "npz"
-}
