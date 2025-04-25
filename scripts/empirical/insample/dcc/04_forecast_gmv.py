@@ -20,12 +20,12 @@ try:
     # Load the DCC model
     dcc = joblib.load(MODEL_FILE)
 
-    # Load the original returns (scaled by 10 as in script 02)
+    # Load the original returns (without scaling)
     df = pd.read_csv(RETURNS_FILE)
     date_col = df.columns[0]
     df[date_col] = pd.to_datetime(df[date_col])
     df.set_index(date_col, inplace=True)
-    returns = df.values * 10.0  # Apply same scaling as in script 02
+    returns = df.values  # Using original decimal returns
 
     # Load the standardized residuals from the DCC model
     eps_tilde = np.load(EPS_TILDE_FILE)

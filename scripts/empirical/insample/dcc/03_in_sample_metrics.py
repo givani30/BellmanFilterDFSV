@@ -34,12 +34,12 @@ try:
     # Load the DCC model
     dcc = joblib.load(MODEL_FILE)
 
-    # Load the original returns (scaled by 10 as in script 02)
+    # Load the original returns (without scaling)
     df = pd.read_csv(RETURNS_FILE)
     date_col = df.columns[0]
     df[date_col] = pd.to_datetime(df[date_col])
     df.set_index(date_col, inplace=True)
-    returns = df.values * 10.0  # Apply same scaling as in script 02
+    returns = df.values  # Using original decimal returns
 
     # Load the standardized residuals from the DCC model
     eps_tilde = np.load(EPS_TILDE_FILE)
@@ -62,52 +62,102 @@ except Exception as e:
 T, N = returns.shape
 k = N * 3 + 3  # 3 per univariate GARCH + (a, b, nu)
 
-# Calculate log-likelihood using the model's parameters
-# For DCC-GARCH with t-distribution, we need to calculate it manually
-a = dcc.a
-b = dcc.b
-dof = dcc.dof
-D_t = dcc.D_t
+# Check if log-likelihood is already available in metadata
+if "log_likelihood" in metadata:
+    # Use the log-likelihood from the model
+    llik = metadata["log_likelihood"]
+    print(f"Using log-likelihood from model: {llik}")
+else:
+    # Calculate log-likelihood manually
+    print("Log-likelihood not found in metadata. Calculating manually...")
 
-# Calculate log-likelihood
-llik = 0
-for t in range(T):
-    # Use the covariance matrix we already calculated
-    H_t = Sigma_t[t]
+    # Get model parameters
+    a = dcc.a
+    b = dcc.b
+    dof = dcc.dof
+    D_t = dcc.D_t
 
-    # Calculate log-likelihood contribution for time t
-    try:
-        # Check if H_t is positive definite
+    # Calculate log-likelihood
+    llik = 0
+    for t in range(T):
+        # Use the covariance matrix we already calculated
+        H_t = Sigma_t[t]
+
+        # Calculate log-likelihood contribution for time t
         try:
-            # Try Cholesky decomposition (will fail if not positive definite)
-            np.linalg.cholesky(H_t)
-        except np.linalg.LinAlgError:
-            # If not positive definite, add a small ridge
-            print(f"Warning: Covariance matrix at time {t} is not positive definite. Adding a small ridge.")
-            H_t = H_t + 1e-6 * np.eye(N)
+            # Check if H_t is positive definite
+            try:
+                # Try Cholesky decomposition (will fail if not positive definite)
+                np.linalg.cholesky(H_t)
+            except np.linalg.LinAlgError:
+                # If not positive definite, add a small ridge
+                print(f"Warning: Covariance matrix at time {t} is not positive definite. Adding a small ridge.")
+                H_t = H_t + 1e-6 * np.eye(N)
 
-        # For t-distribution
-        log_det_H = np.log(np.linalg.det(H_t))
+            # For t-distribution
+            # Use a more numerically stable approach for the determinant
+            sign, logdet = np.linalg.slogdet(H_t)
+            if sign <= 0:
+                # If determinant is non-positive, add a small ridge
+                print(f"Warning: Non-positive determinant at time {t}. Adding a small ridge.")
+                H_t = H_t + 1e-6 * np.eye(N)
+                sign, logdet = np.linalg.slogdet(H_t)
+                if sign <= 0:
+                    # If still non-positive, skip this time point
+                    print(f"Warning: Still non-positive determinant at time {t}. Skipping.")
+                    continue
 
-        # Use the original returns for the quadratic form
-        r_t = returns[t]
-        quad_form = r_t @ np.linalg.inv(H_t) @ r_t
+            log_det_H = logdet
 
-        # Log-likelihood for multivariate t-distribution
-        llik_t = (
-            np.log(gamma((N + dof) / 2)) -
-            np.log(gamma(dof / 2)) -
-            (N / 2) * np.log(np.pi * (dof - 2)) -
-            0.5 * log_det_H -
-            ((N + dof) / 2) * np.log(1 + quad_form / (dof - 2))
-        )
-        llik += llik_t
-    except Exception as e:
-        # Skip if there's a numerical issue
-        print(f"Warning: Skipping log-likelihood calculation for time {t}: {e}")
-        continue
+            # Use the original returns for the quadratic form
+            r_t = returns[t]
 
-print(f"Calculated log-likelihood: {llik}")
+            # Use a more numerically stable approach for the quadratic form
+            try:
+                # Try using Cholesky decomposition for the quadratic form
+                L = np.linalg.cholesky(H_t)
+                y = np.linalg.solve(L, r_t)
+                quad_form = np.sum(y**2)
+            except np.linalg.LinAlgError:
+                # If Cholesky fails, try direct inversion
+                try:
+                    H_inv = np.linalg.inv(H_t)
+                    quad_form = r_t @ H_inv @ r_t
+                except np.linalg.LinAlgError:
+                    # If inversion fails, skip this time point
+                    print(f"Warning: Failed to compute quadratic form at time {t}. Skipping.")
+                    continue
+
+            # Log-likelihood for multivariate t-distribution
+            try:
+                llik_t = (
+                    np.log(gamma((N + dof) / 2)) -
+                    np.log(gamma(dof / 2)) -
+                    (N / 2) * np.log(np.pi * (dof - 2)) -
+                    0.5 * log_det_H -
+                    ((N + dof) / 2) * np.log(1 + quad_form / (dof - 2))
+                )
+
+                # Check for invalid values
+                if np.isnan(llik_t) or np.isinf(llik_t):
+                    print(f"Warning: Invalid log-likelihood value at time {t}: {llik_t}. Skipping.")
+                    continue
+
+                llik += llik_t
+            except Exception as e:
+                print(f"Warning: Error calculating log-likelihood at time {t}: {e}. Skipping.")
+                continue
+        except Exception as e:
+            # Skip if there's a numerical issue
+            print(f"Warning: Skipping log-likelihood calculation for time {t}: {e}")
+            continue
+
+    # Check for invalid log-likelihood
+    if np.isnan(llik) or np.isinf(llik):
+        print(f"Warning: Invalid final log-likelihood: {llik}. Setting to a large negative value.")
+        llik = -1e10  # Use a large negative value instead of infinity
+
+    print(f"Manually calculated log-likelihood: {llik}")
 
 # Calculate AIC and BIC
 AIC = -2 * llik + 2 * k

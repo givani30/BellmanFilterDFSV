@@ -93,6 +93,110 @@ else:
             print(f"BIC: {bic:.4f}")
             print(f"Final Phi_f Max Eigenvalue Magnitude: {final_phi_f_max_eig:.6f}")
 
+            # Save metrics summary in JSON format (similar to DCC)
+            try:
+                import json
+
+                # Prepare diagnostic test results
+                diagnostic_results = {}
+
+                # Run tests on all series and collect results
+                if standardized_residuals_post_burn is not None:
+                    # Ljung-Box test on squared residuals
+                    lb_results = {}
+                    for lag in [5, 10, 15, 20]:
+                        lb_results[f"lag_{lag}"] = {}
+                        lb_results[f"lag_{lag}"]["pass_rate"] = 0
+                        lb_results[f"lag_{lag}"]["total"] = standardized_residuals_post_burn.shape[1]
+
+                        pass_count = 0
+                        for i in range(standardized_residuals_post_burn.shape[1]):
+                            try:
+                                lb_test = acorr_ljungbox(standardized_residuals_post_burn.iloc[:, i]**2, lags=[lag], return_df=True)
+                                # Consider test passed if p-value > 0.05 (no autocorrelation)
+                                if lb_test.iloc[0, 1] > 0.05:
+                                    pass_count += 1
+                            except:
+                                pass
+
+                        lb_results[f"lag_{lag}"]["pass_count"] = pass_count
+                        lb_results[f"lag_{lag}"]["pass_rate"] = pass_count / standardized_residuals_post_burn.shape[1]
+
+                    diagnostic_results["ljung_box_squared"] = lb_results
+
+                    # ARCH-LM test
+                    arch_results = {}
+                    for lag in [5, 10]:
+                        arch_results[f"lag_{lag}"] = {}
+                        arch_results[f"lag_{lag}"]["pass_rate"] = 0
+                        arch_results[f"lag_{lag}"]["total"] = standardized_residuals_post_burn.shape[1]
+
+                        pass_count = 0
+                        for i in range(standardized_residuals_post_burn.shape[1]):
+                            try:
+                                arch_test = het_arch(standardized_residuals_post_burn.iloc[:, i], nlags=lag)
+                                # Consider test passed if p-value > 0.05 (no ARCH effects)
+                                if arch_test[1] > 0.05:
+                                    pass_count += 1
+                            except:
+                                pass
+
+                        arch_results[f"lag_{lag}"]["pass_count"] = pass_count
+                        arch_results[f"lag_{lag}"]["pass_rate"] = pass_count / standardized_residuals_post_burn.shape[1]
+
+                    diagnostic_results["arch_lm"] = arch_results
+
+                    # Jarque-Bera test
+                    jb_results = {}
+                    jb_results["pass_rate"] = 0
+                    jb_results["total"] = standardized_residuals_post_burn.shape[1]
+
+                    pass_count = 0
+                    for i in range(standardized_residuals_post_burn.shape[1]):
+                        try:
+                            jb_test = jarque_bera(standardized_residuals_post_burn.iloc[:, i])
+                            # Consider test passed if p-value > 0.05 (normality)
+                            if jb_test[1] > 0.05:
+                                pass_count += 1
+                        except:
+                            pass
+
+                    jb_results["pass_count"] = pass_count
+                    jb_results["pass_rate"] = pass_count / standardized_residuals_post_burn.shape[1]
+
+                    diagnostic_results["jarque_bera"] = jb_results
+
+                # Create comprehensive metrics summary
+                metrics_summary = {
+                    "model_name": model_name,
+                    "convergence_success": convergence_success,
+                    "convergence_message": str(convergence_message),
+                    "estimation_time": float(estimation_time),
+                    "num_params": int(num_params) if not np.isnan(num_params) else None,
+                    "log_likelihood_penalized": float(log_likelihood_penalized) if np.isfinite(log_likelihood_penalized) else None,
+                    "log_likelihood_base": float(log_likelihood_base) if np.isfinite(log_likelihood_base) else None,
+                    "aic": float(aic) if np.isfinite(aic) else None,
+                    "bic": float(bic) if np.isfinite(bic) else None,
+                    "final_phi_f_max_eig": float(final_phi_f_max_eig) if np.isfinite(final_phi_f_max_eig) else None,
+                    "diagnostic_tests": diagnostic_results
+                }
+
+                # Ensure output directory exists
+                output_dir = 'outputs/empirical/insample/factorcv'
+                os.makedirs(output_dir, exist_ok=True)
+
+                # Save metrics summary
+                metrics_path = os.path.join(output_dir, 'metrics_summary.json')
+                with open(metrics_path, 'w') as f:
+                    json.dump(metrics_summary, f, indent=2)
+
+                print(f"\nMetrics summary saved to {metrics_path}")
+
+            except Exception as e:
+                print(f"Error saving metrics summary: {e}")
+                import traceback
+                traceback.print_exc()
+
             # TODO: Generate summary tables (e.g., LaTeX tables) and plots (e.g., ACF plots)
             # Save tables/plots to outputs/tables/ or outputs/figures/
 

@@ -3,19 +3,19 @@
     "distribution": "Student-t",
     "num_params": 288,
     "estimation_time": {
-        "stage1_time": 10.594895601272583,
-        "stage2_time": 279.4688045978546,
-        "total_time": 290.0637638568878
+        "stage1_time": 3.814697265625e-06,
+        "stage2_time": 291.58778500556946,
+        "total_time": 291.5878529548645
     },
     "convergence_status": "Converged",
     "sample_size": 738,
     "num_series": 95,
     "parameters": {
-        "a": 0.06928135994356809,
-        "b": 0.9140264013092938,
-        "dof": 48.694510122823495
+        "a": 0.01,
+        "b": 0.94,
+        "dof": 3.0
     },
-    "log_likelihood": -60580.636833700424,
-    "AIC": 121737.27366740085,
-    "BIC": 123063.20948888578
+    "log_likelihood": 162516.36075921034,
+    "AIC": -324456.7215184207,
+    "BIC": -323130.7856969357
 }

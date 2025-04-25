@@ -36,9 +36,8 @@ try:
         for date in df.index:
             f.write(f"{date.strftime('%Y-%m-%d')}\n")
 
-    # Apply scaling for better numerical stability (as recommended by arch package)
-    # This is consistent with the scaling in 01_univariate_garch.py
-    returns = returns * 10.0
+    # Note: We're using the original decimal returns without scaling
+    # The mgarch package is designed to work with decimal returns
 
     print(f"Loaded returns data with shape {returns.shape}")
 except Exception as e:
@@ -71,6 +70,21 @@ try:
 
     # Create metadata dictionary
     T, N = returns.shape
+
+    # Check if the model stores the log-likelihood
+    log_likelihood = None
+    if hasattr(dcc, 'loglikelihood'):
+        log_likelihood = float(dcc.loglikelihood)
+        print(f"Found log-likelihood in model: {log_likelihood}")
+    elif hasattr(dcc, 'llik_'):
+        log_likelihood = float(dcc.llik_)
+        print(f"Found log-likelihood in model: {log_likelihood}")
+    elif hasattr(dcc, 'llf'):
+        log_likelihood = float(dcc.llf)
+        print(f"Found log-likelihood in model: {log_likelihood}")
+    else:
+        print("Log-likelihood not found in model. Will calculate manually in script 03.")
+
     metadata = {
         "model_type": "DCC-GARCH",
         "distribution": "Student-t",
@@ -85,6 +99,10 @@ try:
             "dof": float(dcc.dof)
         }
     }
+
+    # Add log-likelihood to metadata if found
+    if log_likelihood is not None:
+        metadata["log_likelihood"] = log_likelihood
 
 except Exception as e:
     print(f"Error fitting DCC-GARCH model: {e}")

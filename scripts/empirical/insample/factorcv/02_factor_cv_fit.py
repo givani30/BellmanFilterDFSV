@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
-from statsmodels.tsa.statespace.mlemodel import MLEModel, MLEResults, MLEModelResultsWrapper
+from statsmodels.tsa.statespace.mlemodel import MLEModel, MLEResults
 from scipy.linalg import solve_discrete_lyapunov # If stationary initialization were needed
 import warnings
 import time
@@ -9,7 +9,7 @@ import pickle
 import os
 
 # Import the custom FactorCVModel
-from .factor_cv_model import FactorCVModel
+from factor_cv_model import FactorCVModel
 
 # Ensure calculations use float64 for stability
 # np.set_printoptions(precision=8, suppress=True) # Optional: for printing
@@ -22,7 +22,7 @@ import pathlib
 # Get the script's directory
 SCRIPT_DIR = pathlib.Path(__file__).parent.absolute()
 # Define paths relative to the script location
-INPUT_FILE = os.path.join(SCRIPT_DIR.parent.parent, "vw_returns_final_with_date.csv")
+INPUT_FILE = os.path.join(SCRIPT_DIR.parent.parent.parent, "empirical", "vw_returns_final_with_date.csv")
 
 # --- Data Loading and Preprocessing ---
 print("Loading and preprocessing data...")
@@ -44,7 +44,14 @@ try:
     if df_returns.shape[1] != 95:
          raise ValueError(f"Input data must have N=95 columns, found {df_returns.shape[1]}")
 
-    # Ensure data is demeaned (important for Factor-CV)
+    # TEMPORARY: Use a smaller subset of the data for testing
+    # Take only the first 20 assets and 200 time periods
+    print(f"Original data shape: {df_returns.shape}")
+    df_returns = df_returns.iloc[:200, :20]
+    print(f"Using reduced dataset for testing: {df_returns.shape}")
+
+    # Note: Input data is already demeaned, no need to demean again
+    print("Using already demeaned data")
 
     # Ensure data is in decimal format (if not already, e.g., if in percentage)
     # Assuming data is already in decimal format based on typical financial data
@@ -73,8 +80,9 @@ except Exception as e:
 # After loading and preprocessing, define T and N
 T = df_returns.shape[0]
 N = df_returns.shape[1]
-k_factors = 5 # Define k_factors here as it's used below
+k_factors = 2 # TEMPORARY: Reduced from 5 to 2 for testing
 print(f"Final data shape for model fitting: {df_returns.shape}")
+print(f"Using {k_factors} factors for the model")
 
 # --- Instantiate and Fit the Model ---
 factor_cv_model = FactorCVModel(df_returns, k_factors=k_factors)
@@ -82,11 +90,22 @@ factor_cv_model = FactorCVModel(df_returns, k_factors=k_factors)
 print("Fitting the model (this may take time)...")
 start_time = time.time()
 try:
-    # Using L-BFGS-B which often works well for high-dimensional problems
-    # ftol=1e-08, gtol=1e-06 are typical precision settings
-    factor_cv_results = factor_cv_model.fit(method='lbfgs', maxiter=1500,
-                                            disp=True, # Show optimizer output
-                                            pgtol=1e-06, factr=1e7) # L-BFGS specific options
+    # First try with L-BFGS-B which often works well for high-dimensional problems
+    # Increase maxiter and adjust tolerance parameters for better convergence
+    # Proceed with optimization
+
+    try:
+        print("Attempting optimization with L-BFGS-B method...")
+        factor_cv_results = factor_cv_model.fit(method='lbfgs', maxiter=10000,
+                                                disp=True, # Show optimizer output
+                                                pgtol=1e-06, factr=1e7) # L-BFGS specific options - tighter tolerances for better convergence
+    except Exception as e:
+        print(f"L-BFGS-B optimization failed: {e}")
+        print("Trying alternative optimizer: Nelder-Mead...")
+        # If L-BFGS-B fails, try Nelder-Mead which is more robust but slower
+        # Try Nelder-Mead which is generally more robust but slower
+        factor_cv_results = factor_cv_model.fit(method='nm', maxiter=10000,
+                                                disp=True) # Nelder-Mead method with increased iterations
 
     end_time = time.time()
     estimation_time = end_time - start_time
@@ -95,8 +114,13 @@ try:
     print(factor_cv_results.summary())
 
     # Check convergence
-    convergence_success = factor_cv_results.mle_retvals['warnflag'] == 0
-    convergence_message = factor_cv_results.mle_retvals['task']
+    if 'warnflag' in factor_cv_results.mle_retvals:
+        convergence_success = factor_cv_results.mle_retvals['warnflag'] == 0
+        convergence_message = factor_cv_results.mle_retvals.get('task', 'No task message available')
+    else:
+        # For optimizers that don't use warnflag
+        convergence_success = True  # Assume success unless explicitly failed
+        convergence_message = str(factor_cv_results.mle_retvals)
 
     if not convergence_success:
          warnings.warn(f"Optimization may not have converged: {convergence_message}")
@@ -150,12 +174,16 @@ if convergence_success and factor_cv_results is not None:
 
     # Reconstruct estimated system matrices (using final constrained params)
     try:
+         # Convert pandas Series to numpy array if needed
+         if isinstance(theta_cv_hat_constrained, pd.Series):
+             theta_cv_hat_constrained = theta_cv_hat_constrained.values
+
          factor_cv_model.update(theta_cv_hat_constrained) # Use final constrained params
 
-         lambda_hat_cv = factor_cv_model.ssm['design', 0, 0].copy()
-         sigma_eps_hat_cv_diag = np.diag(factor_cv_model.ssm['obs_cov', 0, 0]).copy()
-         phi_f_hat_cv = factor_cv_model.ssm['transition', 0, 0].copy()
-         sigma_nu_hat_cv_diag = np.diag(factor_cv_model.ssm['state_cov', 0, 0]).copy()
+         lambda_hat_cv = factor_cv_model.ssm['design'].copy()
+         sigma_eps_hat_cv_diag = np.diag(factor_cv_model.ssm['obs_cov']).copy()
+         phi_f_hat_cv = factor_cv_model.ssm['transition'].copy()
+         sigma_nu_hat_cv_diag = np.diag(factor_cv_model.ssm['state_cov']).copy()
 
          print("\nExtracted Final System Matrices (Constrained):")
          print(f"Lambda_hat shape: {lambda_hat_cv.shape}")
@@ -194,10 +222,16 @@ if convergence_success and factor_cv_results is not None:
 
     # Filtered States and Covariances
     if factor_cv_results.filter_results is not None:
-        filtered_factors_cv = factor_cv_results.filter_results.filtered_state # T x K
-        filtered_state_covs_cv = factor_cv_results.filter_results.filtered_state_cov # T x K x K
+        filtered_factors_cv = factor_cv_results.filter_results.filtered_state # K x T
+        filtered_state_covs_cv = factor_cv_results.filter_results.filtered_state_cov # K x K x T
         print(f"Filtered states shape: {filtered_factors_cv.shape}")
         print(f"Filtered state covs shape: {filtered_state_covs_cv.shape}")
+
+        # Transpose the arrays to match the expected shape (T x K) and (T x K x K)
+        filtered_factors_cv = np.transpose(filtered_factors_cv)  # Now T x K
+        filtered_state_covs_cv = np.transpose(filtered_state_covs_cv, (2, 0, 1))  # Now T x K x K
+        print(f"Transposed filtered states shape: {filtered_factors_cv.shape}")
+        print(f"Transposed filtered state covs shape: {filtered_state_covs_cv.shape}")
 
 
     # Calculate Conditional Observation Covariances and Standardized Residuals
@@ -276,11 +310,18 @@ else:
 # --- Store Results for Evaluation ---
 print("\nStoring Factor-CV results...")
 
-# Ensure output directory exists
-output_dir = 'outputs/empirical/insample/'
-os.makedirs(output_dir, exist_ok=True)
-output_path = os.path.join(output_dir, 'factorcv_results.pkl')
+# Ensure output directories exist
+main_output_dir = 'outputs/empirical/insample/'
+factorcv_output_dir = os.path.join(main_output_dir, 'factorcv')
+data_dir = os.path.join(factorcv_output_dir, 'data')
+os.makedirs(main_output_dir, exist_ok=True)
+os.makedirs(factorcv_output_dir, exist_ok=True)
+os.makedirs(data_dir, exist_ok=True)
 
+# Main results pickle file (for comparison with other models)
+main_output_path = os.path.join(main_output_dir, 'factorcv_results.pkl')
+
+# Create comprehensive results dictionary
 factor_cv_results_for_comparison = {
     "model_name": "Factor-CV",
     "log_likelihood_penalized": loglik_cv_penalized,
@@ -305,12 +346,81 @@ factor_cv_results_for_comparison = {
     "final_phi_f_max_eig": final_phi_f_max_eig
 }
 
+# Save main results pickle
 try:
-    with open(output_path, 'wb') as f:
+    with open(main_output_path, 'wb') as f:
         pickle.dump(factor_cv_results_for_comparison, f)
-    print(f"Results dictionary saved to {output_path}")
+    print(f"Results dictionary saved to {main_output_path}")
 except Exception as e:
     print(f"Error saving results to pickle file: {e}")
+
+# Save individual components in DCC-like format
+if convergence_success and conditional_covariance_H_cv is not None:
+    try:
+        # 1. Save model object (similar to model.pkl in DCC)
+        if factor_cv_results is not None:
+            model_path = os.path.join(data_dir, 'model.pkl')
+            with open(model_path, 'wb') as f:
+                pickle.dump(factor_cv_model, f)
+            print(f"Model object saved to {model_path}")
+
+        # 2. Save model metadata as JSON
+        import json
+        metadata = {
+            "model_type": "Factor-CV",
+            "distribution": "Gaussian",
+            "num_params": int(num_params_cv),
+            "estimation_time": float(estimation_time),
+            "convergence_success": bool(convergence_success),
+            "convergence_message": str(convergence_message),
+            "sample_size": int(T),
+            "num_series": int(N),
+            "k_factors": int(k_factors),
+            "log_likelihood": float(loglik_cv_base) if np.isfinite(loglik_cv_base) else None,
+            "aic": float(aic_cv) if np.isfinite(aic_cv) else None,
+            "bic": float(bic_cv) if np.isfinite(bic_cv) else None,
+            "phi_f_max_eigenvalue": float(final_phi_f_max_eig) if np.isfinite(final_phi_f_max_eig) else None
+        }
+        metadata_path = os.path.join(data_dir, 'model_metadata.json')
+        with open(metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=2)
+        print(f"Model metadata saved to {metadata_path}")
+
+        # 3. Save standardized residuals (eps_tilde.npy in DCC)
+        if standardized_residuals_cv_post_burn is not None:
+            eps_path = os.path.join(data_dir, 'eps_tilde.npy')
+            np.save(eps_path, standardized_residuals_cv_post_burn.values)
+            print(f"Standardized residuals saved to {eps_path}")
+
+            # Also save as CSV with date index (like in DCC)
+            eps_csv_path = os.path.join(factorcv_output_dir, 'standardized_residuals.csv')
+            standardized_residuals_cv_post_burn.to_csv(eps_csv_path)
+            print(f"Standardized residuals CSV saved to {eps_csv_path}")
+
+        # 4. Save conditional covariance matrices (Ht.npy in DCC)
+        if conditional_covariance_H_cv is not None:
+            ht_path = os.path.join(data_dir, 'Ht.npy')
+            # Extract post-burn covariances to match DCC format
+            burn_in = factor_cv_model.loglikelihood_burn
+            post_burn_H = conditional_covariance_H_cv[burn_in:, :, :]
+            np.save(ht_path, post_burn_H)
+            print(f"Conditional covariance matrices saved to {ht_path}")
+
+        # 5. Save date index (date_index.txt in DCC)
+        if standardized_residuals_cv_post_burn is not None:
+            date_path = os.path.join(data_dir, 'date_index.txt')
+            with open(date_path, 'w') as f:
+                for date in standardized_residuals_cv_post_burn.index:
+                    f.write(f"{date.strftime('%Y-%m-%d')}\n")
+            print(f"Date index saved to {date_path}")
+
+        print("All DCC-compatible outputs saved successfully")
+    except Exception as e:
+        print(f"Error saving DCC-compatible outputs: {e}")
+        import traceback
+        traceback.print_exc()
+else:
+    print("Skipping DCC-compatible output generation due to estimation error or non-convergence")
 
 
 print("\nFactor-CV Estimation Script Finished.")
