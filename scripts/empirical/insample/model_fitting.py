@@ -84,7 +84,7 @@ def main():
 
     print("Model estimation completed successfully.")
 
-def save_result(result: OptimizerResult, output_dir: Path):
+def save_result(result: OptimizerResult, output_dir: Path,filter_type: str = "BIF"):
     """
     Save the entire optimization result object using cloudpickle.
 
@@ -97,7 +97,7 @@ def save_result(result: OptimizerResult, output_dir: Path):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         # Save using cloudpickle (better for complex objects with JAX arrays)
-        pickle_file = output_dir / f"bif_full_result_{timestamp}.pkl"
+        pickle_file = output_dir / f"{filter_type.lower()}_full_result_{timestamp}.pkl"
         with open(pickle_file, 'wb') as f:
             cloudpickle.dump(result, f)
         print(f"Full result object saved to {pickle_file}")
@@ -107,7 +107,7 @@ def save_result(result: OptimizerResult, output_dir: Path):
 
         # Try with regular pickle as fallback
         try:
-            pickle_file = output_dir / f"bif_full_result_{timestamp}_fallback.pkl"
+            pickle_file = output_dir / f"{filter_type.lower()}_full_result_{timestamp}_fallback.pkl"
             with open(pickle_file, 'wb') as f:
                 pickle.dump(result, f)
             print(f"Full result object saved to {pickle_file} using standard pickle")

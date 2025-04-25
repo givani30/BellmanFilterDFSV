@@ -41,6 +41,8 @@ dependencies = [
     "statsmodels>=0.14.4",
     "rich>=14.0.0",
     "notebook>=7.4.1",
+    "arch>=7.2.0",
+    "mgarch>=0.3.0",
 ]
 
 [tool.setuptools.packages.find]
