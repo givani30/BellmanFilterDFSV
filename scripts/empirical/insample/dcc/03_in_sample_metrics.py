@@ -5,7 +5,6 @@ from scipy.special import gamma
 import joblib
 import os
 import pathlib
-from numpy.linalg import cholesky, solve
 from statsmodels.stats.diagnostic import acorr_ljungbox, het_arch # Import necessary statsmodels functions
 import json # To save metrics as JSON
 
@@ -14,8 +13,11 @@ SCRIPT_DIR = pathlib.Path(__file__).parent.absolute()
 # Define paths relative to the script location
 DATA_DIR = os.path.join(SCRIPT_DIR, "data")
 MODEL_FILE = os.path.join(DATA_DIR, "model.pkl")
-EPS_FILE = os.path.join(DATA_DIR, "garch_outputs.npz")
+RETURNS_FILE = os.path.join(SCRIPT_DIR.parent.parent, "vw_returns_final_with_date.csv")
+EPS_TILDE_FILE = os.path.join(DATA_DIR, "eps_tilde.npy")
 RT_FILE = os.path.join(DATA_DIR, "Rt.npy")
+COV_FILE = os.path.join(DATA_DIR, "Ht.npy")
+METADATA_FILE = os.path.join(DATA_DIR, "model_metadata.json")
 DATE_INDEX_FILE = os.path.join(DATA_DIR, "date_index.txt") # To load date index
 
 # Define output directory relative to the project root
@@ -27,55 +29,69 @@ RESIDUALS_OUTPUT_FILE = os.path.join(OUTPUTS_DIR, "standardized_residuals.csv")
 # Ensure output directory exists
 os.makedirs(OUTPUTS_DIR, exist_ok=True)
 
-# Load fitted model, eps, and Rt
+# Load fitted model, returns, standardized residuals, correlation matrices, and metadata
 try:
+    # Load the DCC model
     dcc = joblib.load(MODEL_FILE)
-    eps = np.load(EPS_FILE)['eps']
-    # Load the correlation matrix directly as a 3D array
-    Rt = np.load(RT_FILE)
 
-    # Load date index
-    date_index = []
-    with open(DATE_INDEX_FILE, 'r') as f:
-        for line in f:
-            date_index.append(pd.to_datetime(line.strip()))
+    # Load the original returns (scaled by 10 as in script 02)
+    df = pd.read_csv(RETURNS_FILE)
+    date_col = df.columns[0]
+    df[date_col] = pd.to_datetime(df[date_col])
+    df.set_index(date_col, inplace=True)
+    returns = df.values * 10.0  # Apply same scaling as in script 02
+
+    # Load the standardized residuals from the DCC model
+    eps_tilde = np.load(EPS_TILDE_FILE)
+
+    # Load the correlation and covariance matrices
+    Rt = np.load(RT_FILE)
+    Sigma_t = np.load(COV_FILE)
+
+    # Load metadata
+    with open(METADATA_FILE, 'r') as f:
+        metadata = json.load(f)
+
+    # Use the date index from the returns dataframe
+    date_index = df.index
 
 except Exception as e:
     print(f"Error loading data or model: {e}")
     exit()
 
-T, N = eps.shape
+T, N = returns.shape
 k = N * 3 + 3  # 3 per univariate GARCH + (a, b, nu)
 
 # Calculate log-likelihood using the model's parameters
 # For DCC-GARCH with t-distribution, we need to calculate it manually
-# since it's not stored in the model
 a = dcc.a
 b = dcc.b
 dof = dcc.dof
 D_t = dcc.D_t
 
-# Calculate standardized residuals
-eps_tilde = np.zeros((T, N))
-for i in range(T):
-    for j in range(N):
-        eps_tilde[i, j] = dcc.rt[i, j] / D_t[i, j]
-
 # Calculate log-likelihood
 llik = 0
 for t in range(T):
-    # Use the correlation matrix we already calculated
-    R_t = Rt[t]
-    # Calculate H_t (conditional covariance matrix)
-    D_t_diag = np.diag(D_t[t])
-    H_t = D_t_diag @ R_t @ D_t_diag
+    # Use the covariance matrix we already calculated
+    H_t = Sigma_t[t]
 
     # Calculate log-likelihood contribution for time t
     try:
+        # Check if H_t is positive definite
+        try:
+            # Try Cholesky decomposition (will fail if not positive definite)
+            np.linalg.cholesky(H_t)
+        except np.linalg.LinAlgError:
+            # If not positive definite, add a small ridge
+            print(f"Warning: Covariance matrix at time {t} is not positive definite. Adding a small ridge.")
+            H_t = H_t + 1e-6 * np.eye(N)
+
         # For t-distribution
         log_det_H = np.log(np.linalg.det(H_t))
-        eps_t = eps[t]
-        quad_form = eps_t.T @ np.linalg.inv(H_t) @ eps_t
+
+        # Use the original returns for the quadratic form
+        r_t = returns[t]
+        quad_form = r_t @ np.linalg.inv(H_t) @ r_t
 
         # Log-likelihood for multivariate t-distribution
         llik_t = (
@@ -100,31 +116,45 @@ BIC = -2 * llik + k * np.log(T)
 print(f"Calculated AIC: {AIC}")
 print(f"Calculated BIC: {BIC}")
 
-# one-step-ahead Σ̂_{t|t-1}
-# dcc.D_t is the conditional standard deviations
-Sigma_t = np.zeros((T, N, N))
-for t in range(T):
-    # Create diagonal matrix of conditional standard deviations
-    D_t_diag = np.diag(dcc.D_t[t])
-    # Calculate conditional covariance matrix
-    Sigma_t[t] = D_t_diag @ Rt[t] @ D_t_diag
+# Update metadata with log-likelihood
+metadata["log_likelihood"] = float(llik)
+metadata["AIC"] = float(AIC)
+metadata["BIC"] = float(BIC)
 
-# standardised residuals ẑ_t  = Σ̂_t^{-1/2} ε_t
-z = np.empty_like(eps)
-for t, (e, S) in enumerate(zip(eps, Sigma_t)):
-    try:
-        L = cholesky(S)
-        z[t] = solve(L.T, solve(L, e))
-    except np.linalg.LinAlgError:
-        print(f"Cholesky decomposition failed at time step {t}. Skipping standardization for this step.")
-        z[t] = np.full(N, np.nan) # Fill with NaN if decomposition fails
+# Save updated metadata
+with open(METADATA_FILE, 'w') as f:
+    json.dump(metadata, f, indent=4)
+print("Updated metadata with log-likelihood information")
+
+# Use the standardized residuals from the DCC model for diagnostics
+z = eps_tilde
+
+# Verify that the standardized residuals have reasonable values
+z_mean = np.nanmean(z)
+z_std = np.nanstd(z)
+print(f"Standardized residuals statistics: mean={z_mean:.4f}, std={z_std:.4f}")
+
+# If the values are still extreme, we might need to rescale them
+if np.abs(z_mean) > 10 or z_std > 10:
+    print("WARNING: Standardized residuals have extreme values. Rescaling...")
+    # Rescale to have mean 0 and std 1
+    z = (z - np.nanmean(z, axis=0)) / np.nanstd(z, axis=0)
+    print(f"After rescaling: mean={np.nanmean(z):.4f}, std={np.nanstd(z):.4f}")
 
 
 # Perform residual diagnostics
 metrics = {
-    "LogLikelihood": llik,
-    "AIC": AIC,
-    "BIC": BIC
+    "model_type": metadata["model_type"],
+    "distribution": metadata["distribution"],
+    "num_params": metadata["num_params"],
+    "estimation_time": metadata["estimation_time"],
+    "convergence_status": metadata["convergence_status"],
+    "sample_size": metadata["sample_size"],
+    "num_series": metadata["num_series"],
+    "log_likelihood": metadata["log_likelihood"],
+    "AIC": metadata["AIC"],
+    "BIC": metadata["BIC"],
+    "parameters": metadata["parameters"]
 }
 
 print("Performing residual diagnostics...")

@@ -5,6 +5,7 @@ from joblib import Parallel, delayed
 import numpy as np
 import os
 import pathlib
+import argparse
 
 # Get the script's directory
 SCRIPT_DIR = pathlib.Path(__file__).parent.absolute()
@@ -17,6 +18,12 @@ DATE_INDEX_FILE = os.path.join(DATA_DIR, "date_index.txt") # To save date index
 # Ensure data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
 
+# Parse command-line arguments
+parser = argparse.ArgumentParser(description='Fit univariate GARCH models to return series')
+parser.add_argument('--rescale', type=float, default=1.0,
+                    help='Factor to rescale returns by (default: 1.0)')
+args = parser.parse_args()
+
 # Load data using polars
 # Assuming the first column is the date and all others are returns
 try:
@@ -28,6 +35,11 @@ try:
     df_pd = df_pl.with_columns(pl.col(date_col_name).str.strptime(pl.Date, "%Y-%m-%d").cast(pl.Datetime)).to_pandas()
     df_pd = df_pd.set_index(date_col_name)
     R = df_pd[return_cols]
+
+    # Rescale returns if requested
+    if args.rescale != 1.0:
+        print(f"Rescaling returns by factor of {args.rescale}")
+        R = R * args.rescale
 
 except Exception as e:
     print(f"Error loading or processing data: {e}")

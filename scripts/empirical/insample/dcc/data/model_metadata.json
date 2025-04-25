@@ -1,0 +1,21 @@
+{
+    "model_type": "DCC-GARCH",
+    "distribution": "Student-t",
+    "num_params": 288,
+    "estimation_time": {
+        "stage1_time": 10.594895601272583,
+        "stage2_time": 279.4688045978546,
+        "total_time": 290.0637638568878
+    },
+    "convergence_status": "Converged",
+    "sample_size": 738,
+    "num_series": 95,
+    "parameters": {
+        "a": 0.06928135994356809,
+        "b": 0.9140264013092938,
+        "dof": 48.694510122823495
+    },
+    "log_likelihood": -60580.636833700424,
+    "AIC": 121737.27366740085,
+    "BIC": 123063.20948888578
+}
