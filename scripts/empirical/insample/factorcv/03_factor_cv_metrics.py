@@ -9,7 +9,7 @@ from statsmodels.stats.stattools import jarque_bera
 # Ensure calculations use float64 for stability
 # np.set_printoptions(precision=8, suppress=True) # Optional: for printing
 
-print("Starting Factor-CV Metrics Calculation...")
+print("Starting Dynamic Factor Model (statsmodels) Metrics Calculation...")
 
 # --- Load Results ---
 output_path = 'outputs/empirical/insample/factorcv_results.pkl'
