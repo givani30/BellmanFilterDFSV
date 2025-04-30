@@ -7,7 +7,8 @@ import json
 import warnings
 
 # --- Configuration ---
-INPUT_FILE = "outputs/empirical/insample/bif/standardized_residuals.csv"
+# INPUT_FILE = "outputs/empirical/insample/bif_predicted_residuals/standardized_residuals.csv"
+INPUT_FILE = "outputs/empirical/insample/bif_predicted_residuals/standardized_residuals.csv"
 OUTPUT_DIR = "outputs/empirical/insample/bif/residual_analysis/"
 ALPHA = 0.05
 LB_LAGS = [5, 10, 15, 20]
@@ -127,21 +128,28 @@ if __name__ == "__main__":
 
     for series_name, results in all_series_results.items():
         # Ljung-Box Squared
-        for lag, passed in results['ljung_box_sq']['pass'].items():
-             if passed is True: # Explicitly check for True, ignore NaN
-                 aggregated_results['ljung_box_sq'][lag] += 1
+        for lag_str, passed in results['ljung_box_sq']['pass'].items():
+            # Convert string lag to int, handling both string and int keys
+            lag = int(lag_str) if isinstance(lag_str, str) else lag_str
+
+            if passed and passed is not np.nan: # Check for True and not NaN
+                aggregated_results['ljung_box_sq'][lag] += 1
 
         # ARCH-LM
-        for lag, passed in results['arch_lm']['pass'].items():
-             if passed is True:
-                 aggregated_results['arch_lm'][lag] += 1
+        for lag_str, passed in results['arch_lm']['pass'].items():
+            # Convert string lag to int, handling both string and int keys
+            lag = int(lag_str) if isinstance(lag_str, str) else lag_str
+
+            if passed and passed is not np.nan: # Check for True and not NaN
+                aggregated_results['arch_lm'][lag] += 1
 
         # Jarque-Bera
+
         if results['jarque_bera']['pass'] is not None: # Check if test ran successfully
             total_jb_tests += 1
-            if results['jarque_bera']['pass'] is True:
+            jb_pass = results['jarque_bera']['pass']
+            if jb_pass and jb_pass is not np.nan: # Check for True and not NaN
                 aggregated_results['jarque_bera'] += 1
-
 
     # Calculate pass rates
     pass_rates = {
@@ -154,13 +162,13 @@ if __name__ == "__main__":
     print(json.dumps(pass_rates, indent=4))
     print("--------------------------------------------")
 
-    # Optional: Save detailed results if needed later
-    # with open(os.path.join(OUTPUT_DIR, "initial_detailed_results.json"), 'w') as f:
-    #     # Convert numpy types for JSON serialization if necessary
-    #     json.dump(all_series_results, f, indent=4, default=lambda x: x.item() if isinstance(x, np.generic) else x)
+    # Save detailed results
+    with open(os.path.join(OUTPUT_DIR, "initial_detailed_results.json"), 'w') as f:
+        # Convert numpy types for JSON serialization if necessary
+        json.dump(all_series_results, f, indent=4, default=lambda x: x.item() if isinstance(x, np.generic) else x)
 
-    # Optional: Save aggregated pass rates
-    # with open(os.path.join(OUTPUT_DIR, "initial_aggregated_pass_rates.json"), 'w') as f:
-    #     json.dump(pass_rates, f, indent=4)
+    # Save aggregated pass rates
+    with open(os.path.join(OUTPUT_DIR, "initial_aggregated_pass_rates.json"), 'w') as f:
+        json.dump(pass_rates, f, indent=4)
 
-    print(f"\nPhase 1 analysis complete. Aggregated results printed above.")
+    print("\nPhase 1 analysis complete. Aggregated results printed above.")

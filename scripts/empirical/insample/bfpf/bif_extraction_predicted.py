@@ -2,22 +2,30 @@
 import polars as pl
 import numpy as np
 import os
+import time
 import pandas as pd
 import jax
+import jax.numpy as jnp
 import cloudpickle
 import pickle
 import json
 import matplotlib.pyplot as plt
 import seaborn as sns
-from scipy.stats import chi2, norm
+from pathlib import Path
+from datetime import datetime
+from scipy.stats import kurtosis, chi2, norm
+from scipy.special import digamma
+from scipy.optimize import brentq
 from statsmodels.stats.diagnostic import acorr_ljungbox, het_arch
 from statsmodels.stats.stattools import jarque_bera
+from statsmodels.stats.multivariate import test_cov
+import warnings
 from rich import print
 
 # Import custom multivariate Portmanteau tests
 from multivariate_portmanteau import multivariate_portmanteau_tests
 
-from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
+from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformationFilter
 
 # Enable double precision
 jax.config.update("jax_enable_x64", True)
@@ -46,108 +54,125 @@ T=returns.shape[0]
 
 # %%
 #Load pickle file
-with open('scripts/empirical/insample/bfpf/pf_full_result_20250425_194312.pkl', 'rb') as f:
-    result_pf = cloudpickle.load(f)
-pf_filter=DFSVParticleFilter(N,K,num_particles=10000)
-# pf_filter=DFSVParticleFilter(N,K,num_particles=10000)
-pf_params=result_pf.final_params
-print(round(pf_params.Phi_f,3))
-filtered_states_pf,filtered_infos_pf,log_likelihood_pf=pf_filter.filter(pf_params,returns)
+with open('scripts/empirical/insample/bfpf/bif_full_result_20250425_144625.pkl', 'rb') as f:
+    result_bif = cloudpickle.load(f)
+bif_filter=DFSVBellmanInformationFilter(N,K)
+# bif_filter=DFSVParticleFilter(N,K,num_particles=10000)
+bif_params=result_bif.final_params
+print(round(bif_params.Phi_f,3))
+filtered_states_bf,filtered_infos_bf,log_likelihood_bf=bif_filter.filter(bif_params,returns)
 
 # %%
-filtered_covs_pf=np.array(pf_filter.get_filtered_covariances())
-filtered_factors_pf=filtered_states_pf[:,:K]
-predicted_states_pf=np.array(pf_filter.get_predicted_states())
-predicted_factors_pf=predicted_states_pf[:,:K]
-predicted_covs_pf=np.array(pf_filter.get_predicted_covariances())
+filtered_covs_bf=np.array(bif_filter.get_filtered_covariances())
+filtered_factors_bf=filtered_states_bf[:,:K]
+predicted_states_bf=np.array(bif_filter.get_predicted_states())
+predicted_factors_bf=predicted_states_bf[:,:K]
+predicted_covs_bf=np.array(bif_filter.get_predicted_covariances())
 
 # %% [markdown]
-# #Calculate standardized residuals z_t using PREDICTED states
+# #Calculate standardized residuals z_t
 
 # %%
 returns_arr=np.array(returns)
-lambda_hat_pf=np.array(pf_params.lambda_r)
-sigma_eps_hat_diag_pf=np.array(pf_params.sigma2)
-sigma_eps_hat_mat_pf=np.diag(sigma_eps_hat_diag_pf)
+lambda_hat_bif=np.array(bif_params.lambda_r)
+sigma_eps_hat_diag_bif=np.array(bif_params.sigma2)
+sigma_eps_hat_mat_bif=np.diag(sigma_eps_hat_diag_bif)
 
-# Extract factor components from filtered and predicted states and covariances
-filtered_factor_covs_pf=filtered_covs_pf[:,:K,:K]
-predicted_factor_covs_pf=predicted_covs_pf[:,:K,:K]
+# Extract factor components from filtered states and covariances
+filtered_factor_covs_bif=filtered_covs_bf[:,:K,:K]
+predicted_factor_covs_bif=predicted_covs_bf[:,:K,:K]
 
 # Arrays to store results
-standardized_residuals_pf = np.full((T,N),np.nan)
-conditional_covariance_H_pf = np.full((T, N, N), np.nan) # Store Sigma_t|t
-predicted_covariance_H_pf = np.full((T, N, N), np.nan)   # Store Sigma_t|t-1 (for standardized residuals)
+standardized_residuals_bif = np.full((T,N),np.nan)
+conditional_covariance_H_bif = np.full((T, N, N), np.nan) # Store Sigma_t|t (from original script, kept for reference)
+predicted_covariance_H_bif = np.full((T, N, N), np.nan)   # Store Sigma_t|t-1
 
-# Calculate standardized residuals using PREDICTED states
-print("Calculating standardized residuals using PREDICTED states...")
+# Calculate filtered covariance for reference (as in original script)
+print("Calculating filtered covariances (for reference)...")
+for t in range(T):
+    f_t_filt = filtered_factors_bf[t, :]
+    P_f_t_filt = filtered_factor_covs_bif[t, :, :]
+    mu_t_filt = lambda_hat_bif @ f_t_filt
+    Sigma_t_filt = (lambda_hat_bif @ P_f_t_filt @ lambda_hat_bif.T
+                   + sigma_eps_hat_mat_bif)
+    Sigma_t_filt = (Sigma_t_filt + Sigma_t_filt.T) / 2
+    conditional_covariance_H_bif[t, :, :] = Sigma_t_filt
+
+
+# Calculate standardized residuals z_t using PREDICTED mean and cov
+print("Calculating standardized residuals using PREDICTED states (for diagnostics)...")
+standardized_residuals_bif = np.full((T,N),np.nan) # Reset array
+
 for t in range(T):
     # Get predicted factor state and covariance at time t
-    f_t_pred = predicted_factors_pf[t, :]        # Shape (K,) - Predicted factor
-    P_f_t_pred = predicted_factor_covs_pf[t, :, :]  # Shape (K, K) - Predicted factor covariance
+    # Note: predicted_factors_bf and predicted_covs_bf are already t|t-1
+    # For t=0, predicted state/cov is the initial state/cov.
+    # For t > 0, predicted state/cov is the prediction from t-1 to t.
+    # The loop iterates from t=0 to T-1.
+    # predicted_factors_bf[t, :] is f_{t|t-1}
+    # predicted_factor_covs_bif[t, :, :] is P_{f,t|t-1}
 
-    # Calculate predicted observation mean and covariance Sigma_{t|t-1}
-    mu_t_pred = lambda_hat_pf @ f_t_pred  # Shape (N,) - Predicted mean
-    Sigma_t_pred = (lambda_hat_pf @ P_f_t_pred @ lambda_hat_pf.T
-                   + sigma_eps_hat_mat_pf)  # Shape (N, N) - Predicted covariance
+    f_t_pred = predicted_factors_bf[t, :]        # Shape (K,) - Predicted factor
+    P_f_t_pred = predicted_factor_covs_bif[t, :, :]  # Shape (K, K) - Predicted factor covariance
+
+    # Calculate conditional observation mean and covariance Sigma_{t|t-1}
+    mu_t_pred = lambda_hat_bif @ f_t_pred  # Shape (N,) - Predicted mean
+    Sigma_t_pred = (lambda_hat_bif @ P_f_t_pred @ lambda_hat_bif.T
+                   + sigma_eps_hat_mat_bif)  # Shape (N, N) - Predicted covariance
     Sigma_t_pred = (Sigma_t_pred + Sigma_t_pred.T) / 2  # Ensure symmetry
 
-    # Store predicted covariance
-    predicted_covariance_H_pf[t, :, :] = Sigma_t_pred
-
-    # Also store filtered covariance for reference (but not used for standardized residuals)
-    if t < T:  # For all time points
-        f_t_filt = filtered_factors_pf[t, :]        # Shape (K,)
-        P_f_t_filt = filtered_factor_covs_pf[t, :, :]  # Shape (K, K)
-
-        mu_t_filt = lambda_hat_pf @ f_t_filt
-        Sigma_t_filt = (lambda_hat_pf @ P_f_t_filt @ lambda_hat_pf.T
-                       + sigma_eps_hat_mat_pf)
-        Sigma_t_filt = (Sigma_t_filt + Sigma_t_filt.T) / 2  # Ensure symmetry
-        conditional_covariance_H_pf[t, :, :] = Sigma_t_filt
+    # Store predicted covariance (this is now the primary covariance used)
+    predicted_covariance_H_bif[t, :, :] = Sigma_t_pred # Overwrite or ensure this is stored
 
     try:
         # Cholesky decomposition: Sigma_{t|t-1} = L * L'
         L_t_pred = np.linalg.cholesky(Sigma_t_pred + 1e-7 * np.eye(N))  # Add jitter for numerical stability
 
         # Raw residual e_t = r'_t - mu_t|t-1 (using predicted mean)
-        e_t = returns_arr[t, :] - mu_t_pred  # Shape (N,)
+        e_t_pred = returns_arr[t, :] - mu_t_pred  # Shape (N,)
 
         # Standardized residual: z_t = L^{-1} * e_t
-        z_t = np.linalg.solve(L_t_pred, e_t)
-        standardized_residuals_pf[t, :] = z_t
+        z_t_pred = np.linalg.solve(L_t_pred, e_t_pred)
+        standardized_residuals_bif[t, :] = z_t_pred
     except np.linalg.LinAlgError:
-        print(f"Warning: Cholesky failed for Sigma_t|t-1 at t={t} for PF.")
-        # standardized_residuals_pf[t, :] remains NaN
+        print(f"Warning: Cholesky failed for Sigma_t|t-1 at t={t} for BIF.")
+        # standardized_residuals_bif[t, :] remains NaN
+
+# Note: The rest of the script (diagnostic tests, plotting, saving) will now use
+# the 'standardized_residuals_bif' calculated using predicted values.
+# The variable 'conditional_covariance_H_bif' will still hold the filtered covariances
+# as calculated in the original script, but it is not used for the standardized
+# residuals calculation in this modified version.
+
 
 # Convert to DataFrame (similar to 02_factor_cv_fit.py)
-standardized_residuals_pf_df = pd.DataFrame(
-    standardized_residuals_pf,
+standardized_residuals_bif_df = pd.DataFrame(
+    standardized_residuals_bif,
 )
 # Define burn-in for analysis if needed (e.g., analysis_burn_in = 50)
 analysis_burn_in = 0
-standardized_residuals_pf_post_burn = standardized_residuals_pf_df.iloc[analysis_burn_in:]
+standardized_residuals_bif_post_burn = standardized_residuals_bif_df.iloc[analysis_burn_in:]
 
 # %%
-standardized_residuals_pf_df
+standardized_residuals_bif_df
 
 # %%
 # --- Univariate Diagnostic Tests ---
 #  Also assume N (number of series) and T_eff (effective number of observations post-burn)
-if 'standardized_residuals_pf_post_burn' in locals():
-    residuals_df = standardized_residuals_pf_post_burn
+if 'standardized_residuals_bif_post_burn' in locals():
+    residuals_df = standardized_residuals_bif_post_burn
     N = residuals_df.shape[1]
     T_eff = residuals_df.shape[0]
-    print(f"Using PF standardized residuals with shape: {residuals_df.shape}")
+    print(f"Using BIF standardized residuals with shape: {residuals_df.shape}")
 else:
-    print("Error: standardized_residuals_pf_post_burn DataFrame not found.")
+    print("Error: standardized_residuals_bif_post_burn DataFrame not found.")
     # As a placeholder for testing the code structure:
     T_eff, N = 500, 95 # Example dimensions
     print(f"Creating placeholder DataFrame with shape ({T_eff}, {N})")
     residuals_df = pd.DataFrame(np.random.randn(T_eff, N), columns=[f'Asset_{i+1}' for i in range(N)])
 
 # --- Dictionary to store test results ---
-diagnostic_results_pf = {
+diagnostic_results_bif = {
     "ljung_box_squared": {},
     "arch_lm": {},
     "jarque_bera": {}
@@ -209,7 +234,7 @@ for lag in lags_lb:
         else:
             lb_results["pass_rate"] = np.nan # Or 0.0 if preferred
 
-    diagnostic_results_pf["ljung_box_squared"][f"lag_{lag}"] = lb_results
+    diagnostic_results_bif["ljung_box_squared"][f"lag_{lag}"] = lb_results
     print(f"Lag {lag}: Pass Rate = {lb_results['pass_rate']:.3f} ({lb_results['pass_count']}/{tested_count})")
 
 print("Ljung-Box Test Complete.")
@@ -262,7 +287,7 @@ for lag in lags_arch:
         else:
              arch_results["pass_rate"] = np.nan
 
-    diagnostic_results_pf["arch_lm"][f"lag_{lag}"] = arch_results
+    diagnostic_results_bif["arch_lm"][f"lag_{lag}"] = arch_results
     print(f"Lag {lag}: Pass Rate = {arch_results['pass_rate']:.3f} ({arch_results['pass_count']}/{tested_count})")
 
 print("ARCH-LM Test Complete.")
@@ -311,17 +336,20 @@ if N > 0:
     else:
         jb_results["pass_rate"] = np.nan
 
-diagnostic_results_pf["jarque_bera"] = jb_results
+diagnostic_results_bif["jarque_bera"] = jb_results
 print(f"Jarque-Bera: Pass Rate = {jb_results['pass_rate']:.3f} ({jb_results['pass_count']}/{tested_count})")
 
 print("Jarque-Bera Test Complete.")
 
 # --- Display aggregated results ---
-print("\n--- PF Diagnostic Test Summary ---")
-print(json.dumps(diagnostic_results_pf, indent=2))
+print("\n--- BIF Diagnostic Test Summary ---")
+print(json.dumps(diagnostic_results_bif, indent=2))
 
 # %%
-print((np.abs(predicted_factors_pf[2,:] - filtered_factors_pf[1,:])))
+print((np.abs(predicted_factors_bf[2,:] - filtered_factors_bf[1,:])))
+
+
+
 
 # %%
 # Extract the date column (ensure it's in pandas datetime format)
@@ -332,16 +360,16 @@ time_column_pd = df_with_date.select(pl.col("Date").cast(pl.Date)).to_pandas()['
 
 # Ensure output directories exist for saving results
 main_output_dir = 'outputs/empirical/insample/'
-pf_output_dir = os.path.join(main_output_dir, 'pf')
-data_dir = os.path.join(pf_output_dir, 'data')
+bif_output_dir = os.path.join(main_output_dir, 'bif_predicted_residuals') # Changed output directory
+data_dir = os.path.join(bif_output_dir, 'data')
 os.makedirs(main_output_dir, exist_ok=True)
-os.makedirs(pf_output_dir, exist_ok=True)
+os.makedirs(bif_output_dir, exist_ok=True)
 os.makedirs(data_dir, exist_ok=True)
 
 
 # Extract factors (first K columns) and log-vols (next K columns)
-filtered_factors = filtered_states_pf[:, :K]
-filtered_log_vols = filtered_states_pf[:, K:]
+filtered_factors = filtered_states_bf[:, :K]
+filtered_log_vols = filtered_states_bf[:, K:]
 
 # Create meaningful column names
 factor_cols = [f'Factor_{i+1}' for i in range(K)]
@@ -360,7 +388,7 @@ print(plot_df.head())
 num_states = K # Number of factors OR log-vols to plot
 
 # Create figures directory if it doesn't exist
-figures_dir = os.path.join(pf_output_dir, 'figures')
+figures_dir = os.path.join(bif_output_dir, 'figures')
 os.makedirs(figures_dir, exist_ok=True)
 
 # Create figure with 2 rows, 1 column
@@ -393,9 +421,7 @@ plt.tight_layout()
 # Save the figure to the figures directory
 plt.savefig(os.path.join(figures_dir, 'filtered_states.png'), dpi=300)
 print(f"Filtered states plot saved to {os.path.join(figures_dir, 'filtered_states.png')}")
-
-# Display the figure
-# plt.show()
+plt.close() # Close the figure to free memory
 
 # Create individual plots for each factor and log-volatility
 print("\nCreating individual factor and log-volatility plots...")
@@ -439,44 +465,44 @@ for i in range(K):
 print("\nCreating parameter heatmaps...")
 
 # Create figures directory if it doesn't exist
-figures_dir = os.path.join(pf_output_dir, 'figures')
+figures_dir = os.path.join(bif_output_dir, 'figures')
 os.makedirs(figures_dir, exist_ok=True)
 
 # 1. Factor loadings (Lambda)
-lambda_r = np.array(pf_params.lambda_r)
+lambda_r = np.array(bif_params.lambda_r)
 plt.figure(figsize=(16, 12))
 sns.heatmap(lambda_r, annot=False, cmap='coolwarm', fmt='.2f', linewidths=0.5)
 plt.title('Heatmap of Factor Loadings (Lambda)')
 plt.xlabel('Factors')
 plt.ylabel('Assets')
 plt.tight_layout()
-plt.savefig(os.path.join(figures_dir, 'lambda_heatmap_interactive.png'), dpi=300)
-print(f"Lambda heatmap saved to {os.path.join(figures_dir, 'lambda_heatmap_interactive.png')}")
-# plt.show()
+plt.savefig(os.path.join(figures_dir, 'lambda_heatmap.png'), dpi=300) # Removed interactive from filename
+print(f"Lambda heatmap saved to {os.path.join(figures_dir, 'lambda_heatmap.png')}")
+plt.close()
 
 # 2. Factor transition matrix (Phi_f)
-phi_f = np.array(pf_params.Phi_f)
+phi_f = np.array(bif_params.Phi_f)
 plt.figure(figsize=(10, 8))
 sns.heatmap(phi_f, annot=True, cmap='viridis', fmt='.2f', linewidths=0.5)
 plt.title('Heatmap of Factor Transition Matrix (Phi_f)')
 plt.xlabel('Factor (t-1)')
 plt.ylabel('Factor (t)')
 plt.tight_layout()
-plt.savefig(os.path.join(figures_dir, 'phi_f_heatmap_interactive.png'), dpi=300)
-print(f"Phi_f heatmap saved to {os.path.join(figures_dir, 'phi_f_heatmap_interactive.png')}")
-# plt.show()
+plt.savefig(os.path.join(figures_dir, 'phi_f_heatmap.png'), dpi=300) # Removed interactive from filename
+print(f"Phi_f heatmap saved to {os.path.join(figures_dir, 'phi_f_heatmap.png')}")
+plt.close()
 
 # 3. Log-volatility transition matrix (Phi_h)
-phi_h = np.array(pf_params.Phi_h)
+phi_h = np.array(bif_params.Phi_h)
 plt.figure(figsize=(10, 8))
 sns.heatmap(phi_h, annot=True, cmap='viridis', fmt='.2f', linewidths=0.5)
 plt.title('Heatmap of Log-Volatility Transition Matrix (Phi_h)')
 plt.xlabel('Log-Vol (t-1)')
 plt.ylabel('Log-Vol (t)')
 plt.tight_layout()
-plt.savefig(os.path.join(figures_dir, 'phi_h_heatmap_interactive.png'), dpi=300)
-print(f"Phi_h heatmap saved to {os.path.join(figures_dir, 'phi_h_heatmap_interactive.png')}")
-# plt.show()
+plt.savefig(os.path.join(figures_dir, 'phi_h_heatmap.png'), dpi=300) # Removed interactive from filename
+print(f"Phi_h heatmap saved to {os.path.join(figures_dir, 'phi_h_heatmap.png')}")
+plt.close()
 
 # %%
 
@@ -485,13 +511,13 @@ print(f"Phi_h heatmap saved to {os.path.join(figures_dir, 'phi_h_heatmap_interac
 print("\n--- Running Extended Metrics and Multivariate Tests ---")
 
 # Create a dictionary to store extended metrics
-extended_metrics_pf = {}
+extended_metrics_bif = {}
 
 # 1. Multivariate Tests
 print("\n1. Multivariate Tests")
 try:
     # Prepare residuals matrix for multivariate tests (T_eff x N)
-    residuals_matrix = standardized_residuals_pf_post_burn.values
+    residuals_matrix = standardized_residuals_bif_post_burn.values
 
     # Calculate sample covariance matrix of residuals
     residual_cov = np.cov(residuals_matrix, rowvar=False)
@@ -527,15 +553,14 @@ try:
 
         # Test statistics
         skewness_stat = (n_obs / 6) * skewness
+        skewness_p = 1 - chi2.cdf(skewness_stat, N * (N + 1) * (N + 2) / 6) # Corrected df for skewness test
         kurtosis_stat = (kurtosis_mardia - kurtosis_expected) / np.sqrt(8 * N * (N + 2) / n_obs)
 
         # p-values
-        skewness_df = N * (N + 1) * (N + 2) / 6
-        skewness_p = 1 - chi2.cdf(skewness_stat, skewness_df)
         kurtosis_p = 2 * (1 - norm.cdf(abs(kurtosis_stat)))  # Two-tailed test
 
         # Store results
-        extended_metrics_pf["multivariate_normality"] = {
+        extended_metrics_bif["multivariate_normality"] = {
             "mardia_skewness": {
                 "statistic": float(skewness_stat),
                 "p_value": float(skewness_p),
@@ -555,29 +580,32 @@ try:
 
     except np.linalg.LinAlgError:
         print("Warning: Covariance matrix is singular, cannot compute Mardia's tests")
-        extended_metrics_pf["multivariate_normality"] = {"error": "Covariance matrix is singular"}
+        extended_metrics_bif["multivariate_normality"] = {"error": "Covariance matrix is singular"}
 
     # Multivariate Portmanteau tests (Hosking/Li-McLeod)
     print("\nRunning multivariate Portmanteau tests (Hosking/Li-McLeod)...")
     try:
-        # Run multivariate Portmanteau tests with a subset of series due to high dimensionality
-        portmanteau_lags = [5, 10, 15]
-        max_dimension = 95  # Maximum number of series to include in the test
+        # Prepare residuals matrix for multivariate tests (T_eff x N)
+        residuals_matrix_portmanteau = standardized_residuals_bif_post_burn.values
 
         # For DFSV model, df_model would be related to the VAR order (1) and number of factors (K)
         # For a VAR(1) model with K factors, df_model = K^2
         df_model = K**2
 
+        portmanteau_lags = [5, 10, 15]
+        # Use the actual number of series N for the test
+        max_dimension = N
+
         portmanteau_results = multivariate_portmanteau_tests(
-            residuals_matrix,
+            residuals_matrix_portmanteau,
             lags=portmanteau_lags,
             df_model=df_model,
-            max_dimension=max_dimension,
+            max_dimension=max_dimension, # Use actual N
             random_state=42  # For reproducibility
         )
 
         # Store results in extended metrics
-        extended_metrics_pf["multivariate_portmanteau"] = portmanteau_results
+        extended_metrics_bif["multivariate_portmanteau"] = portmanteau_results
 
         # Print summary of results
         print("\nMultivariate Portmanteau Test Results:")
@@ -596,24 +624,27 @@ try:
                   f"{'REJECT H0' if lm_pvalue < 0.05 else 'FAIL TO REJECT H0'}")
 
         print("\nNote: H0 = No autocorrelation in residuals. Rejection indicates presence of autocorrelation.")
-        print("Note: Tests performed on a random subset of series due to high dimensionality (N=95).")
+        # Removed the note about subsetting as we are using the full N
+        # print("Note: Tests performed on a random subset of series due to high dimensionality (N=95).")
 
     except Exception as e:
         print(f"Error in multivariate Portmanteau tests: {e}")
-        extended_metrics_pf["multivariate_portmanteau"] = {"error": str(e)}
+        extended_metrics_bif["multivariate_portmanteau"] = {"error": str(e)}
 
 except Exception as e:
     print(f"Error in multivariate tests: {e}")
-    extended_metrics_pf["multivariate_normality"] = {"error": str(e)}
+    extended_metrics_bif["multivariate_normality"] = {"error": str(e)}
+
 
 # 2. Generalized Variance (determinant of conditional covariance matrices)
 print("\n2. Calculating Generalized Variance Time Series")
 try:
     # Calculate determinant of each conditional covariance matrix
     generalized_variance = np.zeros(T)
+    # Use predicted_covariance_H_bif for generalized variance
     for t in range(T):
         # Use log determinant for numerical stability with large matrices
-        sign, logdet = np.linalg.slogdet(conditional_covariance_H_pf[t])
+        sign, logdet = np.linalg.slogdet(predicted_covariance_H_bif[t])
         generalized_variance[t] = sign * np.exp(logdet)
 
     # Create DataFrame with date index for plotting
@@ -624,22 +655,22 @@ try:
     # Plot generalized variance over time
     plt.figure(figsize=(12, 6))
     plt.plot(gv_df.index, gv_df['Generalized_Variance'])
-    plt.title('Generalized Variance (Determinant of Conditional Covariance Matrix)')
+    plt.title('Generalized Variance (Determinant of Predicted Conditional Covariance Matrix)') # Updated title
     plt.xlabel('Date')
     plt.ylabel('Determinant')
     plt.yscale('log')  # Log scale often helps visualize this better
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.tight_layout()
-    # plt.show()
+    plt.close() # Close the figure
 
     # Create figures directory if it doesn't exist
-    figures_dir = os.path.join(pf_output_dir, 'figures')
+    figures_dir = os.path.join(bif_output_dir, 'figures')
     os.makedirs(figures_dir, exist_ok=True)
 
     # Save the plot
     plt.figure(figsize=(12, 6))
     plt.plot(gv_df.index, gv_df['Generalized_Variance'])
-    plt.title('Generalized Variance (Determinant of Conditional Covariance Matrix)')
+    plt.title('Generalized Variance (Determinant of Predicted Conditional Covariance Matrix)') # Updated title
     plt.xlabel('Date')
     plt.ylabel('Determinant')
     plt.yscale('log')
@@ -649,7 +680,7 @@ try:
     plt.close()
 
     # Save generalized variance to extended metrics
-    extended_metrics_pf["generalized_variance"] = {
+    extended_metrics_bif["generalized_variance"] = {
         "mean": float(np.mean(generalized_variance)),
         "std": float(np.std(generalized_variance)),
         "min": float(np.min(generalized_variance)),
@@ -663,7 +694,7 @@ try:
 
 except Exception as e:
     print(f"Error calculating generalized variance: {e}")
-    extended_metrics_pf["generalized_variance"] = {"error": str(e)}
+    extended_metrics_bif["generalized_variance"] = {"error": str(e)}
 
 # 3. Average Conditional Correlation
 print("\n3. Calculating Average Conditional Correlation Time Series")
@@ -672,9 +703,10 @@ try:
     avg_correlation = np.zeros(T)
     correlation_matrices = np.zeros((T, N, N))
 
+    # Use predicted_covariance_H_bif for average correlation
     for t in range(T):
         # Get the covariance matrix at time t
-        cov_t = conditional_covariance_H_pf[t]
+        cov_t = predicted_covariance_H_bif[t] # Use predicted covariance
 
         # Calculate the correlation matrix
         # Correlation = Cov_ij / sqrt(Var_i * Var_j)
@@ -698,21 +730,21 @@ try:
     # Plot average correlation over time
     plt.figure(figsize=(12, 6))
     plt.plot(corr_df.index, corr_df['Average_Correlation'])
-    plt.title('Average Conditional Correlation')
+    plt.title('Average Predicted Conditional Correlation') # Updated title
     plt.xlabel('Date')
     plt.ylabel('Average Correlation')
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.tight_layout()
-    # plt.show()
+    plt.close() # Close the figure
 
     # Create figures directory if it doesn't exist
-    figures_dir = os.path.join(pf_output_dir, 'figures')
+    figures_dir = os.path.join(bif_output_dir, 'figures')
     os.makedirs(figures_dir, exist_ok=True)
 
     # Save the plot
     plt.figure(figsize=(12, 6))
     plt.plot(corr_df.index, corr_df['Average_Correlation'])
-    plt.title('Average Conditional Correlation')
+    plt.title('Average Predicted Conditional Correlation') # Updated title
     plt.xlabel('Date')
     plt.ylabel('Average Correlation')
     plt.grid(True, linestyle='--', alpha=0.6)
@@ -721,7 +753,7 @@ try:
     plt.close()
 
     # Save average correlation to extended metrics
-    extended_metrics_pf["average_correlation"] = {
+    extended_metrics_bif["average_correlation"] = {
         "mean": float(np.mean(avg_correlation)),
         "std": float(np.std(avg_correlation)),
         "min": float(np.min(avg_correlation)),
@@ -738,7 +770,7 @@ try:
 
 except Exception as e:
     print(f"Error calculating average correlation: {e}")
-    extended_metrics_pf["average_correlation"] = {"error": str(e)}
+    extended_metrics_bif["average_correlation"] = {"error": str(e)}
 
 # 4. Factor Variance Contribution Ratio
 print("\n4. Calculating Factor Variance Contribution Ratio")
@@ -748,19 +780,20 @@ try:
     idiosyncratic_contribution = np.zeros(T)
     total_variance = np.zeros(T)
 
+    # Use predicted_covariance_H_bif and predicted_factor_covs_bif for variance decomposition
     for t in range(T):
-        # Get the covariance matrix at time t
-        cov_t = conditional_covariance_H_pf[t]
+        # Get the covariance matrix at time t (predicted)
+        cov_t = predicted_covariance_H_bif[t] # Use predicted covariance
 
         # Total variance is the trace of the covariance matrix
         total_var_t = np.trace(cov_t)
 
-        # Factor contribution: Λ P_f Λ'
-        factor_cov_t = lambda_hat_pf @ filtered_factor_covs_pf[t] @ lambda_hat_pf.T
+        # Factor contribution: Λ P_f Λ' (using predicted factor covariance)
+        factor_cov_t = lambda_hat_bif @ predicted_factor_covs_bif[t] @ lambda_hat_bif.T
         factor_var_t = np.trace(factor_cov_t)
 
         # Idiosyncratic contribution: diag(σ²)
-        idio_var_t = np.sum(sigma_eps_hat_diag_pf)
+        idio_var_t = np.sum(sigma_eps_hat_diag_bif)
 
         # Store values
         factor_contribution[t] = factor_var_t
@@ -776,23 +809,23 @@ try:
         'Idiosyncratic_Ratio': idiosyncratic_contribution / total_variance
     }, index=time_column_pd)
 
-    # Plot factor variance contribution ratio over time
+    # Plot variance decomposition over time
     plt.figure(figsize=(12, 6))
     plt.stackplot(ratio_df.index,
                  ratio_df['Factor_Ratio'],
                  ratio_df['Idiosyncratic_Ratio'],
                  labels=['Factor Contribution', 'Idiosyncratic Contribution'],
                  alpha=0.7)
-    plt.title('Variance Decomposition: Factor vs. Idiosyncratic')
+    plt.title('Variance Decomposition: Factor vs. Idiosyncratic (Using Predicted Covariance)') # Updated title
     plt.xlabel('Date')
     plt.ylabel('Proportion of Total Variance')
     plt.legend(loc='upper right')
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.tight_layout()
-    # plt.show()
+    plt.close() # Close the figure
 
     # Create figures directory if it doesn't exist
-    figures_dir = os.path.join(pf_output_dir, 'figures')
+    figures_dir = os.path.join(bif_output_dir, 'figures')
     os.makedirs(figures_dir, exist_ok=True)
 
     # Save the plot
@@ -802,7 +835,7 @@ try:
                  ratio_df['Idiosyncratic_Ratio'],
                  labels=['Factor Contribution', 'Idiosyncratic Contribution'],
                  alpha=0.7)
-    plt.title('Variance Decomposition: Factor vs. Idiosyncratic')
+    plt.title('Variance Decomposition: Factor vs. Idiosyncratic (Using Predicted Covariance)') # Updated title
     plt.xlabel('Date')
     plt.ylabel('Proportion of Total Variance')
     plt.legend(loc='upper right')
@@ -812,7 +845,7 @@ try:
     plt.close()
 
     # Save factor variance contribution to extended metrics
-    extended_metrics_pf["factor_variance_contribution"] = {
+    extended_metrics_bif["factor_variance_contribution"] = {
         "mean_factor_ratio": float(np.mean(factor_ratio)),
         "std_factor_ratio": float(np.std(factor_ratio)),
         "min_factor_ratio": float(np.min(factor_ratio)),
@@ -833,85 +866,81 @@ try:
 
 except Exception as e:
     print(f"Error calculating factor variance contribution: {e}")
-    extended_metrics_pf["factor_variance_contribution"] = {"error": str(e)}
+    extended_metrics_bif["factor_variance_contribution"] = {"error": str(e)}
 
 print("\nExtended metrics calculation complete.")
 
 # %%
 # --- Store Results for Evaluation ---
-print("\nStoring PF results...")
-print("Note: Standardized residuals are calculated using PREDICTED states (f_t|t-1) and covariances (P_f,t|t-1)")
+print("\nStoring BIF results...")
 
-# Extract key parameters from pf_params
-lambda_hat_pf = np.array(pf_params.lambda_r)
-phi_f_hat_pf = np.array(pf_params.Phi_f)
-phi_h_hat_pf = np.array(pf_params.Phi_h)
-mu_hat_pf = np.array(pf_params.mu)
-sigma_eps_hat_diag_pf = np.array(pf_params.sigma2)
-Q_h_hat_pf = np.array(pf_params.Q_h)
+# Extract key parameters from bif_params
+lambda_hat_bif = np.array(bif_params.lambda_r)
+phi_f_hat_bif = np.array(bif_params.Phi_f)
+phi_h_hat_bif = np.array(bif_params.Phi_h)
+mu_hat_bif = np.array(bif_params.mu)
+sigma_eps_hat_diag_bif = np.array(bif_params.sigma2)
+Q_h_hat_bif = np.array(bif_params.Q_h)
 
 # Calculate eigenvalues for stability check
-final_phi_f_max_eig = np.max(np.abs(np.linalg.eigvals(phi_f_hat_pf)))
-final_phi_h_max_eig = np.max(np.abs(np.linalg.eigvals(phi_h_hat_pf)))
+final_phi_f_max_eig = np.max(np.abs(np.linalg.eigvals(phi_f_hat_bif)))
+final_phi_h_max_eig = np.max(np.abs(np.linalg.eigvals(phi_h_hat_bif)))
 
-# Get estimation time from result_pf if available, otherwise use placeholder
-estimation_time = getattr(result_pf, 'estimation_time', 0.0)
-convergence_success = getattr(result_pf, 'convergence_success', True)
-convergence_message = getattr(result_pf, 'convergence_message', "Success")
+# Get estimation time from result_bif if available, otherwise use placeholder
+estimation_time = getattr(result_bif, 'estimation_time', 0.0)
+convergence_success = getattr(result_bif, 'convergence_success', True)
+convergence_message = getattr(result_bif, 'convergence_message', "Success")
 
 # Get log-likelihood
-log_likelihood_base = log_likelihood_pf
-log_likelihood_penalized = log_likelihood_pf  # No penalty in current implementation
+log_likelihood_base = log_likelihood_bf
+log_likelihood_penalized = log_likelihood_bf  # No penalty in current implementation
 
 # Calculate AIC and BIC
 num_params = N*K-K*(K+1)/2+2*K**2+N+K #lamda-lambda_constraints+(phi matrixes)+sigma+Q_h
-aic_pf = -2 * log_likelihood_base + 2 * num_params
-bic_pf = -2 * log_likelihood_base + np.log(T) * num_params
+aic_bif = -2 * log_likelihood_base + 2 * num_params
+bic_bif = -2 * log_likelihood_base + np.log(T) * num_params
 
 # Main results pickle file (for comparison with other models)
-main_output_path = os.path.join(main_output_dir, 'pf_results.pkl')
+main_output_path = os.path.join(main_output_dir, 'bif_predicted_residuals_results.pkl') # Changed output filename
 
 try:
     # Create comprehensive results dictionary
-    pf_results_for_comparison = {
-        "model_name": "PF-DFSV",
-        "model_type": "Particle Filter",
+    bif_results_for_comparison = {
+        "model_name": "BIF-DFSV",
+        "model_type": "Bellman Information Filter",
         "log_likelihood_penalized": float(log_likelihood_penalized),
         "log_likelihood_base": float(log_likelihood_base),
         "num_params": int(num_params),
         "estimation_time": float(estimation_time),
         "convergence_success": bool(convergence_success),
         "convergence_message": str(convergence_message),
-        "standardized_residuals": standardized_residuals_pf,  # Full series (using predicted states)
-        "standardized_residuals_post_burn": standardized_residuals_pf_post_burn.values,  # Post-burn series
-        "estimated_params_constrained": pf_params,
-        "estimated_params_unconstrained": None,  # Not applicable for PF
-        "lambda_hat": lambda_hat_pf,
-        "phi_f_hat": phi_f_hat_pf,
-        "phi_h_hat": phi_h_hat_pf,
-        "mu_hat": mu_hat_pf,
-        "sigma_eps_hat_diag": sigma_eps_hat_diag_pf,
-        "Q_h_hat": Q_h_hat_pf,
-        "filtered_states": filtered_states_pf,  # T x (K+K)
-        "filtered_factors": filtered_factors_pf,  # T x K
-        "filtered_log_vols": filtered_states_pf[:, K:],  # T x K
-        "predicted_states": predicted_states_pf,  # T x (K+K) - Used for standardized residuals
-        "predicted_factors": predicted_factors_pf,  # T x K - Used for standardized residuals
-        "filtered_state_covariances": filtered_covs_pf,  # T x (K+K) x (K+K)
-        "predicted_state_covariances": predicted_covs_pf,  # T x (K+K) x (K+K) - Used for standardized residuals
-        "conditional_covariance_H": conditional_covariance_H_pf,  # T x N x N (filtered)
-        "predicted_covariance_H": predicted_covariance_H_pf,  # T x N x N (predicted - used for standardized residuals)
-        "aic": float(aic_pf),
-        "bic": float(bic_pf),
+        "standardized_residuals": standardized_residuals_bif,  # Full series (calculated using predicted)
+        "standardized_residuals_post_burn": standardized_residuals_bif_post_burn.values,  # Post-burn series (calculated using predicted)
+        "estimated_params_constrained": bif_params,
+        "estimated_params_unconstrained": None,  # Not applicable for BIF
+        "lambda_hat": lambda_hat_bif,
+        "phi_f_hat": phi_f_hat_bif,
+        "phi_h_hat": phi_h_hat_bif,
+        "mu_hat": mu_hat_bif,
+        "sigma_eps_hat_diag": sigma_eps_hat_diag_bif,
+        "Q_h_hat": Q_h_hat_bif,
+        "filtered_states": filtered_states_bf,  # T x (K+K) (original filtered states)
+        "filtered_factors": filtered_factors_bf,  # T x K (original filtered factors)
+        "filtered_log_vols": filtered_states_bf[:, K:],  # T x K (original filtered log-vols)
+        "filtered_state_covariances": filtered_covs_bf,  # T x (K+K) x (K+K) (original filtered covs)
+        "conditional_covariance_H": conditional_covariance_H_bif,  # T x N x N (original filtered observation covs, for reference)
+        "predicted_covariance_H": predicted_covariance_H_bif,  # T x N x N (predicted observation covs, used for residuals)
+        "aic": float(aic_bif),
+        "bic": float(bic_bif),
         "final_phi_f_max_eig": float(final_phi_f_max_eig),
         "final_phi_h_max_eig": float(final_phi_h_max_eig),
-        "diagnostic_results": diagnostic_results_pf,
-        "extended_metrics": extended_metrics_pf,  # Added extended metrics
+        "diagnostic_results": diagnostic_results_bif,
+        "extended_metrics": extended_metrics_bif,  # Added extended metrics
     }
 
     # Save main results pickle
     with open(main_output_path, 'wb') as f:
-        pickle.dump(pf_results_for_comparison, f)
+        pickle.dump(bif_results_for_comparison, f)
     print(f"Results dictionary saved to {main_output_path}")
 
     # Save individual components in DCC-like format
@@ -919,12 +948,12 @@ try:
     # 2. Save model parameters
     params_path = os.path.join(data_dir, 'params.pkl')
     with open(params_path, 'wb') as f:
-        pickle.dump(pf_params, f)
-    print(f"PF parameters saved to {params_path}")
+        pickle.dump(bif_params, f)
+    print(f"BIF parameters saved to {params_path}")
 
     # 3. Save model metadata as JSON
     metadata = {
-        "model_type": "Particle Filter DFSV",
+        "model_type": "Bellman Information Filter DFSV (Predicted Residuals)", # Updated description
         "distribution": "Gaussian",  # Current implementation assumes Gaussian errors
         "num_params": int(num_params),
         "estimation_time": float(estimation_time),
@@ -934,42 +963,40 @@ try:
         "num_series": int(N),
         "k_factors": int(K),
         "log_likelihood": float(log_likelihood_base),
-        "aic": float(aic_pf),
-        "bic": float(bic_pf),
+        "aic": float(aic_bif),
+        "bic": float(bic_bif),
         "final_phi_f_max_eig": float(final_phi_f_max_eig),
         "final_phi_h_max_eig": float(final_phi_h_max_eig),
-        "residuals_calculation": "Using predicted states (f_t|t-1) and covariances (P_f,t|t-1)",
     }
 
-    metadata_path = os.path.join(pf_output_dir, 'metadata.json')
+    metadata_path = os.path.join(bif_output_dir, 'metadata.json')
     with open(metadata_path, 'w') as f:
         json.dump(metadata, f, indent=4)
     print(f"Model metadata saved to {metadata_path}")
 
     # 4. Save standardized residuals (eps_tilde.npy in DCC)
-    # Note: These are calculated using predicted states (f_t|t-1) and covariances (P_f,t|t-1)
     eps_path = os.path.join(data_dir, 'eps_tilde.npy')
-    np.save(eps_path, standardized_residuals_pf_post_burn.values)
-    print(f"Standardized residuals (using predicted states) saved to {eps_path}")
+    np.save(eps_path, standardized_residuals_bif_post_burn.values)
+    print(f"Standardized residuals saved to {eps_path}")
 
     # Also save as CSV with date index (like in DCC/Factor-CV)
     # First create a DataFrame with date index
     time_column_pd = df_with_date.select(pl.col("Date").cast(pl.Date)).to_pandas()['Date']
     standardized_residuals_df = pd.DataFrame(
-        standardized_residuals_pf_post_burn.values,
+        standardized_residuals_bif_post_burn.values,
         index=time_column_pd[analysis_burn_in:],
         columns=[f'Asset_{i+1}' for i in range(N)]
     )
-    eps_csv_path = os.path.join(pf_output_dir, 'standardized_residuals.csv')
+    eps_csv_path = os.path.join(bif_output_dir, 'standardized_residuals.csv')
     standardized_residuals_df.to_csv(eps_csv_path)
-    print(f"Standardized residuals CSV (using predicted states) saved to {eps_csv_path}")
+    print(f"Standardized residuals CSV saved to {eps_csv_path}")
 
     # 5. Save conditional covariance matrices (Ht.npy in DCC)
     ht_path = os.path.join(data_dir, 'Ht.npy')
-    # Extract post-burn covariances to match DCC format
-    post_burn_H = conditional_covariance_H_pf[analysis_burn_in:, :, :]
+    # Extract post-burn predicted covariances to match DCC format
+    post_burn_H = predicted_covariance_H_bif[analysis_burn_in:, :, :] # Use predicted covariance
     np.save(ht_path, post_burn_H)
-    print(f"Conditional covariance matrices saved to {ht_path}")
+    print(f"Predicted conditional covariance matrices saved to {ht_path}")
 
     # 6. Save date index (date_index.txt in DCC)
     date_path = os.path.join(data_dir, 'date_index.txt')
@@ -980,51 +1007,50 @@ try:
 
     # 7. Save filtered states (factors and log-vols)
     states_path = os.path.join(data_dir, 'filtered_states.npy')
-    np.save(states_path, filtered_states_pf[analysis_burn_in:])
+    np.save(states_path, filtered_states_bf[analysis_burn_in:])
     print(f"Filtered states saved to {states_path}")
 
     # 8. Save diagnostic results
-    diagnostic_path = os.path.join(pf_output_dir, 'diagnostic_results.json')
+    diagnostic_path = os.path.join(bif_output_dir, 'diagnostic_results.json')
     with open(diagnostic_path, 'w') as f:
         # Convert numpy values to Python types for JSON serialization
-        diagnostic_json = json.dumps(diagnostic_results_pf, indent=2, default=lambda x: float(x) if isinstance(x, (np.float32, np.float64)) else x)
+        diagnostic_json = json.dumps(diagnostic_results_bif, indent=2, default=lambda x: float(x) if isinstance(x, (np.float32, np.float64)) else x)
         f.write(diagnostic_json)
     print(f"Diagnostic results saved to {diagnostic_path}")
 
     # 9. Save metrics summary (similar to Factor-CV)
     metrics_summary = {
-        "model_name": "PF-DFSV",
+        "model_name": "BIF-DFSV (Predicted Residuals)", # Updated description
         "convergence_success": bool(convergence_success),
         "convergence_message": str(convergence_message),
         "estimation_time": float(estimation_time),
         "num_params": int(num_params),
         "log_likelihood_penalized": float(log_likelihood_penalized),
         "log_likelihood_base": float(log_likelihood_base),
-        "aic": float(aic_pf),
-        "bic": float(bic_pf),
+        "aic": float(aic_bif),
+        "bic": float(bic_bif),
         "final_phi_f_max_eig": float(final_phi_f_max_eig),
         "final_phi_h_max_eig": float(final_phi_h_max_eig),
-        "residuals_calculation": "Using predicted states (f_t|t-1) and covariances (P_f,t|t-1)",
-        "diagnostic_tests": diagnostic_results_pf,
-        "extended_metrics": extended_metrics_pf
+        "diagnostic_tests": diagnostic_results_bif,
+        "extended_metrics": extended_metrics_bif
     }
 
     # Also save extended metrics separately for easier access
-    extended_metrics_path = os.path.join(pf_output_dir, 'extended_metrics.json')
+    extended_metrics_path = os.path.join(bif_output_dir, 'extended_metrics.json')
     with open(extended_metrics_path, 'w') as f:
-        json.dump(extended_metrics_pf, f, indent=2, default=lambda x: float(x) if isinstance(x, (np.float32, np.float64)) else x)
+        json.dump(extended_metrics_bif, f, indent=2, default=lambda x: float(x) if isinstance(x, (np.float32, np.float64)) else x)
     print(f"Extended metrics saved to {extended_metrics_path}")
 
     # 10. Save parameter heatmaps
     print("\nSaving parameter heatmaps...")
 
     # Create figures directory if not already created
-    figures_dir = os.path.join(pf_output_dir, 'figures')
+    figures_dir = os.path.join(bif_output_dir, 'figures')
     os.makedirs(figures_dir, exist_ok=True)
 
     # 1. Factor loadings (Lambda)
     plt.figure(figsize=(16, 12))
-    sns.heatmap(lambda_hat_pf, annot=False, cmap='coolwarm', fmt='.2f', linewidths=0.5)
+    sns.heatmap(lambda_hat_bif, annot=False, cmap='coolwarm', fmt='.2f', linewidths=0.5)
     plt.title('Heatmap of Factor Loadings (Lambda)')
     plt.xlabel('Factors')
     plt.ylabel('Assets')
@@ -1034,7 +1060,7 @@ try:
 
     # 2. Factor transition matrix (Phi_f)
     plt.figure(figsize=(10, 8))
-    sns.heatmap(phi_f_hat_pf, annot=True, cmap='viridis', fmt='.2f', linewidths=0.5)
+    sns.heatmap(phi_f_hat_bif, annot=True, cmap='viridis', fmt='.2f', linewidths=0.5)
     plt.title('Heatmap of Factor Transition Matrix (Phi_f)')
     plt.xlabel('Factor (t-1)')
     plt.ylabel('Factor (t)')
@@ -1044,7 +1070,7 @@ try:
 
     # 3. Log-volatility transition matrix (Phi_h)
     plt.figure(figsize=(10, 8))
-    sns.heatmap(phi_h_hat_pf, annot=True, cmap='viridis', fmt='.2f', linewidths=0.5)
+    sns.heatmap(phi_h_hat_bif, annot=True, cmap='viridis', fmt='.2f', linewidths=0.5)
     plt.title('Heatmap of Log-Volatility Transition Matrix (Phi_h)')
     plt.xlabel('Log-Vol (t-1)')
     plt.ylabel('Log-Vol (t)')
@@ -1054,7 +1080,7 @@ try:
 
     print(f"Parameter heatmaps saved to {figures_dir}")
 
-    metrics_path = os.path.join(pf_output_dir, 'metrics_summary.json')
+    metrics_path = os.path.join(bif_output_dir, 'metrics_summary.json')
     with open(metrics_path, 'w') as f:
         json.dump(metrics_summary, f, indent=2, default=lambda x: float(x) if isinstance(x, (np.float32, np.float64)) else x)
     print(f"Metrics summary saved to {metrics_path}")
@@ -1066,4 +1092,4 @@ except Exception as e:
     import traceback
     traceback.print_exc()
 
-print("\nPF Extraction Script Finished.")
+print("\nBIF Extraction Script Finished.")
