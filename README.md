@@ -1,51 +1,27 @@
 # BellmanFilterDFSV - Dynamic Factor Stochastic Volatility (DFSV) Models in JAX
 
-This repository contains the Python code for a Quantitative Finance thesis project focused on implementing, simulating, and filtering Dynamic Factor Stochastic Volatility (DFSV) models using JAX for enhanced performance.
+This repository contains Python code for Dynamic Factor Stochastic Volatility (DFSV) models, leveraging JAX for enhanced performance.
 
 ## Project Purpose
 
-DFSV models are used in finance to model the time-varying volatility and correlation of multiple asset returns by relating them to a smaller set of unobserved latent factors, each with its own stochastic volatility process. This project focuses on the specific DFSV model outlined in  and provides tools to:
-
-*   Define the DFSV model parameters using a JAX-compatible structure (`DFSVParamsDataclass`).
-*   Simulate realistic financial time series data based on the specified DFSV model.
-*   Implement and compare filtering techniques for estimating latent states (factors and log-volatilities):
-    *   **Bellman Information Filter (BIF):** Based on Lange (2024), numerically stabilized.
-    *   **Particle Filter (PF):** A standard Bootstrap/SISR filter for benchmarking.
-*   Estimate static model hyperparameters by maximizing the BIF-implied pseudo log-likelihood.
-*   Leverage JAX (`@equinox.filter_jit`, `scan`, `vmap`, pytrees) for performance via automatic differentiation, JIT compilation, and hardware acceleration.
+This project addresses the modeling of time-varying volatility and correlation in financial asset returns using DFSV models. It offers tools for:
+*   Simulating DFSV models.
+*   Filtering latent states with a Bellman Information Filter (BIF) and a Particle Filter (PF).
+*   Estimating model parameters using JAX-based optimization.
+*   Utilizing JAX for high performance through automatic differentiation, JIT compilation, and hardware acceleration.
 
 ## Project Status
 
-**Status:** Thesis Writing & Real Data Application Preparation
+[Placeholder: Update with current project status, e.g., 'Actively Maintained', 'Post-Thesis Archive', 'Further Research Ongoing']
 
 The core implementations of the DFSV model, Bellman Information Filter (BIF), and Particle Filter (PF) are stable and functional, validated by a comprehensive `pytest` test suite.
 
-Key milestones achieved:
-*   Extensive simulation studies comparing BIF and PF performance (state estimation, parameter recovery) are complete.
-*   Hyperparameter estimation studies have been conducted, analyzing filter performance under different configurations.
-*   Numerical stability challenges (e.g., BIF gradient calculation, `mu` parameter identifiability) have been investigated and addressed through techniques like using EFIM, FIM regularization, and adopting flexible strategies for handling `mu`.
-
-Current work focuses on:
-*   Analyzing and integrating the simulation and estimation results into the thesis document.
-*   Preparing for the application of the developed filters to real-world financial data.
-
 ## Key Features
 
-*   **DFSV Model:** Definition (`DFSVParamsDataclass`) and simulation for the specific model.
-    *   The model is defined using a JAX dataclass, ensuring compatibility with JAX transformations.
-    *   Simulation is implemented using `jax.lax.scan` for efficient time series generation.
-*   **Bellman Information Filter (BIF):** Implementation (`DFSVBellmanInformationFilter`) based on Lange (2024), including numerical stability enhancements (eigenvalue clipping, Joseph form).
-    *   The BIF implementation uses a block coordinate descent algorithm to update the state estimates.
-    *   The BIF pseudo-likelihood is used to improve stability and parameter estimation.
-    *   Key JAX functions, such as the covariance builder and Fisher information calculator, are JIT-compiled for performance.
-*   **Particle Filter (PF):** Benchmark Bootstrap/SISR implementation (`DFSVParticleFilter`).
-    *   The PF implementation uses resampling to mitigate particle degeneracy.
-*   **Hyperparameter Estimation:** Framework using JAX optimization (`jaxopt`/`optimistix`) to maximize the BIF pseudo log-likelihood, including a prior regularization system.
-    *   The hyperparameter estimation framework supports various JAX optimizers.
-    *   Parameter transformations are used to map between constrained model space and unconstrained optimization space.
-*   **Consistent API:** Filters inherit from a base class (`DFSVFilter`) defining a common interface.
-*   **JAX Integration:** Extensive use of JAX (`@equinox.filter_jit`, `scan`, `vmap`, pytrees) for performance and automatic differentiation.
-*   **Testing:** Robust test suite using `pytest` with unified tests and common fixtures.
+*   **DFSV Core:** Model definition (`DFSVParamsDataclass`), simulation, and JAX integration for performance.
+*   **Filtering Algorithms:** Numerically stabilized Bellman Information Filter (BIF) and a benchmark Particle Filter (PF).
+*   **Parameter Estimation:** Hyperparameter estimation framework using BIF pseudo log-likelihood and JAX optimization.
+*   **Testing:** Comprehensive `pytest` suite.
 
 ## Installation and Setup
 
@@ -68,11 +44,8 @@ Current work focuses on:
     ```
 
 3.  **Install dependencies and the package:**
-    This project uses `uv` for potentially faster dependency management, but `pip` works perfectly well. The dependencies are listed in `pyproject.toml`. Install the package in editable mode (`-e`) so changes in the `src/` directory are immediately reflected.
+    Project dependencies are managed with `pyproject.toml`. Install the package in editable mode (`-e`) so changes in the `src/` directory are immediately reflected.
     ```bash
-    # Using uv (if installed)
-    uv pip install -e .
-
     # Using pip (standard)
     pip install -e .
     ```
@@ -136,7 +109,7 @@ axes[2].set_title('Simulated Returns')
 axes[2].legend()
 plt.tight_layout()
 plt.show() # Or plt.savefig('outputs/simple_dfsv_simulation.png')
-
+# To embed this plot in a Markdown file, you would typically save it as an image and use Markdown image syntax: `![Simple DFSV Simulation](path/to/outputs/simple_dfsv_simulation.png)` (assuming the image is saved in the `outputs` directory and accessible where the README is displayed).
 ```
 
 Explore the `scripts/` and `examples/` directories for more detailed use cases, including filter implementations and parameter estimation examples. To run other examples, navigate to the corresponding directory and execute the Python script. For instance, to run the basic filtering example:
@@ -146,26 +119,41 @@ Explore the `scripts/` and `examples/` directories for more detailed use cases, 
 
 ## Project Structure
 
-```python
+```
 BellmanFilterDFSV/
-├── .gitignore            # Git ignore rules
-├── pyproject.toml        # Build system, dependencies, project metadata
-├── README.md             # This file
-├── requirements.txt      # (Potentially redundant with pyproject.toml)
-├── data/                 # Input data files (if any)
-├── examples/             # Example usage scripts
-├── notebooks/            # Jupyter notebooks for exploration/visualization
-├── outputs/              # Generated outputs (plots, results)
-├── scripts/              # Standalone scripts for running experiments, analysis
-├── src/                  # Source code directory
-│   └── bellman_filter_dfsv/ # Main package
+├── .gitignore
+├── Dockerfile
+├── LICENSE                 # Recommended (Add a note if not present)
+├── README.md
+├── batch_job_bf.template.json
+├── batch_job_pf.template.json
+├── pyproject.toml
+├── Data/
+│   └── ... (various data files)
+├── Figures/
+│   └── ... (various figures)
+├── docs/
+│   ├── Makefile
+│   ├── make.bat
+│   └── source/
+├── examples/
+│   └── ... (example scripts)
+├── notebooks/
+│   └── ... (Jupyter notebooks)
+├── outputs/
+│   └── ... (generated outputs)
+├── scripts/
+│   ├── Archive/
+│   └── ... (various scripts)
+├── src/
+│   └── bellman_filter_dfsv/
 │       ├── __init__.py
-│       ├── core/           # Core algorithms (filters, simulation, likelihood)
-│       │   └── filters/      # Filter implementations (Particle, Bellman, etc.)
-│       ├── models/         # Model definitions (e.g., DFSV parameter dataclass)
-│       └── utils/          # Utility functions (e.g., transformations)
-├── tests/                # Unit and integration tests
-└── .venv/                # Virtual environment directory (if created)
+│       ├── filters/
+│       ├── models/
+│       └── utils/
+├── tests/
+│   └── ... (test files)
+└── .venv/                # Or similar virtualenv
 ```
 
 ## Running Tests
@@ -195,4 +183,23 @@ Contributions are welcome! If you find a bug, have a suggestion, or want to cont
 
 ## License
 
-This project is licensed under the **MIT License**. See the `LICENSE` file (if one is added later) or the standard MIT License text for details.
+This project is currently distributed without an explicit license. It is highly recommended to add a `LICENSE` file to the repository. If the intention is to follow the previous mention, the [MIT License](https://opensource.org/licenses/MIT) would be a suitable choice.
+
+## Refactoring and Project Simplification Suggestions
+
+1.  **Dependency Management:**
+    *   Remove the `requirements.txt` file as it appears redundant with `pyproject.toml`, which should be considered the single source of truth for project dependencies. This simplifies dependency management and avoids potential conflicts.
+
+2.  **Code Organization:**
+    *   **`scripts/` Directory:** Conduct a thorough review of the `scripts/` directory, particularly the `Archive/` subfolder. Identify and remove any obsolete or experimental scripts that are no longer relevant to the project's core goals. For the remaining essential scripts, consider organizing them into more descriptive subdirectories (e.g., `simulation_studies`, `empirical_analysis`, `data_processing`, `utility_scripts`). Furthermore, any reusable utility functions currently within scripts should be migrated to the main `src/bellman_filter_dfsv/utils/` module to promote code reuse and maintainability.
+    *   **`examples/` vs. `scripts/`:** Clarify the distinction between the `examples/` and `scripts/` directories. `examples/` should ideally contain minimal, focused code snippets demonstrating specific functionalities or how to use a particular module of the `bellman_filter_dfsv` package. `scripts/` can then be reserved for more complex workflows, such as running full simulation studies, batch processing, or manuscript-specific analyses.
+    *   **`notebooks/` Directory:** Review the Jupyter notebooks in `notebooks/`. Archive or delete outdated experimental notebooks. If any notebooks contain code that has proven to be stable and useful for ongoing tasks or defines key methodologies, consider refactoring this code into Python scripts within `scripts/` or integrating it into the `src/` package for better version control and reusability.
+
+3.  **Documentation:**
+    *   **Sphinx Documentation:** Ensure that the Sphinx documentation located in the `docs/` directory is comprehensive, up-to-date with the current codebase, and easy to navigate. Include clear instructions on how to build the documentation locally. Add a prominent link to the generated documentation (e.g., on ReadTheDocs or a self-hosted site) from the main README.
+
+4.  **Data Management:**
+    *   **Data Directory (`Data/`):** Create a `README.md` file within the `Data/` directory (i.e., `Data/README.md`). This file should clearly describe the contents of the `Data/` directory, including the source of each dataset, its structure (e.g., columns, format), and how it is used by the project's scripts or examples. If data files are too large to be hosted directly in the repository, provide download links and instructions.
+
+5.  **License File:**
+    *   **Add `LICENSE` File:** Reiterate the recommendation from the main 'License' section: add a `LICENSE` file (e.g., containing the MIT License text) to the root of the repository to clearly define the terms under which the software can be used, modified, and distributed.
