@@ -12,7 +12,9 @@ This project addresses the modeling of time-varying volatility and correlation i
 
 ## Project Status
 
-[Placeholder: Update with current project status, e.g., 'Actively Maintained', 'Post-Thesis Archive', 'Further Research Ongoing']
+Post Thesis Archive, considering the following extensions:
+- Implementing Expectation Maximization for parameter estimation
+- Extending the models to also incorporate time-varying idiosyncratic variance, possibly grouped 
 
 The core implementations of the DFSV model, Bellman Information Filter (BIF), and Particle Filter (PF) are stable and functional, validated by a comprehensive `pytest` test suite.
 
