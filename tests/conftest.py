@@ -5,16 +5,20 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import equinox as eqx
+
+# Configure JAX to use CPU for tests to avoid GPU memory issues
+jax.config.update("jax_platform_name", "cpu")
+jax.config.update("jax_enable_x64", True)
 from jaxtyping import Float, Array, PRNGKeyArray, Int, PyTree
 from typing import Dict, Any, Callable
 
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.models.simulation import simulate_DFSV
-from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
-from bellman_filter_dfsv.filters.bellman_information import (
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.core.filters.bellman_information import (
     DFSVBellmanInformationFilter,
 )
-from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
+from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
 
 
 @pytest.fixture(scope="session")

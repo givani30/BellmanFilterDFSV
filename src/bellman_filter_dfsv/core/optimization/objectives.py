@@ -5,11 +5,11 @@ import jax
 import equinox as eqx
 import jax.numpy as jnp
 # No type imports needed
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
-from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
-from bellman_filter_dfsv.utils.transformations import untransform_params, apply_identification_constraint, EPS
-from bellman_filter_dfsv.models.likelihoods import log_prior_density
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
+from .transformations import untransform_params, apply_identification_constraint, EPS
+from bellman_filter_dfsv.core.models.likelihoods import log_prior_density
 
 def _compute_total_objective(
     params: DFSVParamsDataclass,

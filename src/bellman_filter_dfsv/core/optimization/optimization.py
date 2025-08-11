@@ -15,14 +15,14 @@ from collections import namedtuple
 import time
 from jax import lax
 
-from bellman_filter_dfsv.utils.solvers import create_optimizer
+from .solvers import create_optimizer
 
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformationFilter
-from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
-from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
-from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params, apply_identification_constraint
-from bellman_filter_dfsv.utils.optimization_helpers import create_stable_initial_params
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.filters.bellman_information import DFSVBellmanInformationFilter
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
+from .transformations import transform_params, untransform_params, apply_identification_constraint
+from .optimization_helpers import create_stable_initial_params
 
 
 # Filter type enumeration
@@ -175,7 +175,7 @@ def get_objective_function(filter_type: FilterType, filter_instance,
     if fix_mu and true_mu is None:
         raise ValueError("fix_mu is True, but true_mu was not provided.")
 
-    from bellman_filter_dfsv.filters.objectives import bellman_objective, pf_objective
+    from bellman_filter_dfsv.core.optimization.objectives import bellman_objective, pf_objective
 
     # Map filter types to their underlying objective functions
     # Note: We select the *untransformed* objective here, as the wrapper handles transformations.
@@ -304,11 +304,12 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
             y, state, _ = step(y=y, state=state)
             step_count += 1
 
-
             # Log parameters at specified intervals
             if step_count % log_interval == 0:
                 param_history.append(y)
-                loss_history.append(state.best_loss)
+                # Log loss directly from objective function
+                loss, _ = objective_fn(y, static_args)
+                loss_history.append(float(loss))
 
             # Check for convergence
             converged, result = terminate(y=y, state=state)
@@ -321,7 +322,7 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
                 raise e
             else:
                 # Create a failure result
-                result = optx.RESULTS.failed
+                result = optx.RESULTS.nonlinear_divergence
                 # Store the current parameters in the history before breaking
                 if y is not None and (not param_history or param_history[-1] is not y):
                     param_history.append(y)
@@ -651,9 +652,20 @@ def run_optimization(
         # For max_steps_reached, check if the loss is reasonable (not too high)
         if sol.result == optx.RESULTS.max_steps_reached:
             # If we reached max steps but the loss is still very high, it didn't really converge
-                success = False
-                error_message = "Max steps reached without convergence"
+            success = False
+            error_message = "Max steps reached without convergence"
         steps = sol.stats.get('num_steps', len(param_history) - 1)
+
+        # Ensure loss_history is always populated
+        if not loss_history:
+            try:
+                loss_history = [float(final_loss)]
+            except Exception:
+                loss_history = [float('inf')]
+
+        # Ensure error_message is set for failed optimization
+        if not success and error_message is None:
+            error_message = "Optimization failed or did not converge."
 
     except Exception as e:
         # Handle optimization failure
@@ -675,7 +687,8 @@ def run_optimization(
 
         # Create a minimal parameter history
         param_history = [final_params]
-        loss_history = [float('inf')]
+        if not loss_history:
+            loss_history = [float('inf')]
 
     # Calculate time taken
     time_taken = time.time() - start_time

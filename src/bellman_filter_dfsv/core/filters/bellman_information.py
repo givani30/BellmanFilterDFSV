@@ -9,7 +9,7 @@ import numpy as np
 import optimistix as optx
 # Removed jit import in favor of eqx.filter_jit
 
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 
 # Import reusable components from _bellman_impl and _bellman_optim
 from ._bellman_impl import (
@@ -897,7 +897,9 @@ class DFSVBellmanInformationFilter(DFSVFilter):
     def get_filtered_states(self) -> np.ndarray | None:
         """Returns the filtered states alpha_{t|t} as a NumPy array."""
         states_jax = getattr(self, 'filtered_states', None)
-        return states_jax if states_jax is not None else None
+        if states_jax is not None:
+            return np.asarray(states_jax)
+        return None
 
     def get_filtered_factors(self) -> np.ndarray | None:
         """Returns the filtered factors f_{t|t} as a NumPy array."""
@@ -918,7 +920,9 @@ class DFSVBellmanInformationFilter(DFSVFilter):
     def get_filtered_information_matrices(self) -> np.ndarray | None:
         """Returns the filtered information matrices Omega_{t|t} as arrays."""
         infos_jax = getattr(self, 'filtered_infos', None)
-        return infos_jax if infos_jax is not None else None
+        if infos_jax is not None:
+            return np.asarray(infos_jax)
+        return None
 
     def get_predicted_states(self) -> np.ndarray | None:
         """Returns the predicted states alpha_{t|t-1} as an array with shape (T, state_dim)."""
@@ -960,7 +964,10 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
         Returns float if filter() was run, JAX scalar if filter_scan() was run.
         """
-        return getattr(self, 'total_log_likelihood', None)
+        val = getattr(self, 'total_log_likelihood', None)
+        if val is not None and hasattr(val, 'item'):
+            return float(val)
+        return val
 
     # --- Methods to derive covariance from information ---
 

@@ -5,8 +5,8 @@ This module provides functions for generating stable DFSV model parameters for s
 
 import jax
 import jax.numpy as jnp
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.utils.transformations import apply_identification_constraint
+from .dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.optimization.transformations import apply_identification_constraint
 
 def create_stable_dfsv_params(N: int = 3, K: int = 2) -> DFSVParamsDataclass:
     """Create a stable DFSV model parameter set.

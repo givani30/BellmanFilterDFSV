@@ -9,7 +9,7 @@ from jax.scipy.special import gammaln
 import equinox as eqx
 import numpy as np # Keep np for original likelihood funcs for now
 import jax.numpy as jnp
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
+from .dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.utils.jax_helpers import safe_norm_logpdf, safe_inverse_gamma_logpdf
 
 

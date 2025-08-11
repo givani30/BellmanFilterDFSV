@@ -10,7 +10,7 @@ import equinox as eqx
 import optimistix as optx
 from typing import Dict, Any, List, Tuple
 
-from bellman_filter_dfsv.utils.solvers import (
+from bellman_filter_dfsv.core.optimization.solvers import (
     create_optimizer,
     get_available_optimizers,
     get_optimizer_config,

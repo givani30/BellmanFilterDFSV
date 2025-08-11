@@ -8,7 +8,7 @@ import copy
 import jax
 import jax.numpy as jnp
 from jax.nn import softplus
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 
 # Epsilon for numerical stability near boundaries (e.g., 0 or 1)
 EPS = 1e-6

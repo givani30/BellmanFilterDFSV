@@ -21,11 +21,11 @@ import time
 import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
-from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformationFilter
-from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
-from bellman_filter_dfsv.utils.optimization import (
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.core.filters.bellman_information import DFSVBellmanInformationFilter
+from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
+from bellman_filter_dfsv.core.optimization.optimization import (
     FilterType,
     run_optimization,
     OptimizerResult

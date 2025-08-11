@@ -20,7 +20,7 @@ import numpy as np
 # Removed jit import in favor of eqx.filter_jit
 import equinox as eqx
 # Local imports
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Only import the dataclass
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass # Only import the dataclass
 from .base import DFSVFilter # Import base class from sibling module
 
 # Try importing tqdm for progress bars, provide a fallback

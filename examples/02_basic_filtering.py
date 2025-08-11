@@ -15,11 +15,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import jax.numpy as jnp
 import time
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.models.simulation import simulate_DFSV
-from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
-from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformationFilter
-from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.core.filters.bellman_information import DFSVBellmanInformationFilter
+from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
 
 # Set random seed for reproducibility
 np.random.seed(42)

@@ -18,12 +18,12 @@ import jax
 import equinox as eqx
 import time
 import optimistix as optx
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.models.simulation import simulate_DFSV
-from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformationFilter
-from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params
-from bellman_filter_dfsv.filters.objectives import bellman_objective
-from bellman_filter_dfsv.utils.solvers import DampedTrustRegionBFGS
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
+from bellman_filter_dfsv.core.filters.bellman_information import DFSVBellmanInformationFilter
+from bellman_filter_dfsv.core.optimization.transformations import transform_params, untransform_params
+from bellman_filter_dfsv.core.optimization.objectives import bellman_objective
+from bellman_filter_dfsv.core.optimization.solvers import DampedTrustRegionBFGS
 
 # Set random seed for reproducibility
 np.random.seed(42)

@@ -11,7 +11,7 @@ requires-python = ">=3.12" # Adjust based on your Python version
 dependencies = [
     "pandas",
     "numpy",
-    "jax[cuda12]",
+    "jax",
     "jaxlib",
     "jax-dataclasses",
     "matplotlib",
@@ -47,6 +47,25 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["src"] # Look for packages in src/
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+]
+# Exclude thesis artifacts from test discovery
+norecursedirs = ["thesis_artifacts", "build", "dist", ".git", ".tox"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-cov>=6.1.1",
+]
 
 [project.optional-dependencies]
 dev = [

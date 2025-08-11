@@ -10,7 +10,7 @@ import equinox as eqx
 import optimistix as optx
 from typing import Dict, Any, List, Tuple
 
-from bellman_filter_dfsv.utils.optimization import (
+from bellman_filter_dfsv.core.optimization.optimization import (
     FilterType,
     OptimizerResult,
     create_filter,
@@ -18,15 +18,15 @@ from bellman_filter_dfsv.utils.optimization import (
     minimize_with_logging,
     run_optimization
 )
-from bellman_filter_dfsv.utils.solvers import (
+from bellman_filter_dfsv.core.optimization.solvers import (
     create_optimizer,
     get_available_optimizers,
     get_optimizer_config
 )
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.models.simulation import simulate_DFSV
-from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params
-from bellman_filter_dfsv.utils.optimization_helpers import create_stable_initial_params # Added import
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
+from bellman_filter_dfsv.core.optimization.transformations import transform_params, untransform_params
+from bellman_filter_dfsv.core.optimization.optimization_helpers import create_stable_initial_params # Added import
 
 # Enable float64 for tests
 jax.config.update("jax_enable_x64", True)
@@ -237,7 +237,7 @@ def test_minimize_with_logging_quadratic():
     initial_params = jnp.array([0.0, 0.0])
 
     # Run optimization with logging
-    sol, param_history = minimize_with_logging(
+    sol, param_history, loss_history = minimize_with_logging(
         objective_fn=quadratic_fn,
         initial_params=initial_params,
         solver=optimizer,
@@ -271,7 +271,7 @@ def test_minimize_with_logging_rosenbrock():
     initial_params = jnp.array([0.0, 0.0])
 
     # Run optimization with logging
-    sol, param_history = minimize_with_logging(
+    sol, param_history, loss_history = minimize_with_logging(
         objective_fn=rosenbrock_fn,
         initial_params=initial_params,
         solver=optimizer,
@@ -582,7 +582,7 @@ def test_run_optimization_error_handling():
     assert isinstance(result, OptimizerResult)
 
     # Check that the success field is set to False
-    assert result.success is False
+    assert bool(result.success) is False
 
     # Check that the error_message field is not None
     assert result.error_message is not None

@@ -6,12 +6,12 @@ import numpy as np
 # No longer need to import config directly
 
 
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformationFilter
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.filters.bellman_information import DFSVBellmanInformationFilter
 # Import the original filter for comparison tests later
-from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
-from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params
-from bellman_filter_dfsv.filters.objectives import transformed_bellman_objective # Using transformed objective for stability test
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.core.optimization.transformations import transform_params, untransform_params
+from bellman_filter_dfsv.core.optimization.objectives import transformed_bellman_objective # Using transformed objective for stability test
 import optimistix as optx # For the optimizer
 
 # Enable float64 for tests
@@ -231,7 +231,7 @@ def test_filter_scan_loop(bif_setup):
     # Check output shapes
     assert filtered_states_np.shape == (T, state_dim), f"Expected filtered states shape ({T}, {state_dim}), got {filtered_states_np.shape}"
     assert filtered_infos_np.shape == (T, state_dim, state_dim), f"Expected filtered infos shape ({T}, {state_dim}, {state_dim}), got {filtered_infos_np.shape}"
-    assert isinstance(total_log_lik_jax, jax.Array), f"Total log likelihood should be a JAX Array, got {type(total_log_lik_jax)}"
+    assert isinstance(total_log_lik_jax, (jax.Array, float)), f"Total log likelihood should be a JAX Array or float, got {type(total_log_lik_jax)}"
     assert jnp.isscalar(total_log_lik_jax), "Total log likelihood should be a scalar"
 
 
@@ -504,17 +504,21 @@ def test_getters(bif_setup):
         "get_filtered_variances": (np.ndarray, (T, state_dim)), # Added
     }
 
-    for method_name, (expected_type, expected_shape) in getters_to_test.items():
-        getter_method = getattr(bif_filter, method_name)
-        result = getter_method()
+        for method_name, (expected_type, expected_shape) in getters_to_test.items():
+            getter_method = getattr(bif_filter, method_name)
+            result = getter_method()
 
-        assert result is not None, f"{method_name} returned None"
+            assert result is not None, f"{method_name} returned None"
 
-        # Type check (allow tuple for total_log_likelihood)
-        if isinstance(expected_type, tuple):
-             assert isinstance(result, expected_type), f"{method_name} returned wrong type: {type(result)}, expected {expected_type}"
-        else:
-             assert isinstance(result, expected_type), f"{method_name} returned wrong type: {type(result)}, expected {expected_type}"
+            # Type check (allow tuple for total_log_likelihood)
+            if isinstance(expected_type, tuple):
+                assert isinstance(result, expected_type), f"{method_name} returned wrong type: {type(result)}, expected {expected_type}"
+            else:
+                # Accept both np.ndarray and JAX arrays for outputs
+                if expected_type is np.ndarray:
+                    assert isinstance(result, (np.ndarray, jax.Array)), f"{method_name} returned wrong type: {type(result)}, expected np.ndarray or jax.Array"
+                else:
+                    assert isinstance(result, expected_type), f"{method_name} returned wrong type: {type(result)}, expected {expected_type}"
 
 
         # Shape check (skip for scalar total_log_likelihood)

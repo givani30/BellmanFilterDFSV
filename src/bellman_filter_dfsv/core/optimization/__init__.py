@@ -10,7 +10,7 @@ This module provides:
 from .optimization import run_optimization
 from .solvers import create_optimizer
 from .transformations import transform_params, untransform_params
-from .objectives import bellman_objective, particle_objective
+from .objectives import bellman_objective, pf_objective
 
 __all__ = [
     "run_optimization",
@@ -18,5 +18,5 @@ __all__ = [
     "transform_params",
     "untransform_params", 
     "bellman_objective",
-    "particle_objective",
+    "pf_objective",
 ]

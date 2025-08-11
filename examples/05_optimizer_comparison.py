@@ -17,13 +17,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import jax.numpy as jnp
 import time
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.models.simulation import simulate_DFSV
-from bellman_filter_dfsv.utils.optimization import (
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
+from bellman_filter_dfsv.core.optimization.optimization import (
     FilterType,
     run_optimization
 )
-from bellman_filter_dfsv.utils.solvers import get_optimizer_config
+from bellman_filter_dfsv.core.optimization.solvers import get_optimizer_config
 
 # Set random seed for reproducibility
 np.random.seed(42)

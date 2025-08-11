@@ -5,7 +5,7 @@ This module provides functions for generating stable initial parameters for opti
 
 import jax
 import jax.numpy as jnp
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 
 def create_stable_initial_params(N: int, K: int) -> DFSVParamsDataclass:
     """Create stable initial parameter values for optimization.

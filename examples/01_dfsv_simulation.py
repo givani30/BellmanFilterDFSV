@@ -14,8 +14,8 @@ for time-varying volatility in the latent factors that drive returns.
 import numpy as np
 import matplotlib.pyplot as plt
 import jax.numpy as jnp
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.models.simulation import simulate_DFSV
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
 
 # Set random seed for reproducibility
 np.random.seed(42)

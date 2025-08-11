@@ -12,8 +12,8 @@ from typing import Dict, Any, Callable
 # Assuming fixtures are available from conftest.py:
 # params_fixture, data_fixture, filter_instances_fixture
 
-from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 
 
 # --- Specific Tests Retained and Adapted ---

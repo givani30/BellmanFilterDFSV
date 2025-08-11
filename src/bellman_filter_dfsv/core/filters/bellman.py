@@ -36,7 +36,7 @@ import optimistix as optx
 # Removed jit import in favor of eqx.filter_jit
 
 # Update imports to use models.dfsv instead
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 
 # Remove redundant jax_params import
 from ._bellman_impl import (  # Removed kl_penalty_impl import
