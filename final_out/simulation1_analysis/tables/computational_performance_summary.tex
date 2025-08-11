@@ -1,0 +1,17 @@
+% Requires \usepackage{booktabs} in LaTeX preamble
+\begin{table}
+\caption{Summary of Computational Performance for Selected Configurations.}
+\label{tab:comp_perf_summary}
+\begin{tabular}{llrrrcr}
+\toprule
+Filter Type & N & K & Mean Time (s) & Std Dev Time (s) & Median Time (s) & Runs \\
+\midrule
+BIF & 50 & 5 & 4.432e+00 & nan & 4.432e+00 & 1 \\
+PF & 50 & 5 & 6.307e+00 & 4.371e+00 & 5.373e+00 & 4 \\
+BF & 50 & 5 & 3.205e+00 & nan & 3.205e+00 & 1 \\
+BIF & 150 & 15 & 3.178e+01 & nan & 3.178e+01 & 1 \\
+PF & 150 & 15 & 1.416e+01 & 1.168e+01 & 1.185e+01 & 4 \\
+BF & 150 & 15 & 2.484e+01 & nan & 2.484e+01 & 1 \\
+\bottomrule
+\end{tabular}
+\end{table}

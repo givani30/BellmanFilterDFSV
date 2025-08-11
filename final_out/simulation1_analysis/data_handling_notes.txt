@@ -1,0 +1,9 @@
+Analysis run on: 2025-04-20 23:46:20.887826
+- Attempted to load data from outputs/simulation1/aggregated_simulation1_results.csv.
+- Successfully loaded data. Initial shape: (162, 26).
+- Checked for nulls in key columns. Counts > 0:
+Series([], )
+- No rows filtered based on non-positive or NaN median time/RMSE.
+- Filtered out 'BF' filter type. Removed 27 rows.
+- Current shape for analysis (BIF/PF): (135, 26).
+- Checked and converted data types.

@@ -11,7 +11,7 @@ requires-python = ">=3.12" # Adjust based on your Python version
 dependencies = [
     "pandas",
     "numpy",
-    "jax",
+    "jax[cuda12]",
     "jaxlib",
     "jax-dataclasses",
     "matplotlib",

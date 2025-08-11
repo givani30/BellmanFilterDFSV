@@ -1,0 +1,16 @@
+{
+    "model_type": "Bellman Information Filter DFSV (Predicted Residuals)",
+    "distribution": "Gaussian",
+    "num_params": 610,
+    "estimation_time": 0.0,
+    "convergence_success": true,
+    "convergence_message": "Success",
+    "sample_size": 738,
+    "num_series": 95,
+    "k_factors": 5,
+    "log_likelihood": 222084.10371757764,
+    "aic": -442948.2074351553,
+    "bic": -440139.801702149,
+    "final_phi_f_max_eig": 0.3323788194634434,
+    "final_phi_h_max_eig": 0.9857066976788469
+}

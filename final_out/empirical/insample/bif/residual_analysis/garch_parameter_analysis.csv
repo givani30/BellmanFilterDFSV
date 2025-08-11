@@ -1,0 +1,9 @@
+Metric,Value
+Total Series,95
+Successful Fits,95
+% Alpha1 Significant (p<0.05),0.7789
+% Beta1 Significant (p<0.05),0.9263
+% Wald Test Rejects H0 (Sum=0),0.9263
+% Sum Alpha1+Beta1 > 0.9,0.6421
+% Sum Alpha1+Beta1 > 0.95,0.3158
+% Wald Rejects H0 AND Sum > 0.9,0.6421

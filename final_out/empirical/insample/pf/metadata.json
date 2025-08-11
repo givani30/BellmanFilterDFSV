@@ -1,0 +1,16 @@
+{
+    "model_type": "Particle Filter DFSV",
+    "distribution": "Gaussian",
+    "num_params": 610,
+    "estimation_time": 0.0,
+    "convergence_success": true,
+    "convergence_message": "Success",
+    "sample_size": 738,
+    "num_series": 95,
+    "k_factors": 5,
+    "log_likelihood": -17969.6171875,
+    "aic": 37159.234375,
+    "bic": 39967.640108006286,
+    "final_phi_f_max_eig": 0.5973809433140832,
+    "final_phi_h_max_eig": 0.9997036479877605
+}

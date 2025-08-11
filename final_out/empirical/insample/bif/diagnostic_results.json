@@ -1,0 +1,61 @@
+{
+  "ljung_box_squared": {
+    "lag_5": {
+      "lag": 5,
+      "pass_count": 7,
+      "reject_count": 88,
+      "error_count": 0,
+      "total": 95,
+      "pass_rate": 0.07368421052631578
+    },
+    "lag_10": {
+      "lag": 10,
+      "pass_count": 9,
+      "reject_count": 86,
+      "error_count": 0,
+      "total": 95,
+      "pass_rate": 0.09473684210526316
+    },
+    "lag_15": {
+      "lag": 15,
+      "pass_count": 10,
+      "reject_count": 85,
+      "error_count": 0,
+      "total": 95,
+      "pass_rate": 0.10526315789473684
+    },
+    "lag_20": {
+      "lag": 20,
+      "pass_count": 12,
+      "reject_count": 83,
+      "error_count": 0,
+      "total": 95,
+      "pass_rate": 0.12631578947368421
+    }
+  },
+  "arch_lm": {
+    "lag_5": {
+      "lag": 5,
+      "pass_count": 9,
+      "reject_count": 86,
+      "error_count": 0,
+      "total": 95,
+      "pass_rate": 0.09473684210526316
+    },
+    "lag_10": {
+      "lag": 10,
+      "pass_count": 11,
+      "reject_count": 84,
+      "error_count": 0,
+      "total": 95,
+      "pass_rate": 0.11578947368421053
+    }
+  },
+  "jarque_bera": {
+    "pass_count": 2,
+    "reject_count": 93,
+    "error_count": 0,
+    "total": 95,
+    "pass_rate": 0.021052631578947368
+  }
+}

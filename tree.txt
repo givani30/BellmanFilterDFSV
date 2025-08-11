@@ -1,0 +1,2086 @@
+.
+├── 2008.11477v16.pdf
+├── batch_configs
+│   └── optimization_study_configs
+│       ├── batch_configs_optimization_study_configs_config_list_5b7ba5c7-5dfa-49b0-baeb-b0456c78e259.json
+│       ├── config_list_00aa939d-d694-492c-ab67-32269faffdea.json
+│       ├── config_list_032b8dd6-6add-40f4-9167-1bbf790619af.json
+│       ├── config_list_0b4276c1-eaf9-46b6-84aa-5682e587f7e7.json
+│       ├── config_list_5b7ba5c7-5dfa-49b0-baeb-b0456c78e259.json
+│       ├── config_list_6211d5f0-b120-407e-9784-2695339f89fc.json
+│       ├── config_list_67d3bc08-2e28-47a8-a583-b2e3ca43331a.json
+│       ├── config_list_970a9343-490a-4813-8c15-14d83b72441d.json
+│       ├── config_list_d7411d22-8760-4012-885a-8784ee0ca8c0.json
+│       └── config_list_fa0d9cc1-be35-4b8a-b497-b97e04954479.json
+├── batch_job_bf_processed.json
+├── batch_job_bf.template.json
+├── batch_job_pf_processed.json
+├── batch_job_pf.template.json
+├── batch_outputs
+│   └── moved_to_google_drive
+├── Bellman filter replication code
+│   ├── Section 10 replication code
+│   │   ├── ~$results.xlsx
+│   │   ├── ~$SPX results.xlsx
+│   │   ├── Bellman_filter.m
+│   │   ├── hessian1_expected.m
+│   │   ├── hessian1.m
+│   │   ├── hessian2.m
+│   │   ├── link.m
+│   │   ├── logpdf.m
+│   │   ├── MAIN_estimation_Bellman_filter.m
+│   │   ├── MAIN_estimation_particle_filter.m
+│   │   ├── NegativeLogLikelihood.m
+│   │   ├── nonlinearConstraint.m
+│   │   ├── num_grad.m
+│   │   ├── num_hess.m
+│   │   ├── particlefilter2.m
+│   │   ├── particlefilter.m
+│   │   ├── pdf_normal.m
+│   │   ├── resample.m
+│   │   ├── score1.m
+│   │   ├── score2.m
+│   │   └── theta.m
+│   ├── Section 8 replication code
+│   │   ├── BellmanfilterLL.m
+│   │   ├── Bellmanfilter.m
+│   │   ├── Bellmansmoother.m
+│   │   ├── LLt
+│   │   │   ├── expinfo.m
+│   │   │   ├── gendata.m
+│   │   │   ├── link.m
+│   │   │   ├── logpdf.m
+│   │   │   ├── pdf.m
+│   │   │   ├── realinfo.m
+│   │   │   ├── score.m
+│   │   │   └── truevals.m
+│   │   ├── MAIN_FILE.m
+│   │   ├── NegB
+│   │   │   ├── expinfo.m
+│   │   │   ├── gendata.m
+│   │   │   ├── link.m
+│   │   │   ├── logpdf.m
+│   │   │   ├── pdf.m
+│   │   │   ├── realinfo.m
+│   │   │   ├── score.m
+│   │   │   └── truevals.m
+│   │   ├── particlefilter.m
+│   │   ├── Poisson
+│   │   │   ├── expinfo.m
+│   │   │   ├── gendata.m
+│   │   │   ├── link.m
+│   │   │   ├── logpdf.m
+│   │   │   ├── pdf.m
+│   │   │   ├── realinfo.m
+│   │   │   ├── score.m
+│   │   │   └── truevals.m
+│   │   ├── resample.m
+│   │   ├── SCDe
+│   │   │   ├── expinfo.m
+│   │   │   ├── gendata.m
+│   │   │   ├── link.m
+│   │   │   ├── logpdf.m
+│   │   │   ├── pdf.m
+│   │   │   ├── realinfo.m
+│   │   │   ├── score.m
+│   │   │   └── truevals.m
+│   │   ├── SCDg
+│   │   │   ├── expinfo.m
+│   │   │   ├── gendata.m
+│   │   │   ├── link.m
+│   │   │   ├── logpdf.m
+│   │   │   ├── pdf.m
+│   │   │   ├── realinfo.m
+│   │   │   ├── score.m
+│   │   │   └── truevals.m
+│   │   ├── SCDw
+│   │   │   ├── expinfo.m
+│   │   │   ├── gendata.m
+│   │   │   ├── link.m
+│   │   │   ├── logpdf.m
+│   │   │   ├── pdf.m
+│   │   │   ├── realinfo.m
+│   │   │   ├── score.m
+│   │   │   └── truevals.m
+│   │   ├── SCg
+│   │   │   ├── expinfo.m
+│   │   │   ├── gendata.m
+│   │   │   ├── link.m
+│   │   │   ├── logpdf.m
+│   │   │   ├── pdf.m
+│   │   │   ├── realinfo.m
+│   │   │   ├── score.m
+│   │   │   └── truevals.m
+│   │   ├── SCt
+│   │   │   ├── expinfo.m
+│   │   │   ├── gendata.m
+│   │   │   ├── link.m
+│   │   │   ├── logpdf2.m
+│   │   │   ├── logpdf.m
+│   │   │   ├── pdf2.m
+│   │   │   ├── pdf.m
+│   │   │   ├── realinfo.m
+│   │   │   ├── score.m
+│   │   │   └── truevals.m
+│   │   ├── SVg
+│   │   │   ├── expinfo.m
+│   │   │   ├── gendata.m
+│   │   │   ├── link.m
+│   │   │   ├── logpdf.m
+│   │   │   ├── pdf.m
+│   │   │   ├── realinfo.m
+│   │   │   ├── score.m
+│   │   │   └── truevals.m
+│   │   └── SVt
+│   │       ├── expinfo.m
+│   │       ├── gendata.m
+│   │       ├── link.m
+│   │       ├── logpdf.m
+│   │       ├── pdf.m
+│   │       ├── realinfo.m
+│   │       ├── score.m
+│   │       └── truevals.m
+│   └── Section 9 replication code
+│       ├── Bellman_filter1.m
+│       ├── Bellman_filter1_with_c_set_to_zero.m
+│       ├── Bellman_filter2.m
+│       ├── Bellman_filter2_with_c_set_to_zero.m
+│       ├── clouddata_all.csv
+│       ├── clouddata.mat
+│       ├── clouddata_observed.csv
+│       ├── crps.m
+│       ├── expinfo.m
+│       ├── Figure2_replication_code.m
+│       ├── Figure3_replication_code.m
+│       ├── info.m
+│       ├── link.m
+│       ├── logpdf.m
+│       ├── NegativeLogLikelihood1.m
+│       ├── NegativeLogLikelihood1_with_c_set_to_zero.m
+│       ├── NegativeLogLikelihood2.m
+│       ├── NegativeLogLikelihood2_with_c_set_to_zero.m
+│       ├── num_grad.m
+│       ├── num_hess.m
+│       ├── realinfo.m
+│       ├── score.m
+│       ├── Table10_row3_replication_code.m
+│       ├── Table10_row4_replication_code.m
+│       ├── Table10_row5_replication_code.m
+│       ├── Table10_row6_replication_code.m
+│       ├── Table9_row1_replication_code.m
+│       ├── Table9_row2_replication_code.m
+│       ├── Table9_row3_replication_code.m
+│       └── Table9_row4_replication_code.m
+├── build
+│   ├── bdist.linux-x86_64
+│   └── lib
+│       └── bellman_filter_dfsv
+│           ├── core
+│           │   ├── filters
+│           │   │   ├── base.py
+│           │   │   ├── _bellman_impl.py
+│           │   │   ├── _bellman_optim.py
+│           │   │   ├── bellman.py
+│           │   │   ├── __init__.py
+│           │   │   └── particle.py
+│           │   ├── __init__.py
+│           │   ├── likelihood.py
+│           │   └── simulation.py
+│           ├── __init__.py
+│           ├── models
+│           │   ├── dfsv.py
+│           │   └── __init__.py
+│           └── utils
+│               ├── __init__.py
+│               └── transformations.py
+├── clinerules-default
+├── cloudbatchconfig.txt
+├── data
+├── Data
+│   ├── 5_Industry_Portfolios_Daily.csv
+│   ├── Fama_french
+│   │   ├── 100_Portfolios_10x10.CSV
+│   │   ├── 100_Portfolios_10x10_Daily.csv
+│   │   ├── 100_portfolios_monthly
+│   │   │   ├── Avg_Mkt_Cap.csv
+│   │   │   ├── Avg_Mkt_Cap.parquet
+│   │   │   ├── EW_Returns_Monthly.csv
+│   │   │   ├── EW_Returns_Monthly.parquet
+│   │   │   ├── Num_Firms.csv
+│   │   │   ├── Num_Firms.parquet
+│   │   │   ├── VW_Returns_Monthly.csv
+│   │   │   └── VW_Returns_Monthly.parquet
+│   │   ├── 49_Industry_Portfolios_Daily.csv
+│   │   ├── Avg_Mkt_Cap.parquet
+│   │   ├── EW_Returns_Monthly.parquet
+│   │   ├── Num_Firms.parquet
+│   │   └── VW_Returns_Monthly.parquet
+│   ├── US_index_data.csv
+│   └── Us_index_descriptions.xlsx
+├── Dockerfile
+├── docs
+│   ├── build
+│   │   ├── doctrees
+│   │   │   ├── api
+│   │   │   │   ├── core.doctree
+│   │   │   │   ├── index.doctree
+│   │   │   │   ├── models.doctree
+│   │   │   │   └── utils.doctree
+│   │   │   ├── environment.pickle
+│   │   │   ├── index.doctree
+│   │   │   ├── installation.doctree
+│   │   │   └── usage.doctree
+│   │   └── html
+│   │       ├── api
+│   │       │   ├── core.html
+│   │       │   ├── index.html
+│   │       │   ├── models.html
+│   │       │   └── utils.html
+│   │       ├── genindex.html
+│   │       ├── index.html
+│   │       ├── installation.html
+│   │       ├── _modules
+│   │       │   ├── index.html
+│   │       │   └── qf_thesis
+│   │       │       ├── core
+│   │       │       │   ├── filters
+│   │       │       │   │   ├── base.html
+│   │       │       │   │   ├── bellman.html
+│   │       │       │   │   ├── _bellman_impl.html
+│   │       │       │   │   ├── _bellman_optim.html
+│   │       │       │   │   └── particle.html
+│   │       │       │   └── simulation.html
+│   │       │       ├── models
+│   │       │       │   └── dfsv.html
+│   │       │       └── utils
+│   │       │           └── transformations.html
+│   │       ├── objects.inv
+│   │       ├── py-modindex.html
+│   │       ├── search.html
+│   │       ├── searchindex.js
+│   │       ├── _sources
+│   │       │   ├── api
+│   │       │   │   ├── core.rst.txt
+│   │       │   │   ├── index.rst.txt
+│   │       │   │   ├── models.rst.txt
+│   │       │   │   └── utils.rst.txt
+│   │       │   ├── index.rst.txt
+│   │       │   ├── installation.rst.txt
+│   │       │   └── usage.rst.txt
+│   │       ├── _static
+│   │       │   ├── basic.css
+│   │       │   ├── css
+│   │       │   │   ├── badge_only.css
+│   │       │   │   ├── fonts
+│   │       │   │   │   ├── fontawesome-webfont.eot
+│   │       │   │   │   ├── fontawesome-webfont.svg
+│   │       │   │   │   ├── fontawesome-webfont.ttf
+│   │       │   │   │   ├── fontawesome-webfont.woff
+│   │       │   │   │   ├── fontawesome-webfont.woff2
+│   │       │   │   │   ├── lato-bold-italic.woff
+│   │       │   │   │   ├── lato-bold-italic.woff2
+│   │       │   │   │   ├── lato-bold.woff
+│   │       │   │   │   ├── lato-bold.woff2
+│   │       │   │   │   ├── lato-normal-italic.woff
+│   │       │   │   │   ├── lato-normal-italic.woff2
+│   │       │   │   │   ├── lato-normal.woff
+│   │       │   │   │   ├── lato-normal.woff2
+│   │       │   │   │   ├── Roboto-Slab-Bold.woff
+│   │       │   │   │   ├── Roboto-Slab-Bold.woff2
+│   │       │   │   │   ├── Roboto-Slab-Regular.woff
+│   │       │   │   │   └── Roboto-Slab-Regular.woff2
+│   │       │   │   └── theme.css
+│   │       │   ├── doctools.js
+│   │       │   ├── documentation_options.js
+│   │       │   ├── file.png
+│   │       │   ├── fonts
+│   │       │   │   ├── Lato
+│   │       │   │   │   ├── lato-bold.eot
+│   │       │   │   │   ├── lato-bolditalic.eot
+│   │       │   │   │   ├── lato-bolditalic.ttf
+│   │       │   │   │   ├── lato-bolditalic.woff
+│   │       │   │   │   ├── lato-bolditalic.woff2
+│   │       │   │   │   ├── lato-bold.ttf
+│   │       │   │   │   ├── lato-bold.woff
+│   │       │   │   │   ├── lato-bold.woff2
+│   │       │   │   │   ├── lato-italic.eot
+│   │       │   │   │   ├── lato-italic.ttf
+│   │       │   │   │   ├── lato-italic.woff
+│   │       │   │   │   ├── lato-italic.woff2
+│   │       │   │   │   ├── lato-regular.eot
+│   │       │   │   │   ├── lato-regular.ttf
+│   │       │   │   │   ├── lato-regular.woff
+│   │       │   │   │   └── lato-regular.woff2
+│   │       │   │   └── RobotoSlab
+│   │       │   │       ├── roboto-slab-v7-bold.eot
+│   │       │   │       ├── roboto-slab-v7-bold.ttf
+│   │       │   │       ├── roboto-slab-v7-bold.woff
+│   │       │   │       ├── roboto-slab-v7-bold.woff2
+│   │       │   │       ├── roboto-slab-v7-regular.eot
+│   │       │   │       ├── roboto-slab-v7-regular.ttf
+│   │       │   │       ├── roboto-slab-v7-regular.woff
+│   │       │   │       └── roboto-slab-v7-regular.woff2
+│   │       │   ├── jquery.js
+│   │       │   ├── js
+│   │       │   │   ├── badge_only.js
+│   │       │   │   ├── theme.js
+│   │       │   │   └── versions.js
+│   │       │   ├── language_data.js
+│   │       │   ├── minus.png
+│   │       │   ├── plus.png
+│   │       │   ├── pygments.css
+│   │       │   ├── searchtools.js
+│   │       │   ├── sphinx_highlight.js
+│   │       │   └── _sphinx_javascript_frameworks_compat.js
+│   │       └── usage.html
+│   ├── make.bat
+│   ├── Makefile
+│   └── source
+│       ├── api
+│       │   ├── core.rst
+│       │   ├── index.rst
+│       │   ├── models.rst
+│       │   └── utils.rst
+│       ├── conf.py
+│       ├── index.rst
+│       ├── installation.rst
+│       └── usage.rst
+├── examples
+│   ├── 01_dfsv_simulation.py
+│   ├── 02_basic_filtering.py
+│   ├── 03_parameter_optimization.py
+│   ├── 04_parameter_transformation.py
+│   ├── 05_optimizer_comparison.py
+│   ├── 06_real_data_application.py
+│   ├── 06_scheduler_comparison.py
+│   ├── 06_scheduler_comparison_simple.py
+│   ├── 07_one_cycle_tuning.py
+│   ├── 08_one_cycle_lr_tuning.py
+│   ├── 09_robust_one_cycle.py
+│   ├── 10_advanced_stability_techniques.py
+│   ├── __pycache__
+│   │   └── test_lax_while_optimization.cpython-313-pytest-8.3.5.pyc
+│   ├── README.md
+│   └── test_lax_while_optimization.py
+├── figure2.png
+├── figure3.png
+├── figure4.png
+├── figure5.png
+├── Figures
+│   ├── figure1_returns_timeseries.png
+│   └── figure2_avg_correlation_heatmap.png
+├── final_out
+│   ├── eda
+│   │   ├── figure1_returns_timeseries.png
+│   │   ├── figure2_avg_correlation_heatmap.png
+│   │   ├── figure3_avg_characteristics_timeseries.png
+│   │   ├── figure4_avg_mkt_cap_by_size.png
+│   │   ├── figure5_pca_scree_plot.png
+│   │   ├── pca_variance_explained.csv
+│   │   ├── table1_summary_stats_returns.tex
+│   │   └── table2_summary_stats_characteristics.tex
+│   ├── empirical
+│   │   └── insample
+│   │       ├── bif
+│   │       │   ├── data
+│   │       │   │   └── date_index.txt
+│   │       │   ├── diagnostic_results.json
+│   │       │   ├── extended_metrics.json
+│   │       │   ├── figures
+│   │       │   │   ├── average_correlation.png
+│   │       │   │   ├── factor_1.png
+│   │       │   │   ├── factor_2.png
+│   │       │   │   ├── factor_3.png
+│   │       │   │   ├── factor_4.png
+│   │       │   │   ├── factor_5.png
+│   │       │   │   ├── filtered_states.png
+│   │       │   │   ├── generalized_variance.png
+│   │       │   │   ├── lambda_heatmap_interactive.png
+│   │       │   │   ├── lambda_heatmap.png
+│   │       │   │   ├── logvol_1.png
+│   │       │   │   ├── logvol_2.png
+│   │       │   │   ├── logvol_3.png
+│   │       │   │   ├── logvol_4.png
+│   │       │   │   ├── logvol_5.png
+│   │       │   │   ├── phi_f_heatmap_interactive.png
+│   │       │   │   ├── phi_f_heatmap.png
+│   │       │   │   ├── phi_h_heatmap_interactive.png
+│   │       │   │   ├── phi_h_heatmap.png
+│   │       │   │   └── variance_decomposition.png
+│   │       │   ├── metadata.json
+│   │       │   ├── metrics_summary.json
+│   │       │   ├── residual_analysis
+│   │       │   │   ├── garch_parameter_analysis.csv
+│   │       │   │   ├── initial_aggregated_pass_rates.json
+│   │       │   │   ├── initial_detailed_results.json
+│   │       │   │   └── test_pass_rate_comparison.csv
+│   │       │   └── standardized_residuals.csv
+│   │       ├── comparison
+│   │       │   ├── average_correlation_comparison.pdf
+│   │       │   ├── average_correlation_comparison.png
+│   │       │   ├── demeaned_log_determinant_comparison.pdf
+│   │       │   ├── demeaned_log_determinant_comparison.png
+│   │       │   ├── generalized_variance_comparison.pdf
+│   │       │   ├── generalized_variance_comparison.png
+│   │       │   ├── log_determinant_comparison.pdf
+│   │       │   ├── log_determinant_comparison.png
+│   │       │   ├── model_metrics_data.json
+│   │       │   ├── normalized_log_determinant_comparison.pdf
+│   │       │   └── normalized_log_determinant_comparison.png
+│   │       ├── dcc
+│   │       │   ├── metrics_summary.json
+│   │       │   └── standardized_residuals.csv
+│   │       ├── factorcv
+│   │       │   ├── data
+│   │       │   │   ├── date_index.txt
+│   │       │   │   └── model_metadata.json
+│   │       │   ├── metrics_summary.json
+│   │       │   └── standardized_residuals.csv
+│   │       └── pf
+│   │           ├── data
+│   │           │   └── date_index.txt
+│   │           ├── diagnostic_results.json
+│   │           ├── extended_metrics.json
+│   │           ├── figures
+│   │           │   ├── average_correlation.png
+│   │           │   ├── factor_1.png
+│   │           │   ├── factor_2.png
+│   │           │   ├── factor_3.png
+│   │           │   ├── factor_4.png
+│   │           │   ├── factor_5.png
+│   │           │   ├── filtered_states.png
+│   │           │   ├── generalized_variance.png
+│   │           │   ├── lambda_heatmap_interactive.png
+│   │           │   ├── lambda_heatmap.png
+│   │           │   ├── logvol_1.png
+│   │           │   ├── logvol_2.png
+│   │           │   ├── logvol_3.png
+│   │           │   ├── logvol_4.png
+│   │           │   ├── logvol_5.png
+│   │           │   ├── phi_f_heatmap_interactive.png
+│   │           │   ├── phi_f_heatmap.png
+│   │           │   ├── phi_h_heatmap_interactive.png
+│   │           │   ├── phi_h_heatmap.png
+│   │           │   └── variance_decomposition.png
+│   │           ├── metadata.json
+│   │           ├── metrics_summary.json
+│   │           └── standardized_residuals.csv
+│   ├── simulation1_analysis
+│   │   ├── data
+│   │   │   ├── bif_stability_analysis.csv
+│   │   │   └── pf_stability_analysis.csv
+│   │   ├── data_handling_notes.txt
+│   │   ├── figures
+│   │   │   ├── heatmap_corr_f_bif.png
+│   │   │   ├── heatmap_corr_f_pf20000.png
+│   │   │   ├── heatmap_rmse_h_bif.png
+│   │   │   ├── heatmap_rmse_h_pf20000.png
+│   │   │   ├── heatmap_time_bif.png
+│   │   │   ├── heatmap_time_pf20000.png
+│   │   │   ├── median_corr_f_vs_K_N50_color.png
+│   │   │   ├── median_corr_f_vs_K_N50_detail.png
+│   │   │   ├── median_corr_h_vs_K_N50_color.png
+│   │   │   ├── median_corr_h_vs_K_N50_detail.png
+│   │   │   ├── median_rmse_f_vs_K_N50_color.png
+│   │   │   ├── median_rmse_f_vs_K_N50_detail.png
+│   │   │   ├── median_rmse_h_vs_K_N50_color.png
+│   │   │   ├── median_rmse_h_vs_K_N50_detail.png
+│   │   │   ├── median_time_vs_K_N50_color.png
+│   │   │   ├── median_time_vs_K_N50_detail.png
+│   │   │   ├── median_time_vs_N_K5_color.png
+│   │   │   ├── median_time_vs_N_K5_detail.png
+│   │   │   ├── stability_ratio_f_vs_K_N50_log.png
+│   │   │   └── tradeoff_rmse_h_vs_time.png
+│   │   └── tables
+│   │       ├── bif_stability_summary.tex
+│   │       ├── computational_performance_summary.tex
+│   │       ├── median_timing_summary.tex
+│   │       └── pf_stability_summary.tex
+│   └── simulation2_analysis
+│       ├── analysis_agg_scalars.csv
+│       ├── analysis_full_data.csv
+│       ├── eigenvalue_distributions.pdf
+│       ├── eigenvalue_distributions.png
+│       ├── error_scaling_accuracy_parameter_estimation_lambda_r_rmse.pdf
+│       ├── error_scaling_accuracy_parameter_estimation_lambda_r_rmse.png
+│       ├── error_scaling_accuracy_parameter_estimation_mu_rmse.pdf
+│       ├── error_scaling_accuracy_parameter_estimation_mu_rmse.png
+│       ├── error_scaling_accuracy_parameter_estimation_Phi_f_rmse.pdf
+│       ├── error_scaling_accuracy_parameter_estimation_Phi_f_rmse.png
+│       ├── error_scaling_accuracy_parameter_estimation_Phi_h_rmse.pdf
+│       ├── error_scaling_accuracy_parameter_estimation_Phi_h_rmse.png
+│       ├── error_scaling_accuracy_parameter_estimation_Q_h_rmse.pdf
+│       ├── error_scaling_accuracy_parameter_estimation_Q_h_rmse.png
+│       ├── error_scaling_accuracy_parameter_estimation_sigma2_rmse.pdf
+│       ├── error_scaling_accuracy_parameter_estimation_sigma2_rmse.png
+│       ├── error_scaling_accuracy_state_estimation_factor_rmse_mean.pdf
+│       ├── error_scaling_accuracy_state_estimation_factor_rmse_mean.png
+│       ├── error_scaling_accuracy_state_estimation_volatility_rmse_mean.pdf
+│       ├── error_scaling_accuracy_state_estimation_volatility_rmse_mean.png
+│       ├── scalar_metrics_analysis.csv
+│       ├── scatter_lambda_r_comparison.pdf
+│       ├── scatter_lambda_r_comparison.png
+│       ├── scatter_mu_comparison.pdf
+│       ├── scatter_mu_comparison.png
+│       ├── scatter_Phi_f_comparison.pdf
+│       ├── scatter_Phi_f_comparison.png
+│       ├── scatter_Phi_h_comparison.pdf
+│       ├── scatter_Phi_h_comparison.png
+│       ├── scatter_Q_h_comparison.pdf
+│       ├── scatter_Q_h_comparison.png
+│       ├── scatter_sigma2_comparison.pdf
+│       ├── scatter_sigma2_comparison.png
+│       ├── summary_param_errors_N10_K2_T1000_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N10_K2_T2000_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N10_K2_T500_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N10_K3_T1000_fixmu.csv_20250422_021831.csv
+│       ├── summary_param_errors_N10_K3_T1000_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N10_K3_T2000_fixmu.csv_20250422_021831.csv
+│       ├── summary_param_errors_N10_K3_T2000_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N10_K3_T500_fixmu.csv_20250422_021831.csv
+│       ├── summary_param_errors_N10_K3_T500_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N10_K5_T1000_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N10_K5_T2000_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N10_K5_T500_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N15_K2_T1000_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N15_K2_T2000_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N15_K2_T500_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N15_K3_T1000_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N15_K3_T2000_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N15_K3_T500_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N15_K5_T1000_fixmu.csv_20250422_021831.csv
+│       ├── summary_param_errors_N15_K5_T1000_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N15_K5_T2000_fixmu.csv_20250422_021831.csv
+│       ├── summary_param_errors_N15_K5_T2000_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N15_K5_T500_fixmu.csv_20250422_021831.csv
+│       ├── summary_param_errors_N15_K5_T500_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N50_K5_T1000_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N50_K5_T2000_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N50_K5_T500_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N5_K2_T1000_fixmu.csv_20250422_021831.csv
+│       ├── summary_param_errors_N5_K2_T1000_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N5_K2_T2000_fixmu.csv_20250422_021831.csv
+│       ├── summary_param_errors_N5_K2_T2000_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N5_K2_T500_fixmu.csv_20250422_021831.csv
+│       ├── summary_param_errors_N5_K2_T500_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N5_K3_T1000_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N5_K3_T2000_freeμ.csv_20250422_021831.csv
+│       ├── summary_param_errors_N5_K3_T500_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N10_K2_T1000_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N10_K2_T2000_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N10_K2_T500_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N10_K3_T1000_fixmu.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N10_K3_T1000_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N10_K3_T2000_fixmu.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N10_K3_T2000_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N10_K3_T500_fixmu.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N10_K3_T500_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N10_K5_T1000_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N10_K5_T2000_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N10_K5_T500_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N15_K2_T1000_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N15_K2_T2000_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N15_K2_T500_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N15_K3_T1000_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N15_K3_T2000_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N15_K3_T500_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N15_K5_T1000_fixmu.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N15_K5_T1000_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N15_K5_T2000_fixmu.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N15_K5_T2000_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N15_K5_T500_fixmu.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N15_K5_T500_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N50_K5_T1000_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N50_K5_T2000_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N50_K5_T500_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N5_K2_T1000_fixmu.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N5_K2_T1000_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N5_K2_T2000_fixmu.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N5_K2_T2000_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N5_K2_T500_fixmu.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N5_K2_T500_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N5_K3_T1000_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N5_K3_T2000_freeμ.csv_20250422_021831.csv
+│       ├── summary_scalar_metrics_N5_K3_T500_freeμ.csv_20250422_021831.csv
+│       ├── time_scaling_K.pdf
+│       ├── time_scaling_K.png
+│       ├── time_scaling_N.pdf
+│       ├── time_scaling_N.png
+│       ├── time_scaling_T.pdf
+│       └── time_scaling_T.png
+├── Gboekestijn_thesis_BellmanFilterDFSV_final.pdf
+├── memory-bank
+│   ├── activeContext.md
+│   ├── completed
+│   │   ├── bif_prior_optimizer_test_plan.md
+│   │   ├── code_restructure_plan_06042025.md
+│   │   ├── date_format_update_plan_06042025.md
+│   │   ├── filter_api_alignment_plan.md
+│   │   ├── full_phi_hybrid_plan_07-04-2025.md
+│   │   ├── full_phi_implementation_plan_07-04-2025.md
+│   │   ├── identifiability_fix_final_plan.md
+│   │   ├── jit_refactoring_plan.md
+│   │   ├── mu_identifiability_investigation_plan.md
+│   │   ├── prior_implementation_plan.md
+│   │   ├── project_rename_plan.md
+│   │   ├── refactoring_plan.md
+│   │   ├── src_cleanup_plan.md
+│   │   ├── test_unification_plan.md
+│   │   ├── thesis_modes_description_07-04-2025.md
+│   │   ├── thesis_modes_description_07-04-2025_v4.md
+│   │   ├── transformation_experiment_plan.md
+│   │   └── writingstandards_full.md
+│   ├── decisionLog.md
+│   ├── optimizer_stability_findings.md
+│   ├── plans
+│   │   ├── 08-04-2025_consolidation_plan.md
+│   │   ├── aggregate_results_plan_14-04-2025.md
+│   │   ├── aggregate_simulation1_plan_20-04-2025.md
+│   │   ├── batch_optimization_study_plan_11-04-2025.md
+│   │   ├── batch_submission_script_plan_13-04-2025.md
+│   │   ├── bif_em_implementation_plan_07-04-2025.md
+│   │   ├── bif_residual_analysis_plan_29-04-2025.md
+│   │   ├── dcc_garch_implementation_plan_25-04-2025.md
+│   │   ├── documentation_enhancement_11-04-2025.md
+│   │   ├── documentation_enhancement_plan_11-04-2025.md
+│   │   ├── eda_output_refactor_plan_24-04-2025.md
+│   │   ├── factor_cv_implementation_plan_25-04-2025.md
+│   │   ├── methodology_update_notes_07-04-2025.md
+│   │   ├── optimization_refactor_plan_09-04-2025.md
+│   │   ├── optimization_stability_plan_11-04-2025.md
+│   │   ├── parameter_recovery_check_plan_07-04-2025.md
+│   │   ├── pf_optimization_verification_plan_08-04-2025.md
+│   │   ├── refactor_analyze_optimization_results_21-04-2025.md
+│   │   ├── results_analysis_plan_15-04-2025.md
+│   │   ├── results_analysis_refinement_plan_15-04-2025.md
+│   │   ├── results_analysis_refinement_plan_v8_15-04-2025.md
+│   │   ├── results_analysis_report_plan_16-04-2025.md
+│   │   ├── simulation1_analysis_plan_20-04-2025.md
+│   │   ├── thesis_code_submission_plan_30-04-2025.md
+│   │   ├── thesis_code_submission_plan_30-04-2025_v2.md
+│   │   ├── thesis_modes_description_07-04-2025_v5.md
+│   │   ├── thesis_update_summary_plan_apr2025.md
+│   │   └── time_scaling_plot_modification_plan_22-04-2025_0117.md
+│   ├── productContext.md
+│   ├── progress.md
+│   ├── systemPatterns.md
+│   ├── thesis_timeline.md
+│   └── writingstandards.md
+├── notebooks
+│   ├── debug_bellman.ipynb
+│   ├── likelihood.ipynb
+│   ├── optimizetest.ipynb
+│   ├── sim_gen.ipynb
+│   ├── simulation_analysis.ipynb
+│   └── time_vs_N_plot.ipynb
+├── outputs
+│   ├── aggregated_optimization_metrics_14-04-2025.csv
+│   ├── aggregated_optimization_metrics_21-04-2025.csv
+│   ├── aggregated_optimization_params_14-04-2025.npz
+│   ├── aggregated_optimization_params_21-04-2025.npz
+│   ├── aggregated_simulation_results.csv
+│   ├── aggregated_simulation_results.txt
+│   ├── analysis_plots_20250416_022441
+│   │   ├── analysis_agg_param_errors_20250416_022543.csv
+│   │   ├── analysis_agg_scalars_20250416_022543.csv
+│   │   ├── analysis_full_data_20250416_022543.csv
+│   │   ├── analysisN10K3T2000.csv
+│   │   ├── boxplot_accuracy_state_estimation_factor_rmse_mean.png
+│   │   ├── boxplot_accuracy_state_estimation_volatility_rmse_mean.png
+│   │   ├── boxplot_param_Phi_f_frob_diff.png
+│   │   ├── eigenval_dist_Phi_f_k2.png
+│   │   ├── eigenval_dist_Phi_h_k2.png
+│   │   ├── heatmap_Phi_f_N10-K3-T1000_comparison.png
+│   │   ├── heatmap_Phi_f_N10-K3-T2000_comparison.png
+│   │   ├── heatmap_Phi_f_N10-K3-T500_comparison.png
+│   │   ├── heatmap_Phi_f_N15-K5-T1000_comparison.png
+│   │   ├── heatmap_Phi_f_N15-K5-T2000_comparison.png
+│   │   ├── heatmap_Phi_f_N15-K5-T500_comparison.png
+│   │   ├── heatmap_Phi_f_N5-K2-T1000_comparison.png
+│   │   ├── heatmap_Phi_f_N5-K2-T2000_comparison.png
+│   │   ├── heatmap_Phi_f_N5-K2-T500_comparison.png
+│   │   ├── heatmap_Phi_h_N10-K3-T1000_comparison.png
+│   │   ├── heatmap_Phi_h_N10-K3-T2000_comparison.png
+│   │   ├── heatmap_Phi_h_N10-K3-T500_comparison.png
+│   │   ├── heatmap_Phi_h_N15-K5-T1000_comparison.png
+│   │   ├── heatmap_Phi_h_N15-K5-T2000_comparison.png
+│   │   ├── heatmap_Phi_h_N15-K5-T500_comparison.png
+│   │   ├── heatmap_Phi_h_N5-K2-T1000_comparison.png
+│   │   ├── heatmap_Phi_h_N5-K2-T2000_comparison.png
+│   │   ├── heatmap_Phi_h_N5-K2-T500_comparison.png
+│   │   ├── scalar_metrics_analysis.csv
+│   │   ├── scatter_lambda_r_comparison.pdf
+│   │   ├── scatter_lambda_r_comparison.png
+│   │   ├── scatter_mu_comparison.pdf
+│   │   ├── scatter_mu_comparison.png
+│   │   ├── scatter_Phi_f_comparison.pdf
+│   │   ├── scatter_Phi_f_comparison.png
+│   │   ├── scatter_Phi_h_comparison.pdf
+│   │   ├── scatter_Phi_h_comparison.png
+│   │   ├── scatter_Q_h_comparison.pdf
+│   │   ├── scatter_Q_h_comparison.png
+│   │   ├── scatter_sigma2_comparison.pdf
+│   │   ├── scatter_sigma2_comparison.png
+│   │   ├── summary_scalar_metrics_N10_K3_T1000_fixmu_20250416_022543.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T1000_freeμ_20250416_022543.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T2000_fixmu_20250416_022543.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T2000_freeμ_20250416_022543.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T500_fixmu_20250416_022543.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T500_freeμ_20250416_022543.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T1000_fixmu_20250416_022543.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T1000_freeμ_20250416_022543.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T2000_fixmu_20250416_022543.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T2000_freeμ_20250416_022543.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T500_fixmu_20250416_022543.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T500_freeμ_20250416_022543.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T1000_fixmu_20250416_022543.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T1000_freeμ_20250416_022543.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T2000_fixmu_20250416_022543.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T2000_freeμ_20250416_022543.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T500_fixmu_20250416_022543.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T500_freeμ_20250416_022543.csv
+│   │   └── time_scaling.png
+│   ├── analysis_plots_20250417_000315
+│   │   ├── boxplot_accuracy_state_estimation_factor_rmse_mean.png
+│   │   ├── boxplot_accuracy_state_estimation_volatility_rmse_mean.png
+│   │   ├── boxplot_param_Phi_f_frob_diff.png
+│   │   ├── eigenval_dist_Phi_f_k2.png
+│   │   ├── eigenval_dist_Phi_h_k2.png
+│   │   ├── fix_mu_param_errors.png
+│   │   ├── heatmap_Phi_f_N10-K3-T1000_comparison.png
+│   │   ├── heatmap_Phi_f_N10-K3-T2000_comparison.png
+│   │   ├── heatmap_Phi_f_N10-K3-T500_comparison.png
+│   │   ├── heatmap_Phi_f_N15-K5-T1000_comparison.png
+│   │   ├── heatmap_Phi_f_N15-K5-T2000_comparison.png
+│   │   ├── heatmap_Phi_f_N15-K5-T500_comparison.png
+│   │   ├── heatmap_Phi_f_N5-K2-T1000_comparison.png
+│   │   ├── heatmap_Phi_f_N5-K2-T2000_comparison.png
+│   │   ├── heatmap_Phi_f_N5-K2-T500_comparison.png
+│   │   ├── heatmap_Phi_h_N10-K3-T1000_comparison.png
+│   │   ├── heatmap_Phi_h_N10-K3-T2000_comparison.png
+│   │   ├── heatmap_Phi_h_N10-K3-T500_comparison.png
+│   │   ├── heatmap_Phi_h_N15-K5-T1000_comparison.png
+│   │   ├── heatmap_Phi_h_N15-K5-T2000_comparison.png
+│   │   ├── heatmap_Phi_h_N15-K5-T500_comparison.png
+│   │   ├── heatmap_Phi_h_N5-K2-T1000_comparison.png
+│   │   ├── heatmap_Phi_h_N5-K2-T2000_comparison.png
+│   │   ├── heatmap_Phi_h_N5-K2-T500_comparison.png
+│   │   ├── scalar_metrics_analysis.csv
+│   │   ├── scatter_lambda_r_comparison.pdf
+│   │   ├── scatter_lambda_r_comparison.png
+│   │   ├── scatter_mu_comparison.pdf
+│   │   ├── scatter_mu_comparison.png
+│   │   ├── scatter_Phi_f_comparison.pdf
+│   │   ├── scatter_Phi_f_comparison.png
+│   │   ├── scatter_Phi_h_comparison.pdf
+│   │   ├── scatter_Phi_h_comparison.png
+│   │   ├── scatter_Q_h_comparison.pdf
+│   │   ├── scatter_Q_h_comparison.png
+│   │   ├── scatter_sigma2_comparison.pdf
+│   │   ├── scatter_sigma2_comparison.png
+│   │   └── time_scaling.png
+│   ├── analysis_plots_20250417_000412
+│   │   ├── analysis_agg_param_errors_20250417_000450.csv
+│   │   ├── analysis_agg_scalars_20250417_000450.csv
+│   │   ├── analysis_full_data_20250417_000450.csv
+│   │   ├── boxplot_accuracy_state_estimation_factor_rmse_mean.png
+│   │   ├── boxplot_accuracy_state_estimation_volatility_rmse_mean.png
+│   │   ├── boxplot_param_Phi_f_frob_diff.png
+│   │   ├── eigenval_dist_Phi_f_k2.png
+│   │   ├── eigenval_dist_Phi_h_k2.png
+│   │   ├── fix_mu_analysis.csv
+│   │   ├── fix_mu_param_errors.png
+│   │   ├── fix_mu_time_series_parameter_errors.png
+│   │   ├── fix_mu_time_series_state_estimation.png
+│   │   ├── fix_mu_time_series_timing.png
+│   │   ├── heatmap_Phi_f_N10-K3-T1000_comparison.png
+│   │   ├── heatmap_Phi_f_N10-K3-T2000_comparison.png
+│   │   ├── heatmap_Phi_f_N10-K3-T500_comparison.png
+│   │   ├── heatmap_Phi_f_N15-K5-T1000_comparison.png
+│   │   ├── heatmap_Phi_f_N15-K5-T2000_comparison.png
+│   │   ├── heatmap_Phi_f_N15-K5-T500_comparison.png
+│   │   ├── heatmap_Phi_f_N5-K2-T1000_comparison.png
+│   │   ├── heatmap_Phi_f_N5-K2-T2000_comparison.png
+│   │   ├── heatmap_Phi_f_N5-K2-T500_comparison.png
+│   │   ├── heatmap_Phi_h_N10-K3-T1000_comparison.png
+│   │   ├── heatmap_Phi_h_N10-K3-T2000_comparison.png
+│   │   ├── heatmap_Phi_h_N10-K3-T500_comparison.png
+│   │   ├── heatmap_Phi_h_N15-K5-T1000_comparison.png
+│   │   ├── heatmap_Phi_h_N15-K5-T2000_comparison.png
+│   │   ├── heatmap_Phi_h_N15-K5-T500_comparison.png
+│   │   ├── heatmap_Phi_h_N5-K2-T1000_comparison.png
+│   │   ├── heatmap_Phi_h_N5-K2-T2000_comparison.png
+│   │   ├── heatmap_Phi_h_N5-K2-T500_comparison.png
+│   │   ├── scalar_metrics_analysis.csv
+│   │   ├── scatter_lambda_r_comparison.pdf
+│   │   ├── scatter_lambda_r_comparison.png
+│   │   ├── scatter_mu_comparison.pdf
+│   │   ├── scatter_mu_comparison.png
+│   │   ├── scatter_Phi_f_comparison.pdf
+│   │   ├── scatter_Phi_f_comparison.png
+│   │   ├── scatter_Phi_h_comparison.pdf
+│   │   ├── scatter_Phi_h_comparison.png
+│   │   ├── scatter_Q_h_comparison.pdf
+│   │   ├── scatter_Q_h_comparison.png
+│   │   ├── scatter_sigma2_comparison.pdf
+│   │   ├── scatter_sigma2_comparison.png
+│   │   ├── summary_scalar_metrics_N10_K3_T1000_fixmu_20250417_000449.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T1000_freeμ_20250417_000449.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T2000_fixmu_20250417_000449.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T2000_freeμ_20250417_000449.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T500_fixmu_20250417_000449.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T500_freeμ_20250417_000449.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T1000_fixmu_20250417_000449.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T1000_freeμ_20250417_000449.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T2000_fixmu_20250417_000449.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T2000_freeμ_20250417_000449.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T500_fixmu_20250417_000449.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T500_freeμ_20250417_000449.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T1000_fixmu_20250417_000449.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T1000_freeμ_20250417_000449.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T2000_fixmu_20250417_000449.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T2000_freeμ_20250417_000449.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T500_fixmu_20250417_000449.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T500_freeμ_20250417_000449.csv
+│   │   └── time_scaling.png
+│   ├── analysis_plots_20250421_183355
+│   │   ├── analysis_agg_param_errors_20250421_183441.csv
+│   │   ├── analysis_agg_scalars_20250421_183441.csv
+│   │   ├── analysis_full_data_20250421_183441.csv
+│   │   ├── boxplot_accuracy_state_estimation_factor_rmse_mean.png
+│   │   ├── boxplot_accuracy_state_estimation_volatility_rmse_mean.png
+│   │   ├── boxplot_param_Phi_f_frob_diff.png
+│   │   ├── eigenval_dist_Phi_f_k2.png
+│   │   ├── eigenval_dist_Phi_h_k2.png
+│   │   ├── fix_mu_analysis.csv
+│   │   ├── fix_mu_param_errors.png
+│   │   ├── fix_mu_time_series_parameter_errors.png
+│   │   ├── fix_mu_time_series_state_estimation.png
+│   │   ├── fix_mu_time_series_timing.png
+│   │   ├── heatmap_Phi_f_N10-K3-T1000_comparison.png
+│   │   ├── heatmap_Phi_f_N10-K3-T2000_comparison.png
+│   │   ├── heatmap_Phi_f_N10-K3-T500_comparison.png
+│   │   ├── heatmap_Phi_f_N15-K5-T1000_comparison.png
+│   │   ├── heatmap_Phi_f_N15-K5-T2000_comparison.png
+│   │   ├── heatmap_Phi_f_N15-K5-T500_comparison.png
+│   │   ├── heatmap_Phi_f_N5-K2-T1000_comparison.png
+│   │   ├── heatmap_Phi_f_N5-K2-T2000_comparison.png
+│   │   ├── heatmap_Phi_f_N5-K2-T500_comparison.png
+│   │   ├── heatmap_Phi_h_N10-K3-T1000_comparison.png
+│   │   ├── heatmap_Phi_h_N10-K3-T2000_comparison.png
+│   │   ├── heatmap_Phi_h_N10-K3-T500_comparison.png
+│   │   ├── heatmap_Phi_h_N15-K5-T1000_comparison.png
+│   │   ├── heatmap_Phi_h_N15-K5-T2000_comparison.png
+│   │   ├── heatmap_Phi_h_N15-K5-T500_comparison.png
+│   │   ├── heatmap_Phi_h_N5-K2-T1000_comparison.png
+│   │   ├── heatmap_Phi_h_N5-K2-T2000_comparison.png
+│   │   ├── heatmap_Phi_h_N5-K2-T500_comparison.png
+│   │   ├── scalar_metrics_analysis.csv
+│   │   ├── scatter_lambda_r_comparison.pdf
+│   │   ├── scatter_lambda_r_comparison.png
+│   │   ├── scatter_mu_comparison.pdf
+│   │   ├── scatter_mu_comparison.png
+│   │   ├── scatter_Phi_f_comparison.pdf
+│   │   ├── scatter_Phi_f_comparison.png
+│   │   ├── scatter_Phi_h_comparison.pdf
+│   │   ├── scatter_Phi_h_comparison.png
+│   │   ├── scatter_Q_h_comparison.pdf
+│   │   ├── scatter_Q_h_comparison.png
+│   │   ├── scatter_sigma2_comparison.pdf
+│   │   ├── scatter_sigma2_comparison.png
+│   │   ├── summary_scalar_metrics_N10_K3_T1000_fixmu_20250421_183441.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T1000_freeμ_20250421_183441.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T2000_fixmu_20250421_183441.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T2000_freeμ_20250421_183441.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T500_fixmu_20250421_183441.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T500_freeμ_20250421_183441.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T1000_fixmu_20250421_183441.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T1000_freeμ_20250421_183441.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T2000_fixmu_20250421_183441.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T2000_freeμ_20250421_183441.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T500_fixmu_20250421_183441.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T500_freeμ_20250421_183441.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T1000_fixmu_20250421_183441.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T1000_freeμ_20250421_183441.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T2000_fixmu_20250421_183441.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T2000_freeμ_20250421_183441.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T500_fixmu_20250421_183441.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T500_freeμ_20250421_183441.csv
+│   │   └── time_scaling.png
+│   ├── analysis_plots_20250422_021754
+│   │   ├── analysis_agg_scalars.csv
+│   │   ├── analysis_full_data.csv
+│   │   ├── eigenvalue_distributions.pdf
+│   │   ├── eigenvalue_distributions.png
+│   │   ├── error_scaling_accuracy_parameter_estimation_lambda_r_rmse.pdf
+│   │   ├── error_scaling_accuracy_parameter_estimation_lambda_r_rmse.png
+│   │   ├── error_scaling_accuracy_parameter_estimation_mu_rmse.pdf
+│   │   ├── error_scaling_accuracy_parameter_estimation_mu_rmse.png
+│   │   ├── error_scaling_accuracy_parameter_estimation_Phi_f_rmse.pdf
+│   │   ├── error_scaling_accuracy_parameter_estimation_Phi_f_rmse.png
+│   │   ├── error_scaling_accuracy_parameter_estimation_Phi_h_rmse.pdf
+│   │   ├── error_scaling_accuracy_parameter_estimation_Phi_h_rmse.png
+│   │   ├── error_scaling_accuracy_parameter_estimation_Q_h_rmse.pdf
+│   │   ├── error_scaling_accuracy_parameter_estimation_Q_h_rmse.png
+│   │   ├── error_scaling_accuracy_parameter_estimation_sigma2_rmse.pdf
+│   │   ├── error_scaling_accuracy_parameter_estimation_sigma2_rmse.png
+│   │   ├── error_scaling_accuracy_state_estimation_factor_rmse_mean.pdf
+│   │   ├── error_scaling_accuracy_state_estimation_factor_rmse_mean.png
+│   │   ├── error_scaling_accuracy_state_estimation_volatility_rmse_mean.pdf
+│   │   ├── error_scaling_accuracy_state_estimation_volatility_rmse_mean.png
+│   │   ├── scalar_metrics_analysis.csv
+│   │   ├── scatter_lambda_r_comparison.pdf
+│   │   ├── scatter_lambda_r_comparison.png
+│   │   ├── scatter_mu_comparison.pdf
+│   │   ├── scatter_mu_comparison.png
+│   │   ├── scatter_Phi_f_comparison.pdf
+│   │   ├── scatter_Phi_f_comparison.png
+│   │   ├── scatter_Phi_h_comparison.pdf
+│   │   ├── scatter_Phi_h_comparison.png
+│   │   ├── scatter_Q_h_comparison.pdf
+│   │   ├── scatter_Q_h_comparison.png
+│   │   ├── scatter_sigma2_comparison.pdf
+│   │   ├── scatter_sigma2_comparison.png
+│   │   ├── summary_param_errors_N10_K2_T1000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N10_K2_T2000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N10_K2_T500_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N10_K3_T1000_fixmu.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N10_K3_T1000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N10_K3_T2000_fixmu.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N10_K3_T2000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N10_K3_T500_fixmu.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N10_K3_T500_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N10_K5_T1000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N10_K5_T2000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N10_K5_T500_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N15_K2_T1000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N15_K2_T2000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N15_K2_T500_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N15_K3_T1000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N15_K3_T2000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N15_K3_T500_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N15_K5_T1000_fixmu.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N15_K5_T1000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N15_K5_T2000_fixmu.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N15_K5_T2000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N15_K5_T500_fixmu.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N15_K5_T500_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N50_K5_T1000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N50_K5_T2000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N50_K5_T500_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N5_K2_T1000_fixmu.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N5_K2_T1000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N5_K2_T2000_fixmu.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N5_K2_T2000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N5_K2_T500_fixmu.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N5_K2_T500_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N5_K3_T1000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N5_K3_T2000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_param_errors_N5_K3_T500_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N10_K2_T1000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N10_K2_T2000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N10_K2_T500_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T1000_fixmu.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T1000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T2000_fixmu.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T2000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T500_fixmu.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N10_K3_T500_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N10_K5_T1000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N10_K5_T2000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N10_K5_T500_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N15_K2_T1000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N15_K2_T2000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N15_K2_T500_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N15_K3_T1000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N15_K3_T2000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N15_K3_T500_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T1000_fixmu.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T1000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T2000_fixmu.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T2000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T500_fixmu.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N15_K5_T500_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N50_K5_T1000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N50_K5_T2000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N50_K5_T500_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T1000_fixmu.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T1000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T2000_fixmu.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T2000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T500_fixmu.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N5_K2_T500_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N5_K3_T1000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N5_K3_T2000_freeμ.csv_20250422_021831.csv
+│   │   ├── summary_scalar_metrics_N5_K3_T500_freeμ.csv_20250422_021831.csv
+│   │   ├── time_scaling_K.pdf
+│   │   ├── time_scaling_K.png
+│   │   ├── time_scaling_N.pdf
+│   │   ├── time_scaling_N.png
+│   │   ├── time_scaling_T.pdf
+│   │   └── time_scaling_T.png
+│   ├── backup_bellman_particle_comparison_N3_K2.png
+│   ├── bellman_particle_comparison_N3_K2.png
+│   ├── bf_visual_comparison.png
+│   ├── bif_fixed_mu_constrained_lambda_results_K2.csv
+│   ├── bigrun
+│   │   ├── info.md
+│   │   ├── optimizer_comparison_resultsbif.csv
+│   │   ├── optimizer_scheduler_comparison_results.csv
+│   │   └── parameter_estimation_errors.csv
+│   ├── constrained_vs_standard_optimization.png
+│   ├── dfsv_test_plot.png
+│   ├── eda
+│   │   ├── figure1_returns_timeseries.png
+│   │   ├── figure2_avg_correlation_heatmap.png
+│   │   ├── figure3_avg_characteristics_timeseries.png
+│   │   ├── figure4_avg_mkt_cap_by_size.png
+│   │   ├── figure5_pca_scree_plot.png
+│   │   ├── pca_variance_explained.csv
+│   │   ├── table1_summary_stats_returns.tex
+│   │   └── table2_summary_stats_characteristics.tex
+│   ├── ekf_visual_comparison.png
+│   ├── empirical
+│   │   └── insample
+│   │       ├── bif
+│   │       │   ├── data
+│   │       │   │   ├── average_correlation.npy
+│   │       │   │   ├── correlation_matrices.npy
+│   │       │   │   ├── date_index.txt
+│   │       │   │   ├── eps_tilde.npy
+│   │       │   │   ├── filtered_states.npy
+│   │       │   │   ├── generalized_variance.npy
+│   │       │   │   ├── Ht.npy
+│   │       │   │   ├── model.pkl
+│   │       │   │   ├── params.pkl
+│   │       │   │   └── variance_components.npz
+│   │       │   ├── diagnostic_results.json
+│   │       │   ├── extended_metrics.json
+│   │       │   ├── figures
+│   │       │   │   ├── average_correlation.png
+│   │       │   │   ├── factor_1.png
+│   │       │   │   ├── factor_2.png
+│   │       │   │   ├── factor_3.png
+│   │       │   │   ├── factor_4.png
+│   │       │   │   ├── factor_5.png
+│   │       │   │   ├── filtered_states.png
+│   │       │   │   ├── generalized_variance.png
+│   │       │   │   ├── lambda_heatmap_interactive.png
+│   │       │   │   ├── lambda_heatmap.png
+│   │       │   │   ├── logvol_1.png
+│   │       │   │   ├── logvol_2.png
+│   │       │   │   ├── logvol_3.png
+│   │       │   │   ├── logvol_4.png
+│   │       │   │   ├── logvol_5.png
+│   │       │   │   ├── phi_f_heatmap_interactive.png
+│   │       │   │   ├── phi_f_heatmap.png
+│   │       │   │   ├── phi_h_heatmap_interactive.png
+│   │       │   │   ├── phi_h_heatmap.png
+│   │       │   │   └── variance_decomposition.png
+│   │       │   ├── metadata.json
+│   │       │   ├── metrics_summary.json
+│   │       │   ├── residual_analysis
+│   │       │   │   ├── garch_parameter_analysis.csv
+│   │       │   │   ├── initial_aggregated_pass_rates.json
+│   │       │   │   ├── initial_detailed_results.json
+│   │       │   │   └── test_pass_rate_comparison.csv
+│   │       │   └── standardized_residuals.csv
+│   │       ├── bif_full_result_20250425_111639.pkl
+│   │       ├── bif_full_result_20250425_112232.pkl
+│   │       ├── bif_predicted_residuals
+│   │       │   ├── data
+│   │       │   │   ├── average_correlation.npy
+│   │       │   │   ├── correlation_matrices.npy
+│   │       │   │   ├── date_index.txt
+│   │       │   │   ├── eps_tilde.npy
+│   │       │   │   ├── filtered_states.npy
+│   │       │   │   ├── generalized_variance.npy
+│   │       │   │   ├── Ht.npy
+│   │       │   │   ├── params.pkl
+│   │       │   │   └── variance_components.npz
+│   │       │   ├── diagnostic_results.json
+│   │       │   ├── extended_metrics.json
+│   │       │   ├── figures
+│   │       │   │   ├── average_correlation.png
+│   │       │   │   ├── factor_1.png
+│   │       │   │   ├── factor_2.png
+│   │       │   │   ├── factor_3.png
+│   │       │   │   ├── factor_4.png
+│   │       │   │   ├── factor_5.png
+│   │       │   │   ├── filtered_states.png
+│   │       │   │   ├── generalized_variance.png
+│   │       │   │   ├── lambda_heatmap.png
+│   │       │   │   ├── logvol_1.png
+│   │       │   │   ├── logvol_2.png
+│   │       │   │   ├── logvol_3.png
+│   │       │   │   ├── logvol_4.png
+│   │       │   │   ├── logvol_5.png
+│   │       │   │   ├── phi_f_heatmap.png
+│   │       │   │   ├── phi_h_heatmap.png
+│   │       │   │   └── variance_decomposition.png
+│   │       │   ├── metadata.json
+│   │       │   ├── metrics_summary.json
+│   │       │   └── standardized_residuals.csv
+│   │       ├── bif_predicted_residuals_results.pkl
+│   │       ├── bif_results.pkl
+│   │       ├── comparison
+│   │       │   ├── average_correlation_comparison.pdf
+│   │       │   ├── average_correlation_comparison.png
+│   │       │   ├── demeaned_log_determinant_comparison.pdf
+│   │       │   ├── demeaned_log_determinant_comparison.png
+│   │       │   ├── generalized_variance_comparison.pdf
+│   │       │   ├── generalized_variance_comparison.png
+│   │       │   ├── log_determinant_comparison.pdf
+│   │       │   ├── log_determinant_comparison.png
+│   │       │   ├── model_metrics_data.json
+│   │       │   ├── model_metrics_data.npz
+│   │       │   ├── normalized_log_determinant_comparison.pdf
+│   │       │   └── normalized_log_determinant_comparison.png
+│   │       ├── dcc
+│   │       │   ├── metrics_summary.json
+│   │       │   └── standardized_residuals.csv
+│   │       ├── factorcv
+│   │       │   ├── data
+│   │       │   │   ├── date_index.txt
+│   │       │   │   ├── eps_tilde.npy
+│   │       │   │   ├── Ht.npy
+│   │       │   │   ├── model_metadata.json
+│   │       │   │   └── model.pkl
+│   │       │   ├── metrics_summary.json
+│   │       │   └── standardized_residuals.csv
+│   │       ├── factorcv_results.pkl
+│   │       ├── pf
+│   │       │   ├── data
+│   │       │   │   ├── average_correlation.npy
+│   │       │   │   ├── correlation_matrices.npy
+│   │       │   │   ├── date_index.txt
+│   │       │   │   ├── eps_tilde.npy
+│   │       │   │   ├── filtered_states.npy
+│   │       │   │   ├── generalized_variance.npy
+│   │       │   │   ├── Ht.npy
+│   │       │   │   ├── params.pkl
+│   │       │   │   └── variance_components.npz
+│   │       │   ├── diagnostic_results.json
+│   │       │   ├── extended_metrics.json
+│   │       │   ├── figures
+│   │       │   │   ├── average_correlation.png
+│   │       │   │   ├── factor_1.png
+│   │       │   │   ├── factor_2.png
+│   │       │   │   ├── factor_3.png
+│   │       │   │   ├── factor_4.png
+│   │       │   │   ├── factor_5.png
+│   │       │   │   ├── filtered_states.png
+│   │       │   │   ├── generalized_variance.png
+│   │       │   │   ├── lambda_heatmap_interactive.png
+│   │       │   │   ├── lambda_heatmap.png
+│   │       │   │   ├── logvol_1.png
+│   │       │   │   ├── logvol_2.png
+│   │       │   │   ├── logvol_3.png
+│   │       │   │   ├── logvol_4.png
+│   │       │   │   ├── logvol_5.png
+│   │       │   │   ├── phi_f_heatmap_interactive.png
+│   │       │   │   ├── phi_f_heatmap.png
+│   │       │   │   ├── phi_h_heatmap_interactive.png
+│   │       │   │   ├── phi_h_heatmap.png
+│   │       │   │   └── variance_decomposition.png
+│   │       │   ├── metadata.json
+│   │       │   ├── metrics_summary.json
+│   │       │   └── standardized_residuals.csv
+│   │       └── pf_results.pkl
+│   ├── estimated_params_BIF_DampedTrustRegionBFGS_Transformed_FreeMu_Success.pkl
+│   ├── estimated_params_PF_ArmijoBFGS_Transformed_FreeMu_Success.pkl
+│   ├── filter_comparison.png
+│   ├── filter_optimization_results.csv
+│   ├── gradient_comparison.png
+│   ├── gradient_validation.png
+│   ├── html
+│   ├── lax_while_comparison_100_steps.png
+│   ├── lax_while_comparison_10_steps.png
+│   ├── lax_while_comparison_50_steps.png
+│   ├── likelihood_surface.png
+│   ├── local_test_run
+│   │   └── task_00000_BIF_N5_K2_seed2923803421
+│   │       ├── replicate_results_metrics.json
+│   │       └── replicate_results_params.pkl
+│   ├── loss_history_BIF_AdamW_Transformed_FixedMu_Success.pkl
+│   ├── loss_history_plots
+│   │   └── loss_history_BIF_AdamW_Transformed_FixedMu_Success
+│   │       ├── loss_history.png
+│   │       └── loss_history_zoomed.png
+│   ├── loss_history.png
+│   ├── minimizer_comparison_50_steps.png
+│   ├── minimizer_speed_comparison_10_steps.png
+│   ├── minimizer_speed_comparison_50_steps.png
+│   ├── minimizer_speed_comparison.png
+│   ├── one_cycle_lr_tuning
+│   │   ├── learning_rate_convergence_analysis_20250412_191423.csv
+│   │   ├── learning_rate_loss_curves_20250412_191423.png
+│   │   ├── learning_rate_results_20250412_191423.csv
+│   │   ├── learning_rate_schedules_20250412_190443.png
+│   │   ├── learning_rate_schedules_20250412_190929.png
+│   │   ├── learning_rate_schedules_20250412_191423.png
+│   │   ├── learning_rate_schedules_20250412_193504.png
+│   │   ├── learning_rate_schedules_20250412_194623.png
+│   │   ├── learning_rate_schedules_20250412_194952.png
+│   │   └── learning_rate_schedules_20250412_195227.png
+│   ├── one_cycle_tuning
+│   │   ├── one_cycle_convergence_analysis_20250412_185024.csv
+│   │   ├── one_cycle_loss_curves_20250412_185024.png
+│   │   ├── one_cycle_results_20250412_185024.csv
+│   │   ├── one_cycle_schedules_20250412_184857.png
+│   │   ├── one_cycle_schedules_20250412_185003.png
+│   │   └── one_cycle_schedules_20250412_185024.png
+│   ├── optimizer_comparison_results.csv
+│   ├── optimizer_comparison_results_full.csv
+│   ├── parameter_estimation_errors.csv
+│   ├── parameter_estimation_errors_full.csv
+│   ├── parameter_transformation.png
+│   ├── param_history_BIF_AdamW_Transformed_FixedMu_Success.pkl
+│   ├── param_history_plots
+│   │   └── param_history_BIF_AdamW_Transformed_FixedMu_Success
+│   │       ├── lambda_r_history.png
+│   │       ├── mu_history.png
+│   │       ├── Phi_f_history.png
+│   │       ├── Phi_h_history.png
+│   │       ├── Q_h_history.png
+│   │       └── sigma2_history.png
+│   ├── pf_visual_comparison.png
+│   ├── plots
+│   ├── results
+│   ├── scalar_metrics_analysis.csv
+│   ├── scheduler_comparison
+│   │   ├── best_optimizer_scheduler_combinations.png
+│   │   ├── learning_rate_schedules.png
+│   │   ├── learning_rate_schedules_simple.png
+│   │   ├── optimizer_scheduler_comparison_results.csv
+│   │   ├── scheduler_comparison_loss_curves.png
+│   │   ├── scheduler_comparison_loss_curves_simple.png
+│   │   ├── scheduler_comparison_results.csv
+│   │   └── scheduler_comparison_results_simple.csv
+│   ├── simple_dfsv_example.png
+│   ├── simulation1
+│   │   ├── aggregated_simulation1_results.csv
+│   │   └── simulation1_merged_results.csv
+│   ├── simulation1_analysis
+│   │   ├── data
+│   │   │   ├── bif_stability_analysis.csv
+│   │   │   └── pf_stability_analysis.csv
+│   │   ├── data_handling_notes.txt
+│   │   ├── figures
+│   │   │   ├── heatmap_corr_f_bif.png
+│   │   │   ├── heatmap_corr_f_pf20000.png
+│   │   │   ├── heatmap_rmse_h_bif.png
+│   │   │   ├── heatmap_rmse_h_pf20000.png
+│   │   │   ├── heatmap_time_bif.png
+│   │   │   ├── heatmap_time_pf20000.png
+│   │   │   ├── median_corr_f_vs_K_N50_color.png
+│   │   │   ├── median_corr_f_vs_K_N50_detail.png
+│   │   │   ├── median_corr_h_vs_K_N50_color.png
+│   │   │   ├── median_corr_h_vs_K_N50_detail.png
+│   │   │   ├── median_rmse_f_vs_K_N50_color.png
+│   │   │   ├── median_rmse_f_vs_K_N50_detail.png
+│   │   │   ├── median_rmse_h_vs_K_N50_color.png
+│   │   │   ├── median_rmse_h_vs_K_N50_detail.png
+│   │   │   ├── median_time_vs_K_N50_color.png
+│   │   │   ├── median_time_vs_K_N50_detail.png
+│   │   │   ├── median_time_vs_N_K5_color.png
+│   │   │   ├── median_time_vs_N_K5_detail.png
+│   │   │   ├── stability_ratio_f_vs_K_N50_log.png
+│   │   │   └── tradeoff_rmse_h_vs_time.png
+│   │   └── tables
+│   │       ├── bif_stability_summary.tex
+│   │       ├── computational_performance_summary.tex
+│   │       ├── median_timing_summary.tex
+│   │       └── pf_stability_summary.tex
+│   ├── simulation1_analysisv2
+│   │   ├── data
+│   │   │   ├── bif_stability_analysis.csv
+│   │   │   └── pf_stability_analysis.csv
+│   │   ├── figures
+│   │   │   ├── median_corr_f_vs_K_N50_color.png
+│   │   │   ├── median_corr_h_vs_K_N50_color.png
+│   │   │   ├── median_rmse_f_vs_K_N50_color.png
+│   │   │   ├── median_rmse_h_vs_K_N50_color.png
+│   │   │   ├── median_time_vs_K_N50_color.png
+│   │   │   └── median_time_vs_N_K5_color.png
+│   │   └── tables
+│   ├── simulation_results.csv
+│   ├── simulation_summary_plots.html
+│   ├── simulation_summary_plots.png
+│   ├── temp_config.json
+│   ├── test_all_optimizers_with_logging
+│   │   └── optimizer_results.csv
+│   ├── test_minimize_with_logging
+│   │   ├── Quadratic_Adam_trajectory.png
+│   │   ├── Quadratic_AdamW_trajectory.png
+│   │   ├── Quadratic_BFGS_trajectory.png
+│   │   ├── Quadratic_DampedTrustRegionBFGS_trajectory.png
+│   │   ├── Rosenbrock_Adam_trajectory.png
+│   │   ├── Rosenbrock_AdamW_trajectory.png
+│   │   ├── Rosenbrock_BFGS_trajectory.png
+│   │   └── Rosenbrock_DampedTrustRegionBFGS_trajectory.png
+│   ├── test_minimize_with_logging_dfsv
+│   ├── test_run_optimization
+│   │   ├── BF_BFGS_transformed
+│   │   │   ├── loss_history.png
+│   │   │   └── parameter_history.png
+│   │   ├── BIF_Adam_transformed
+│   │   │   ├── loss_history.png
+│   │   │   └── parameter_history.png
+│   │   ├── BIF_BFGS_transformed
+│   │   │   ├── loss_history.png
+│   │   │   └── parameter_history.png
+│   │   └── optimization_results.csv
+│   ├── transform_optimization_comparison.png
+│   ├── true_params.pkl
+│   └── variance_comparison.png
+├── output_thesis
+│   ├── aggregated_metrics.csv
+│   ├── bellman_filter_deep_dive.md
+│   ├── eda
+│   ├── expanded_aggregated_metrics.csv
+│   ├── expanded_metrics.csv
+│   ├── filter_implementation_analysis.md
+│   ├── Filter_simulation_studies
+│   ├── finalized_metrics.csv
+│   ├── final_metrics.csv
+│   ├── Hyperparameter_studies
+│   ├── langesummary.md
+│   ├── merged_metrics.csv
+│   ├── particle_filter_optimizer_comparison
+│   │   ├── backup.csv
+│   │   ├── loss_history.png
+│   │   ├── optimizer_comparison_results.csv
+│   │   └── parameter_estimation_errors.csv
+│   ├── theme1_parameter_accuracy_analysis_N10K3T2000.md
+│   ├── theme2_state_estimation_accuracy.md
+│   ├── theme3_bias.md
+│   ├── theme4_computation.md
+│   ├── thesis_assets
+│   │   ├── analysis_plots_20250416_022441
+│   │   │   ├── analysis_agg_param_errors_20250416_022543.csv
+│   │   │   ├── analysis_agg_scalars_20250416_022543.csv
+│   │   │   ├── analysis_full_data_20250416_022543.csv
+│   │   │   ├── analysisN10K3T2000.csv
+│   │   │   ├── boxplot_accuracy_state_estimation_factor_rmse_mean.png
+│   │   │   ├── boxplot_accuracy_state_estimation_volatility_rmse_mean.png
+│   │   │   ├── boxplot_param_Phi_f_frob_diff.png
+│   │   │   ├── eigenval_dist_Phi_f_k2.png
+│   │   │   ├── eigenval_dist_Phi_h_k2.png
+│   │   │   ├── heatmap_Phi_f_N10-K3-T1000_comparison.png
+│   │   │   ├── heatmap_Phi_f_N10-K3-T2000_comparison.png
+│   │   │   ├── heatmap_Phi_f_N10-K3-T500_comparison.png
+│   │   │   ├── heatmap_Phi_f_N15-K5-T1000_comparison.png
+│   │   │   ├── heatmap_Phi_f_N15-K5-T2000_comparison.png
+│   │   │   ├── heatmap_Phi_f_N15-K5-T500_comparison.png
+│   │   │   ├── heatmap_Phi_f_N5-K2-T1000_comparison.png
+│   │   │   ├── heatmap_Phi_f_N5-K2-T2000_comparison.png
+│   │   │   ├── heatmap_Phi_f_N5-K2-T500_comparison.png
+│   │   │   ├── heatmap_Phi_h_N10-K3-T1000_comparison.png
+│   │   │   ├── heatmap_Phi_h_N10-K3-T2000_comparison.png
+│   │   │   ├── heatmap_Phi_h_N10-K3-T500_comparison.png
+│   │   │   ├── heatmap_Phi_h_N15-K5-T1000_comparison.png
+│   │   │   ├── heatmap_Phi_h_N15-K5-T2000_comparison.png
+│   │   │   ├── heatmap_Phi_h_N15-K5-T500_comparison.png
+│   │   │   ├── heatmap_Phi_h_N5-K2-T1000_comparison.png
+│   │   │   ├── heatmap_Phi_h_N5-K2-T2000_comparison.png
+│   │   │   ├── heatmap_Phi_h_N5-K2-T500_comparison.png
+│   │   │   ├── scalar_metrics_analysis.csv
+│   │   │   ├── scatter_lambda_r_comparison.pdf
+│   │   │   ├── scatter_lambda_r_comparison.png
+│   │   │   ├── scatter_mu_comparison.pdf
+│   │   │   ├── scatter_mu_comparison.png
+│   │   │   ├── scatter_Phi_f_comparison.pdf
+│   │   │   ├── scatter_Phi_f_comparison.png
+│   │   │   ├── scatter_Phi_h_comparison.pdf
+│   │   │   ├── scatter_Phi_h_comparison.png
+│   │   │   ├── scatter_Q_h_comparison.pdf
+│   │   │   ├── scatter_Q_h_comparison.png
+│   │   │   ├── scatter_sigma2_comparison.pdf
+│   │   │   ├── scatter_sigma2_comparison.png
+│   │   │   ├── summary_scalar_metrics_N10_K3_T1000_fixmu_20250416_022543.csv
+│   │   │   ├── summary_scalar_metrics_N10_K3_T1000_freeμ_20250416_022543.csv
+│   │   │   ├── summary_scalar_metrics_N10_K3_T2000_fixmu_20250416_022543.csv
+│   │   │   ├── summary_scalar_metrics_N10_K3_T2000_freeμ_20250416_022543.csv
+│   │   │   ├── summary_scalar_metrics_N10_K3_T500_fixmu_20250416_022543.csv
+│   │   │   ├── summary_scalar_metrics_N10_K3_T500_freeμ_20250416_022543.csv
+│   │   │   ├── summary_scalar_metrics_N15_K5_T1000_fixmu_20250416_022543.csv
+│   │   │   ├── summary_scalar_metrics_N15_K5_T1000_freeμ_20250416_022543.csv
+│   │   │   ├── summary_scalar_metrics_N15_K5_T2000_fixmu_20250416_022543.csv
+│   │   │   ├── summary_scalar_metrics_N15_K5_T2000_freeμ_20250416_022543.csv
+│   │   │   ├── summary_scalar_metrics_N15_K5_T500_fixmu_20250416_022543.csv
+│   │   │   ├── summary_scalar_metrics_N15_K5_T500_freeμ_20250416_022543.csv
+│   │   │   ├── summary_scalar_metrics_N5_K2_T1000_fixmu_20250416_022543.csv
+│   │   │   ├── summary_scalar_metrics_N5_K2_T1000_freeμ_20250416_022543.csv
+│   │   │   ├── summary_scalar_metrics_N5_K2_T2000_fixmu_20250416_022543.csv
+│   │   │   ├── summary_scalar_metrics_N5_K2_T2000_freeμ_20250416_022543.csv
+│   │   │   ├── summary_scalar_metrics_N5_K2_T500_fixmu_20250416_022543.csv
+│   │   │   ├── summary_scalar_metrics_N5_K2_T500_freeμ_20250416_022543.csv
+│   │   │   └── time_scaling.png
+│   │   ├── bif_filtered_vs_smoothed_N3_K2_T500.png
+│   │   └── bif_filter_vs_smoother_metrics.md
+│   └── thesis_context_synthesis.md
+├── __pycache__
+│   ├── test_direct_optimization.cpython-313-pytest-8.3.5.pyc
+│   ├── test_loss_calculation.cpython-313-pytest-8.3.5.pyc
+│   ├── test_optimization.cpython-313-pytest-8.3.5.pyc
+│   ├── test_optimization_debug.cpython-313-pytest-8.3.5.pyc
+│   ├── test_parameter_history.cpython-313-pytest-8.3.5.pyc
+│   ├── test_simple_optimization.cpython-313-pytest-8.3.5.pyc
+│   └── test_step_acceptance.cpython-313-pytest-8.3.5.pyc
+├── pyproject.toml
+├── QF_Thesis_Proposal_GBoekestijn.pdf
+├── QF_Thesis_Proposal.pdf
+├── README.md
+├── requirements.txt
+├── scripts
+│   ├── analysis
+│   │   ├── analysis.ipynb
+│   │   ├── extract_parameter_metrics.py
+│   │   └── __pycache__
+│   │       └── analyze_optimization_results.cpython-313.pyc
+│   ├── Archive
+│   │   ├── analyze_mu_gradient.py
+│   │   ├── base_debug_bellman.py
+│   │   ├── benchmark_particle_filter.py
+│   │   ├── bif_optimizer_stability.py
+│   │   ├── check_full_phi_recovery.py
+│   │   ├── check_pickle.py
+│   │   ├── compare_all_optimizers_mp.py
+│   │   ├── compare_all_optimizers_pmap_debug.py
+│   │   ├── compare_minimizer_speed.py
+│   │   ├── debug_bellman_filter.py
+│   │   ├── debug_bif_gradient.py
+│   │   ├── debug_bif_true_params.py
+│   │   ├── fix_simulation_results.py
+│   │   ├── grad_test.py
+│   │   ├── interactive_filter_optimization.py
+│   │   ├── profile_bellman_filter.py
+│   │   ├── profile_objective_stability.py
+│   │   ├── profile_particle_filter.py
+│   │   ├── readme.md
+│   │   ├── test_all_optimizers_with_logging.py
+│   │   ├── test_bif_full_phi_hybrid_integration.py
+│   │   ├── test_bif_identifiability_fix.py
+│   │   ├── test_bif_priors_optimizers.py
+│   │   ├── test_minimize_with_logging_dfsv.py
+│   │   ├── test_minimize_with_logging.py
+│   │   ├── test_run_optimization.py
+│   │   ├── verify_hessian_sympy.py
+│   │   ├── verify_objective_functions.py
+│   │   └── verify_pf_optimization.py
+│   ├── benchmarking
+│   │   └── benchmark_jax_gpu_cpu.py
+│   ├── check_model_metrics.py
+│   ├── compare_all_optimizers.py
+│   ├── compare_bif_optimizers.py
+│   ├── compare_filters.py
+│   ├── compare_study_results.py
+│   ├── empirical
+│   │   ├── 100_Portfolios_10x10.CSV
+│   │   ├── eda.py
+│   │   ├── empirical_eda.ipynb
+│   │   ├── empirical_eda.pdf
+│   │   ├── empirical_eda.py
+│   │   ├── figure1.png
+│   │   ├── figure2.png
+│   │   ├── figure3.png
+│   │   ├── figure4.png
+│   │   ├── figure5.png
+│   │   ├── insample
+│   │   │   ├── bfpf
+│   │   │   │   ├── bif_extraction_predicted.py
+│   │   │   │   ├── bif_extraction.py
+│   │   │   │   ├── bif_full_result_20250425_144625.pkl
+│   │   │   │   ├── bif_insample_result.pkl
+│   │   │   │   ├── bif_param_table.py
+│   │   │   │   ├── bif_processing.ipynb
+│   │   │   │   ├── combined_param_table.py
+│   │   │   │   ├── fix_bif_correlation.py
+│   │   │   │   ├── fix_pf_correlation.py
+│   │   │   │   ├── multivariate_portmanteau.py
+│   │   │   │   ├── multivariate_portmanteau_test_data.png
+│   │   │   │   ├── pf_extraction.py
+│   │   │   │   ├── pf_full_result_20250425_194312.pkl
+│   │   │   │   ├── pf_param_table.py
+│   │   │   │   ├── pf_processing.ipynb
+│   │   │   │   ├── __pycache__
+│   │   │   │   │   └── multivariate_portmanteau.cpython-313.pyc
+│   │   │   │   └── test_multivariate_portmanteau.py
+│   │   │   ├── bif
+│   │   │   │   ├── 01_initial_residual_analysis.py
+│   │   │   │   └── 02_garch_analysis.py
+│   │   │   ├── bif_full_result_20250425_144625.pkl
+│   │   │   ├── bif_insample_result.pkl
+│   │   │   ├── comparison
+│   │   │   │   └── combined_model_metrics.py
+│   │   │   ├── dcc
+│   │   │   │   ├── 00_run_dcc_estimation.py
+│   │   │   │   ├── 01_univariate_garch.py
+│   │   │   │   ├── 02_dcc_fit.py
+│   │   │   │   ├── 03_in_sample_metrics.py
+│   │   │   │   ├── 04_forecast_gmv.py
+│   │   │   │   ├── data
+│   │   │   │   │   ├── date_index.txt
+│   │   │   │   │   ├── eps_tilde.npy
+│   │   │   │   │   ├── garch_outputs.npz
+│   │   │   │   │   ├── Ht.npy
+│   │   │   │   │   ├── model_metadata.json
+│   │   │   │   │   ├── model.pkl
+│   │   │   │   │   ├── Rt.npy
+│   │   │   │   │   └── w_tplus1.npy
+│   │   │   │   └── README.md
+│   │   │   ├── factorcv
+│   │   │   │   ├── 00_run_factorcv_estimation.py
+│   │   │   │   ├── 02_factor_cv_fit.py
+│   │   │   │   ├── 03_factor_cv_metrics.py
+│   │   │   │   ├── _archive_factor_cv_model.py
+│   │   │   │   └── __pycache__
+│   │   │   │       └── factor_cv_model.cpython-313.pyc
+│   │   │   ├── model_fitting.ipynb
+│   │   │   ├── model_fitting.py
+│   │   │   ├── outputs
+│   │   │   │   └── empirical
+│   │   │   │       └── insample
+│   │   │   │           └── bif_full_result_20250425_144625.pkl
+│   │   │   └── __pycache__
+│   │   │       └── model_fitting.cpython-313.pyc
+│   │   ├── pf_full_result_20250425_194312.pkl
+│   │   ├── vw_returns_final.csv
+│   │   └── vw_returns_final_with_date.csv
+│   ├── finalize_aggregated_metrics.py
+│   ├── merge_simulation1_data.py
+│   ├── outputs
+│   │   ├── bellman_particle_comparison_N3_K2.png
+│   │   ├── estimated_params_BIF_AdamW_Transformed_Success.pkl
+│   │   ├── estimated_params_BIF_BFGS_Transformed_Failure.pkl
+│   │   ├── estimated_params_BIF_BFGS_Transformed_Success.pkl
+│   │   ├── estimated_params_BIF_CustomBFGS_Transformed_Success.pkl
+│   │   ├── estimated_params_BIF_NonlinearCG_Transformed_Failure.pkl
+│   │   ├── filter_comparison_BF_PF_BIF_N3_K2_T500.png
+│   │   ├── filter_optimization_results.csv
+│   │   └── true_params.pkl
+│   ├── process_simulation_results.py
+│   ├── __pycache__
+│   │   ├── grad_test.cpython-313-pytest-8.3.5.pyc
+│   │   ├── test_all_optimizers_with_logging.cpython-313-pytest-8.3.5.pyc
+│   │   ├── test_bif_full_phi_hybrid_integration.cpython-313-pytest-8.3.5.pyc
+│   │   ├── test_bif_identifiability_fix.cpython-313-pytest-8.3.5.pyc
+│   │   ├── test_bif_priors_optimizers.cpython-313-pytest-8.3.5.pyc
+│   │   ├── test_minimize_with_logging.cpython-313-pytest-8.3.5.pyc
+│   │   ├── test_minimize_with_logging_dfsv.cpython-313-pytest-8.3.5.pyc
+│   │   └── test_run_optimization.cpython-313-pytest-8.3.5.pyc
+│   ├── simstudy_1
+│   │   ├── aggregate_simulation_results.py
+│   │   ├── full_simulation_config.json
+│   │   ├── __marimo__
+│   │   │   ├── Sim1_agg_analysis.html
+│   │   │   └── Sim1_agg_analysis.ipynb
+│   │   ├── merge_simulation_results.py
+│   │   └── __pycache__
+│   │       └── aggregate_simulation_results.cpython-313.pyc
+│   ├── simstudy_2
+│   │   ├── analysis_data_utils.py
+│   │   ├── analysis_error_metrics.py
+│   │   ├── analysis_io_utils.py
+│   │   ├── analysis_plotting_config.py
+│   │   ├── analysis_plotting_utils.py
+│   │   ├── analysis_scalar_metrics.py
+│   │   ├── analysis_specific_utils.py
+│   │   ├── analysis_table_utils.py
+│   │   ├── analyze_optimization_results_main.py
+│   │   ├── analyze_optimization_results.py
+│   │   ├── generate_optimization_configs.py
+│   │   ├── __pycache__
+│   │   │   ├── analysis_data_utils.cpython-313.pyc
+│   │   │   ├── analysis_error_metrics.cpython-313.pyc
+│   │   │   ├── analysis_io_utils.cpython-313.pyc
+│   │   │   ├── analysis_plotting_config.cpython-313.pyc
+│   │   │   ├── analysis_plotting_utils.cpython-313.pyc
+│   │   │   ├── analysis_scalar_metrics.cpython-313.pyc
+│   │   │   ├── analysis_specific_utils.cpython-313.pyc
+│   │   │   └── analysis_table_utils.cpython-313.pyc
+│   │   └── submit_optimization_batch_job.py
+│   ├── simulation1
+│   │   └── aggregate_simulation1_results.py
+│   ├── simulation_analysis.py
+│   └── visualize_loss_history.py
+├── simulation1_data
+├── src
+│   ├── bellman_filter_dfsv
+│   │   ├── filters
+│   │   │   ├── base.py
+│   │   │   ├── _bellman_impl.py
+│   │   │   ├── bellman_information.py
+│   │   │   ├── _bellman_optim.py
+│   │   │   ├── bellman.py
+│   │   │   ├── __init__.py
+│   │   │   ├── objectives.py
+│   │   │   ├── particle.py
+│   │   │   └── __pycache__
+│   │   │       ├── base.cpython-313.pyc
+│   │   │       ├── bellman.cpython-313.pyc
+│   │   │       ├── _bellman_impl.cpython-313.pyc
+│   │   │       ├── bellman_information.cpython-313.pyc
+│   │   │       ├── _bellman_optim.cpython-313.pyc
+│   │   │       ├── __init__.cpython-313.pyc
+│   │   │       ├── objectives.cpython-313.pyc
+│   │   │       └── particle.cpython-313.pyc
+│   │   ├── __init__.py
+│   │   ├── models
+│   │   │   ├── dfsv.py
+│   │   │   ├── __init__.py
+│   │   │   ├── likelihoods.py
+│   │   │   ├── __pycache__
+│   │   │   │   ├── dfsv.cpython-313.pyc
+│   │   │   │   ├── __init__.cpython-313.pyc
+│   │   │   │   ├── likelihoods.cpython-313.pyc
+│   │   │   │   ├── simulation.cpython-313.pyc
+│   │   │   │   └── simulation_helpers.cpython-313.pyc
+│   │   │   ├── simulation_helpers.py
+│   │   │   └── simulation.py
+│   │   ├── __pycache__
+│   │   │   └── __init__.cpython-313.pyc
+│   │   └── utils
+│   │       ├── analysis.py
+│   │       ├── __init__.py
+│   │       ├── jax_helpers.py
+│   │       ├── optimization_helpers.py
+│   │       ├── optimization.py
+│   │       ├── __pycache__
+│   │       │   ├── analysis.cpython-313.pyc
+│   │       │   ├── __init__.cpython-313.pyc
+│   │       │   ├── jax_helpers.cpython-313.pyc
+│   │       │   ├── optimization.cpython-313.pyc
+│   │       │   ├── optimization_helpers.cpython-313.pyc
+│   │       │   ├── solvers.cpython-313.pyc
+│   │       │   └── transformations.cpython-313.pyc
+│   │       ├── solvers.py
+│   │       └── transformations.py
+│   └── bellman_filter_dfsv.egg-info
+│       ├── dependency_links.txt
+│       ├── PKG-INFO
+│       ├── requires.txt
+│       ├── SOURCES.txt
+│       └── top_level.txt
+├── test_batch_results
+│   └── bif_local_test
+│       ├── config_N5_K2_PF10000_rep0
+│       │   ├── metrics.json
+│       │   └── raw_data.npz
+│       ├── config_N5_K2_PF10000_rep1
+│       │   ├── metrics.json
+│       │   └── raw_data.npz
+│       ├── config_N5_K2_PF10000_rep2
+│       │   ├── metrics.json
+│       │   └── raw_data.npz
+│       ├── config_N5_K2_PF10000_rep3
+│       │   ├── metrics.json
+│       │   └── raw_data.npz
+│       └── config_N5_K2_PF10000_rep4
+│           ├── metrics.json
+│           └── raw_data.npz
+├── tests
+│   ├── Archive
+│   ├── conftest.py
+│   ├── __pycache__
+│   │   ├── conftest.cpython-313-pytest-8.3.5.pyc
+│   │   ├── test_bellman.cpython-313-pytest-8.3.5.pyc
+│   │   ├── test_bellman_information.cpython-313-pytest-8.3.5.pyc
+│   │   ├── test_dfsv_models.cpython-313-pytest-8.3.5.pyc
+│   │   ├── test_functions.cpython-313-pytest-8.3.5.pyc
+│   │   ├── test_jit_likelihood_gradient.cpython-313-pytest-8.3.5.pyc
+│   │   ├── test_likelihood_surface.cpython-313-pytest-8.3.5.pyc
+│   │   ├── test_optimization.cpython-313-pytest-8.3.5.pyc
+│   │   ├── test_particle_filter.cpython-313-pytest-8.3.5.pyc
+│   │   ├── test_solvers.cpython-313-pytest-8.3.5.pyc
+│   │   ├── test_transformations.cpython-313-pytest-8.3.5.pyc
+│   │   └── test_unified_filters.cpython-313-pytest-8.3.5.pyc
+│   ├── simstudy_2
+│   │   └── __pycache__
+│   │       ├── test_analysis_data_utils.cpython-313-pytest-8.3.5.pyc
+│   │       ├── test_analysis_error_metrics.cpython-313-pytest-8.3.5.pyc
+│   │       └── test_analysis_plotting_utils.cpython-313-pytest-8.3.5.pyc
+│   ├── test_bellman_information.py
+│   ├── test_bellman.py
+│   ├── test_dfsv_models.py
+│   ├── test_functions.py
+│   ├── test_jit_likelihood_gradient.py
+│   ├── test_likelihood_surface.py
+│   ├── test_optimization.py
+│   ├── test_particle_filter.py
+│   ├── test_solvers.py
+│   ├── test_transformations.py
+│   └── test_unified_filters.py
+├── thesis_code_submission
+│   ├── Data
+│   │   └── processed
+│   │       ├── vw_returns_final_with_date.csv
+│   │       └── VW_Returns_Monthly.csv
+│   ├── examples
+│   │   ├── 01_dfsv_simulation.py
+│   │   ├── 02_basic_filtering.py
+│   │   ├── 03_parameter_optimization.py
+│   │   ├── 04_parameter_transformation.py
+│   │   └── simple_dfsv_example.py
+│   ├── final_out
+│   │   ├── eda
+│   │   │   ├── figure1_returns_timeseries.png
+│   │   │   ├── figure2_avg_correlation_heatmap.png
+│   │   │   ├── figure3_avg_characteristics_timeseries.png
+│   │   │   ├── figure4_avg_mkt_cap_by_size.png
+│   │   │   ├── figure5_pca_scree_plot.png
+│   │   │   ├── pca_variance_explained.csv
+│   │   │   ├── table1_summary_stats_returns.tex
+│   │   │   └── table2_summary_stats_characteristics.tex
+│   │   ├── empirical
+│   │   │   └── insample
+│   │   │       ├── bif
+│   │   │       │   ├── data
+│   │   │       │   │   └── date_index.txt
+│   │   │       │   ├── diagnostic_results.json
+│   │   │       │   ├── extended_metrics.json
+│   │   │       │   ├── figures
+│   │   │       │   │   ├── average_correlation.png
+│   │   │       │   │   ├── factor_1.png
+│   │   │       │   │   ├── factor_2.png
+│   │   │       │   │   ├── factor_3.png
+│   │   │       │   │   ├── factor_4.png
+│   │   │       │   │   ├── factor_5.png
+│   │   │       │   │   ├── filtered_states.png
+│   │   │       │   │   ├── generalized_variance.png
+│   │   │       │   │   ├── lambda_heatmap_interactive.png
+│   │   │       │   │   ├── lambda_heatmap.png
+│   │   │       │   │   ├── logvol_1.png
+│   │   │       │   │   ├── logvol_2.png
+│   │   │       │   │   ├── logvol_3.png
+│   │   │       │   │   ├── logvol_4.png
+│   │   │       │   │   ├── logvol_5.png
+│   │   │       │   │   ├── phi_f_heatmap_interactive.png
+│   │   │       │   │   ├── phi_f_heatmap.png
+│   │   │       │   │   ├── phi_h_heatmap_interactive.png
+│   │   │       │   │   ├── phi_h_heatmap.png
+│   │   │       │   │   └── variance_decomposition.png
+│   │   │       │   ├── metadata.json
+│   │   │       │   ├── metrics_summary.json
+│   │   │       │   ├── residual_analysis
+│   │   │       │   │   ├── garch_parameter_analysis.csv
+│   │   │       │   │   ├── initial_aggregated_pass_rates.json
+│   │   │       │   │   ├── initial_detailed_results.json
+│   │   │       │   │   └── test_pass_rate_comparison.csv
+│   │   │       │   └── standardized_residuals.csv
+│   │   │       ├── comparison
+│   │   │       │   ├── average_correlation_comparison.pdf
+│   │   │       │   ├── average_correlation_comparison.png
+│   │   │       │   ├── demeaned_log_determinant_comparison.pdf
+│   │   │       │   ├── demeaned_log_determinant_comparison.png
+│   │   │       │   ├── generalized_variance_comparison.pdf
+│   │   │       │   ├── generalized_variance_comparison.png
+│   │   │       │   ├── log_determinant_comparison.pdf
+│   │   │       │   ├── log_determinant_comparison.png
+│   │   │       │   ├── model_metrics_data.json
+│   │   │       │   ├── normalized_log_determinant_comparison.pdf
+│   │   │       │   └── normalized_log_determinant_comparison.png
+│   │   │       ├── dcc
+│   │   │       │   ├── metrics_summary.json
+│   │   │       │   └── standardized_residuals.csv
+│   │   │       ├── factorcv
+│   │   │       │   ├── data
+│   │   │       │   │   ├── date_index.txt
+│   │   │       │   │   └── model_metadata.json
+│   │   │       │   ├── metrics_summary.json
+│   │   │       │   └── standardized_residuals.csv
+│   │   │       └── pf
+│   │   │           ├── data
+│   │   │           │   └── date_index.txt
+│   │   │           ├── diagnostic_results.json
+│   │   │           ├── extended_metrics.json
+│   │   │           ├── figures
+│   │   │           │   ├── average_correlation.png
+│   │   │           │   ├── factor_1.png
+│   │   │           │   ├── factor_2.png
+│   │   │           │   ├── factor_3.png
+│   │   │           │   ├── factor_4.png
+│   │   │           │   ├── factor_5.png
+│   │   │           │   ├── filtered_states.png
+│   │   │           │   ├── generalized_variance.png
+│   │   │           │   ├── lambda_heatmap_interactive.png
+│   │   │           │   ├── lambda_heatmap.png
+│   │   │           │   ├── logvol_1.png
+│   │   │           │   ├── logvol_2.png
+│   │   │           │   ├── logvol_3.png
+│   │   │           │   ├── logvol_4.png
+│   │   │           │   ├── logvol_5.png
+│   │   │           │   ├── phi_f_heatmap_interactive.png
+│   │   │           │   ├── phi_f_heatmap.png
+│   │   │           │   ├── phi_h_heatmap_interactive.png
+│   │   │           │   ├── phi_h_heatmap.png
+│   │   │           │   └── variance_decomposition.png
+│   │   │           ├── metadata.json
+│   │   │           ├── metrics_summary.json
+│   │   │           └── standardized_residuals.csv
+│   │   ├── simulation1_analysis
+│   │   │   ├── data
+│   │   │   │   ├── bif_stability_analysis.csv
+│   │   │   │   └── pf_stability_analysis.csv
+│   │   │   ├── data_handling_notes.txt
+│   │   │   ├── figures
+│   │   │   │   ├── heatmap_corr_f_bif.png
+│   │   │   │   ├── heatmap_corr_f_pf20000.png
+│   │   │   │   ├── heatmap_rmse_h_bif.png
+│   │   │   │   ├── heatmap_rmse_h_pf20000.png
+│   │   │   │   ├── heatmap_time_bif.png
+│   │   │   │   ├── heatmap_time_pf20000.png
+│   │   │   │   ├── median_corr_f_vs_K_N50_color.png
+│   │   │   │   ├── median_corr_f_vs_K_N50_detail.png
+│   │   │   │   ├── median_corr_h_vs_K_N50_color.png
+│   │   │   │   ├── median_corr_h_vs_K_N50_detail.png
+│   │   │   │   ├── median_rmse_f_vs_K_N50_color.png
+│   │   │   │   ├── median_rmse_f_vs_K_N50_detail.png
+│   │   │   │   ├── median_rmse_h_vs_K_N50_color.png
+│   │   │   │   ├── median_rmse_h_vs_K_N50_detail.png
+│   │   │   │   ├── median_time_vs_K_N50_color.png
+│   │   │   │   ├── median_time_vs_K_N50_detail.png
+│   │   │   │   ├── median_time_vs_N_K5_color.png
+│   │   │   │   ├── median_time_vs_N_K5_detail.png
+│   │   │   │   ├── stability_ratio_f_vs_K_N50_log.png
+│   │   │   │   └── tradeoff_rmse_h_vs_time.png
+│   │   │   └── tables
+│   │   │       ├── bif_stability_summary.tex
+│   │   │       ├── computational_performance_summary.tex
+│   │   │       ├── median_timing_summary.tex
+│   │   │       └── pf_stability_summary.tex
+│   │   └── simulation2_analysis
+│   │       ├── analysis_agg_scalars.csv
+│   │       ├── analysis_full_data.csv
+│   │       ├── eigenvalue_distributions.pdf
+│   │       ├── eigenvalue_distributions.png
+│   │       ├── error_scaling_accuracy_parameter_estimation_lambda_r_rmse.pdf
+│   │       ├── error_scaling_accuracy_parameter_estimation_lambda_r_rmse.png
+│   │       ├── error_scaling_accuracy_parameter_estimation_mu_rmse.pdf
+│   │       ├── error_scaling_accuracy_parameter_estimation_mu_rmse.png
+│   │       ├── error_scaling_accuracy_parameter_estimation_Phi_f_rmse.pdf
+│   │       ├── error_scaling_accuracy_parameter_estimation_Phi_f_rmse.png
+│   │       ├── error_scaling_accuracy_parameter_estimation_Phi_h_rmse.pdf
+│   │       ├── error_scaling_accuracy_parameter_estimation_Phi_h_rmse.png
+│   │       ├── error_scaling_accuracy_parameter_estimation_Q_h_rmse.pdf
+│   │       ├── error_scaling_accuracy_parameter_estimation_Q_h_rmse.png
+│   │       ├── error_scaling_accuracy_parameter_estimation_sigma2_rmse.pdf
+│   │       ├── error_scaling_accuracy_parameter_estimation_sigma2_rmse.png
+│   │       ├── error_scaling_accuracy_state_estimation_factor_rmse_mean.pdf
+│   │       ├── error_scaling_accuracy_state_estimation_factor_rmse_mean.png
+│   │       ├── error_scaling_accuracy_state_estimation_volatility_rmse_mean.pdf
+│   │       ├── error_scaling_accuracy_state_estimation_volatility_rmse_mean.png
+│   │       ├── scalar_metrics_analysis.csv
+│   │       ├── scatter_lambda_r_comparison.pdf
+│   │       ├── scatter_lambda_r_comparison.png
+│   │       ├── scatter_mu_comparison.pdf
+│   │       ├── scatter_mu_comparison.png
+│   │       ├── scatter_Phi_f_comparison.pdf
+│   │       ├── scatter_Phi_f_comparison.png
+│   │       ├── scatter_Phi_h_comparison.pdf
+│   │       ├── scatter_Phi_h_comparison.png
+│   │       ├── scatter_Q_h_comparison.pdf
+│   │       ├── scatter_Q_h_comparison.png
+│   │       ├── scatter_sigma2_comparison.pdf
+│   │       ├── scatter_sigma2_comparison.png
+│   │       ├── summary_param_errors_N10_K2_T1000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N10_K2_T2000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N10_K2_T500_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N10_K3_T1000_fixmu.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N10_K3_T1000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N10_K3_T2000_fixmu.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N10_K3_T2000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N10_K3_T500_fixmu.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N10_K3_T500_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N10_K5_T1000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N10_K5_T2000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N10_K5_T500_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N15_K2_T1000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N15_K2_T2000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N15_K2_T500_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N15_K3_T1000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N15_K3_T2000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N15_K3_T500_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N15_K5_T1000_fixmu.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N15_K5_T1000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N15_K5_T2000_fixmu.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N15_K5_T2000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N15_K5_T500_fixmu.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N15_K5_T500_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N50_K5_T1000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N50_K5_T2000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N50_K5_T500_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N5_K2_T1000_fixmu.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N5_K2_T1000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N5_K2_T2000_fixmu.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N5_K2_T2000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N5_K2_T500_fixmu.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N5_K2_T500_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N5_K3_T1000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N5_K3_T2000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_param_errors_N5_K3_T500_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N10_K2_T1000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N10_K2_T2000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N10_K2_T500_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N10_K3_T1000_fixmu.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N10_K3_T1000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N10_K3_T2000_fixmu.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N10_K3_T2000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N10_K3_T500_fixmu.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N10_K3_T500_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N10_K5_T1000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N10_K5_T2000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N10_K5_T500_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N15_K2_T1000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N15_K2_T2000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N15_K2_T500_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N15_K3_T1000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N15_K3_T2000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N15_K3_T500_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N15_K5_T1000_fixmu.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N15_K5_T1000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N15_K5_T2000_fixmu.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N15_K5_T2000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N15_K5_T500_fixmu.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N15_K5_T500_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N50_K5_T1000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N50_K5_T2000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N50_K5_T500_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N5_K2_T1000_fixmu.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N5_K2_T1000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N5_K2_T2000_fixmu.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N5_K2_T2000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N5_K2_T500_fixmu.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N5_K2_T500_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N5_K3_T1000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N5_K3_T2000_freeμ.csv_20250422_021831.csv
+│   │       ├── summary_scalar_metrics_N5_K3_T500_freeμ.csv_20250422_021831.csv
+│   │       ├── time_scaling_K.pdf
+│   │       ├── time_scaling_K.png
+│   │       ├── time_scaling_N.pdf
+│   │       ├── time_scaling_N.png
+│   │       ├── time_scaling_T.pdf
+│   │       └── time_scaling_T.png
+│   ├── README.md
+│   ├── requirements.txt
+│   ├── scripts
+│   │   ├── data_processing
+│   │   │   └── datacleaning.py
+│   │   ├── empirical
+│   │   │   ├── 01_initial_residual_analysis.py
+│   │   │   ├── 02_garch_analysis.py
+│   │   │   ├── combined_model_metrics.py
+│   │   │   └── __pycache__
+│   │   │       ├── multivariate_portmanteau.cpython-312.pyc
+│   │   │       └── multivariate_portmanteau.cpython-313.pyc
+│   │   ├── optimization
+│   │   │   ├── aggregate_optimization_results.py
+│   │   │   └── unified_filter_optimization.py
+│   │   ├── __pycache__
+│   │   │   └── compare_study_results.cpython-312.pyc
+│   │   ├── simstudy_1
+│   │   │   ├── aggregate_simulation_data.py
+│   │   │   ├── aggregate_simulation_results.py
+│   │   │   ├── analyze_aggregated_simulation1_results.py
+│   │   │   ├── analyze_simulation1_performance.py
+│   │   │   ├── analyze_simulation1_performance_v2.py
+│   │   │   ├── analyze_simulation1_performance_v3.py
+│   │   │   ├── full_simulation_config.json
+│   │   │   ├── merge_simulation_results.py
+│   │   │   ├── __pycache__
+│   │   │   │   ├── analyze_aggregated_simulation1_results.cpython-312.pyc
+│   │   │   │   └── merge_simulation_results.cpython-312.pyc
+│   │   │   ├── run_config_batch.py
+│   │   │   ├── run_simulation_batch.py
+│   │   │   ├── run_single_replicate.py
+│   │   │   ├── run_single_simulation_replicate.py
+│   │   │   └── Sim1_agg_analysis.py
+│   │   ├── simstudy_2
+│   │   │   ├── analysis_data_utils.py
+│   │   │   ├── analysis_error_metrics.py
+│   │   │   ├── analysis_io_utils.py
+│   │   │   ├── analysis_plotting_config.py
+│   │   │   ├── analysis_plotting_utils.py
+│   │   │   ├── analysis_scalar_metrics.py
+│   │   │   ├── analysis_specific_utils.py
+│   │   │   ├── analysis_table_utils.py
+│   │   │   ├── analyze_optimization_results_main.py
+│   │   │   ├── analyze_optimization_results.py
+│   │   │   ├── generate_optimization_configs.py
+│   │   │   ├── run_optimization_replicate.py
+│   │   │   ├── run_single_optimization_replicate.py
+│   │   │   └── submit_optimization_batch_job.py
+│   │   └── utils
+│   │       └── calculate_array_means.py
+│   ├── setup.py
+│   └── src
+│       ├── bellman_filter_dfsv
+│       │   ├── filters
+│       │   │   ├── base.py
+│       │   │   ├── _bellman_impl.py
+│       │   │   ├── bellman_information.py
+│       │   │   ├── _bellman_optim.py
+│       │   │   ├── bellman.py
+│       │   │   ├── __init__.py
+│       │   │   ├── objectives.py
+│       │   │   ├── particle.py
+│       │   │   └── __pycache__
+│       │   │       ├── base.cpython-312.pyc
+│       │   │       ├── base.cpython-313.pyc
+│       │   │       ├── bellman.cpython-313.pyc
+│       │   │       ├── _bellman_impl.cpython-312.pyc
+│       │   │       ├── _bellman_impl.cpython-313.pyc
+│       │   │       ├── bellman_information.cpython-312.pyc
+│       │   │       ├── bellman_information.cpython-313.pyc
+│       │   │       ├── _bellman_optim.cpython-312.pyc
+│       │   │       ├── _bellman_optim.cpython-313.pyc
+│       │   │       ├── __init__.cpython-312.pyc
+│       │   │       ├── __init__.cpython-313.pyc
+│       │   │       ├── objectives.cpython-313.pyc
+│       │   │       └── particle.cpython-313.pyc
+│       │   ├── __init__.py
+│       │   ├── models
+│       │   │   ├── dfsv.py
+│       │   │   ├── __init__.py
+│       │   │   ├── likelihoods.py
+│       │   │   ├── __pycache__
+│       │   │   │   ├── dfsv.cpython-312.pyc
+│       │   │   │   ├── dfsv.cpython-313.pyc
+│       │   │   │   ├── __init__.cpython-312.pyc
+│       │   │   │   ├── __init__.cpython-313.pyc
+│       │   │   │   ├── likelihoods.cpython-313.pyc
+│       │   │   │   ├── simulation.cpython-313.pyc
+│       │   │   │   └── simulation_helpers.cpython-313.pyc
+│       │   │   ├── simulation_helpers.py
+│       │   │   └── simulation.py
+│       │   ├── __pycache__
+│       │   │   ├── __init__.cpython-312.pyc
+│       │   │   └── __init__.cpython-313.pyc
+│       │   └── utils
+│       │       ├── analysis.py
+│       │       ├── __init__.py
+│       │       ├── jax_helpers.py
+│       │       ├── optimization_helpers.py
+│       │       ├── optimization.py
+│       │       ├── __pycache__
+│       │       │   ├── analysis.cpython-313.pyc
+│       │       │   ├── __init__.cpython-313.pyc
+│       │       │   ├── jax_helpers.cpython-313.pyc
+│       │       │   ├── optimization.cpython-313.pyc
+│       │       │   ├── optimization_helpers.cpython-313.pyc
+│       │       │   ├── solvers.cpython-313.pyc
+│       │       │   └── transformations.cpython-313.pyc
+│       │       ├── solvers.py
+│       │       └── transformations.py
+│       └── bellman_filter_dfsv.egg-info
+│           ├── dependency_links.txt
+│           ├── PKG-INFO
+│           ├── SOURCES.txt
+│           └── top_level.txt
+├── Thesis manual Master - Econometrics 2023-2024 12NOV.pdf
+├── thesis.md
+├── tree.txt
+└── uv.lock
+
+234 directories, 1850 files
