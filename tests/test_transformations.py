@@ -1,17 +1,19 @@
-import pytest
-import numpy as np
-import copy
+
 import jax.random as jr  # Add jr
+import numpy as np
+import pytest
+
 from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 
 # Import new functions and EPS
 from bellman_filter_dfsv.core.optimization.transformations import (
-    transform_params,
-    untransform_params,
+    EPS,
     inverse_softplus,
     safe_arctanh,  # Added
-    EPS,
+    transform_params,
+    untransform_params,
 )
+
 # Removed stabilize_matrix, get_unconstrained_matrix
 
 # Try importing JAX and skip tests if unavailable
@@ -278,7 +280,7 @@ def test_roundtrip_transformation_hybrid(base_params):
 
     assert params_treedef == roundtrip_treedef
     assert len(params_leaves) == len(roundtrip_leaves)
-    for p_leaf, r_leaf in zip(params_leaves, roundtrip_leaves):
+    for p_leaf, r_leaf in zip(params_leaves, roundtrip_leaves, strict=False):
         if isinstance(p_leaf, (jax.Array, np.ndarray)):
             # Use allclose for numerical arrays
             np.testing.assert_allclose(
@@ -286,7 +288,7 @@ def test_roundtrip_transformation_hybrid(base_params):
                 p_leaf,
                 rtol=1e-6,  # Use appropriate tolerance
                 atol=1e-7,
-                err_msg=f"Roundtrip mismatch for leaf",
+                err_msg="Roundtrip mismatch for leaf",
             )
         else:
             # Use direct equality for non-array types (like N, K)
@@ -447,7 +449,7 @@ def test_gradient_compatibility(base_params):
     assert initial_treedef == gradient_treedef, "Gradient structure mismatch"
     assert len(initial_leaves) == len(gradient_leaves)
 
-    for i, (init_leaf, grad_leaf) in enumerate(zip(initial_leaves, gradient_leaves)):
+    for i, (init_leaf, grad_leaf) in enumerate(zip(initial_leaves, gradient_leaves, strict=False)):
         if isinstance(init_leaf, jax.Array):
             assert isinstance(grad_leaf, jax.Array), (
                 f"Gradient leaf {i} is not a JAX array"

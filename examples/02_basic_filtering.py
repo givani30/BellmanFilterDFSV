@@ -11,17 +11,19 @@ This example demonstrates how to:
 3. Compare filter performance and visualize results
 """
 
-import numpy as np
-import matplotlib.pyplot as plt
-import jax.numpy as jnp
 import time
-from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
+
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+
 from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
 from bellman_filter_dfsv.core.filters.bellman_information import (
     DFSVBellmanInformationFilter,
 )
 from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
 
 # Set random seed for reproducibility
 np.random.seed(42)

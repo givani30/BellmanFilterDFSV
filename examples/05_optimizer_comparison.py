@@ -13,10 +13,12 @@ This example demonstrates how to:
    - Numerical stability
 """
 
-import numpy as np
-import matplotlib.pyplot as plt
-import jax.numpy as jnp
 import time
+
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+
 from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
 from bellman_filter_dfsv.core.optimization.optimization import (

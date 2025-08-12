@@ -5,17 +5,18 @@ Script to examine the log-likelihood surface around current parameter values.
 This helps us understand why the gradients are larger than expected.
 """
 
-import numpy as np
-import jax.numpy as jnp  # Add JAX numpy import
-import matplotlib.pyplot as plt
 import copy
 
-from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
+import jax.numpy as jnp  # Add JAX numpy import
+import matplotlib.pyplot as plt
+import numpy as np
+
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
 from bellman_filter_dfsv.core.models.dfsv import (
     DFSVParamsDataclass,
     dfsv_params_to_dict,
 )  # Removed DFSV_params
-from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
 
 
 def create_test_model():

@@ -2,14 +2,14 @@
 Tests for the optimization utilities in bellman_filter_dfsv.utils.optimization.
 """
 
-import pytest
+
 import jax
 import jax.numpy as jnp
-import numpy as np
-import equinox as eqx
 import optimistix as optx
-from typing import Dict, Any, List, Tuple
+import pytest
 
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
 from bellman_filter_dfsv.core.optimization.optimization import (
     FilterType,
     OptimizerResult,
@@ -18,20 +18,14 @@ from bellman_filter_dfsv.core.optimization.optimization import (
     minimize_with_logging,
     run_optimization,
 )
+from bellman_filter_dfsv.core.optimization.optimization_helpers import (
+    create_stable_initial_params,
+)  # Added import
 from bellman_filter_dfsv.core.optimization.solvers import (
     create_optimizer,
     get_available_optimizers,
     get_optimizer_config,
 )
-from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
-from bellman_filter_dfsv.core.optimization.transformations import (
-    transform_params,
-    untransform_params,
-)
-from bellman_filter_dfsv.core.optimization.optimization_helpers import (
-    create_stable_initial_params,
-)  # Added import
 
 # Enable float64 for tests
 jax.config.update("jax_enable_x64", True)

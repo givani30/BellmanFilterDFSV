@@ -11,24 +11,25 @@ Parameter transformations map constrained parameters (e.g., positive definite ma
 to unconstrained space, which can improve optimization stability and convergence.
 """
 
-import numpy as np
-import matplotlib.pyplot as plt
-import jax.numpy as jnp
-import jax
-import equinox as eqx
 import time
+
+import equinox as eqx
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
 import optimistix as optx
-from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
+
 from bellman_filter_dfsv.core.filters.bellman_information import (
     DFSVBellmanInformationFilter,
 )
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
+from bellman_filter_dfsv.core.optimization.objectives import bellman_objective
+from bellman_filter_dfsv.core.optimization.solvers import DampedTrustRegionBFGS
 from bellman_filter_dfsv.core.optimization.transformations import (
     transform_params,
     untransform_params,
 )
-from bellman_filter_dfsv.core.optimization.objectives import bellman_objective
-from bellman_filter_dfsv.core.optimization.solvers import DampedTrustRegionBFGS
 
 # Set random seed for reproducibility
 np.random.seed(42)
@@ -385,7 +386,7 @@ def run_filters_and_plot_states(
     trans_filtered_states = np.array(filter_instance.filtered_states)
 
     # Print log-likelihoods
-    print(f"\nLog-likelihoods:")
+    print("\nLog-likelihoods:")
     print(f"  True parameters: {float(true_ll):.4f}")
     print(f"  Standard optimization: {float(std_ll):.4f}")
     print(f"  Transformed optimization: {float(trans_ll):.4f}")

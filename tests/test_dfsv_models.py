@@ -5,14 +5,11 @@ This module contains tests for the JAX-compatible DFSVParamsDataclass.
 """
 
 import unittest
+
 import numpy as np
-import sys
-import os
-from pathlib import Path
 
 # Remove sys.path hack
 # sys.path.append(str(Path(__file__).parent.parent))
-
 # Updated imports
 from bellman_filter_dfsv.core.models.dfsv import (
     DFSVParamsDataclass,

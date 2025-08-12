@@ -1,21 +1,22 @@
 """Unified tests for core functionalities of DFSV filters."""
 
-import pytest
+from collections.abc import Callable
+from typing import Any
+
 import jax
 import jax.numpy as jnp
-import equinox as eqx
-from jaxtyping import Float, Array, PRNGKeyArray, Int, PyTree
-from typing import Dict, Any, Callable
+import pytest
+from jaxtyping import Array, Float, PyTree
 
-# Fixtures are automatically discovered by pytest from tests/conftest.py
-
-from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.core.filters.base import DFSVFilter
 from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
 from bellman_filter_dfsv.core.filters.bellman_information import (
     DFSVBellmanInformationFilter,
 )
 from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
+
+# Fixtures are automatically discovered by pytest from tests/conftest.py
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 
 # Define filter types to parametrize over
 FILTER_TYPES = ["bellman", "bellman_information", "particle"]
@@ -25,8 +26,8 @@ FILTER_TYPES = ["bellman", "bellman_information", "particle"]
 def test_filter_stability(
     filter_name: str,
     params_fixture: Callable[..., DFSVParamsDataclass],
-    data_fixture: Callable[..., Dict[str, Any]],
-    filter_instances_fixture: Callable[..., Dict[str, PyTree]],
+    data_fixture: Callable[..., dict[str, Any]],
+    filter_instances_fixture: Callable[..., dict[str, PyTree]],
 ):
     """
     Tests if the filter runs without producing NaN or Inf outputs.
@@ -37,10 +38,10 @@ def test_filter_stability(
     # Use default N=4, K=2 for params
     params: DFSVParamsDataclass = params_fixture()
     # Use default T=100, seed=42 for data
-    sim_data: Dict[str, Any] = data_fixture(params)
+    sim_data: dict[str, Any] = data_fixture(params)
     observations: Float[Array, "T N"] = sim_data["observations"]
     # Use default num_particles=1000 for PF
-    filters: Dict[str, PyTree] = filter_instances_fixture(params)
+    filters: dict[str, PyTree] = filter_instances_fixture(params)
     filter_instance: DFSVFilter = filters[filter_name]
 
     # Act: Run the filter's primary filtering method
@@ -83,17 +84,17 @@ def test_filter_stability(
 def test_log_likelihood_wrt_params(
     filter_name: str,
     params_fixture: Callable[..., DFSVParamsDataclass],
-    data_fixture: Callable[..., Dict[str, Any]],
-    filter_instances_fixture: Callable[..., Dict[str, PyTree]],
+    data_fixture: Callable[..., dict[str, Any]],
+    filter_instances_fixture: Callable[..., dict[str, PyTree]],
 ):
     """
     Tests if log_likelihood_wrt_params returns a finite scalar float.
     """
     # Arrange
     params: DFSVParamsDataclass = params_fixture()
-    sim_data: Dict[str, Any] = data_fixture(params)
+    sim_data: dict[str, Any] = data_fixture(params)
     observations: Float[Array, "T N"] = sim_data["observations"]
-    filters: Dict[str, PyTree] = filter_instances_fixture(params)
+    filters: dict[str, PyTree] = filter_instances_fixture(params)
     filter_instance: DFSVFilter = filters[filter_name]
 
     # Act

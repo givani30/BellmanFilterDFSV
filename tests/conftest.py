@@ -1,24 +1,25 @@
 """Pytest configuration and common fixtures for DFSV model testing."""
 
-import pytest
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-import equinox as eqx
+import pytest
 
 # Configure JAX to use CPU for tests to avoid GPU memory issues
 jax.config.update("jax_platform_name", "cpu")
 jax.config.update("jax_enable_x64", True)
-from jaxtyping import Float, Array, PRNGKeyArray, Int, PyTree
-from typing import Dict, Any, Callable
+from collections.abc import Callable
+from typing import Any
 
-from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
+from jaxtyping import PyTree
+
 from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
 from bellman_filter_dfsv.core.filters.bellman_information import (
     DFSVBellmanInformationFilter,
 )
 from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
 
 
 @pytest.fixture(scope="session")
@@ -70,7 +71,7 @@ def params_fixture() -> Callable[..., DFSVParamsDataclass]:
 
 
 @pytest.fixture(scope="session")
-def data_fixture() -> Callable[..., Dict[str, Any]]:
+def data_fixture() -> Callable[..., dict[str, Any]]:
     """
     Pytest fixture providing a factory function to simulate DFSV data.
 
@@ -87,7 +88,7 @@ def data_fixture() -> Callable[..., Dict[str, Any]]:
 
     def _simulate_data(
         params: DFSVParamsDataclass, T: int = 100, seed: int = 42
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Simulates DFSV data for given parameters, T, and seed."""
         key = jr.PRNGKey(seed)
         # Assuming simulate_DFSV takes DFSVParamsDataclass directly
@@ -109,7 +110,7 @@ def data_fixture() -> Callable[..., Dict[str, Any]]:
 
 
 @pytest.fixture(scope="session")
-def filter_instances_fixture() -> Callable[..., Dict[str, PyTree]]:
+def filter_instances_fixture() -> Callable[..., dict[str, PyTree]]:
     """
     Pytest fixture providing a factory function to create initialized DFSV filters.
 
@@ -125,7 +126,7 @@ def filter_instances_fixture() -> Callable[..., Dict[str, PyTree]]:
 
     def _create_filters(
         params: DFSVParamsDataclass, num_particles: int = 1000
-    ) -> Dict[str, PyTree]:
+    ) -> dict[str, PyTree]:
         """Initializes DFSV filters for given parameters."""
         # N, K are static fields in the dataclass
         N = params.N

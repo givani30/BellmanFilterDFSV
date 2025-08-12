@@ -1,27 +1,27 @@
 """Pytest-based test suite for the DFSVBellmanFilter implementation."""
 
 import os
-import pytest
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
 import jax
 import jax.numpy as jnp
-import numpy as np
 import matplotlib.pyplot as plt
-from pathlib import Path
-from typing import Dict, Any, Callable
+import numpy as np
+import pytest
 
 # Assuming fixtures are available from conftest.py:
 # params_fixture, data_fixture, filter_instances_fixture
-
 from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
 from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
-
 
 # --- Specific Tests Retained and Adapted ---
 
 
 def test_bellman_single_step(
     params_fixture: Callable[..., DFSVParamsDataclass],
-    filter_instances_fixture: Callable[..., Dict[str, Any]],
+    filter_instances_fixture: Callable[..., dict[str, Any]],
 ):
     """Tests a single prediction and update step of the filter."""
     # Arrange: Use specific params for this test if needed, or default fixture params
@@ -106,15 +106,15 @@ def test_bellman_single_step(
 
 def test_smooth(
     params_fixture: Callable[..., DFSVParamsDataclass],
-    data_fixture: Callable[..., Dict[str, Any]],
-    filter_instances_fixture: Callable[..., Dict[str, Any]],
+    data_fixture: Callable[..., dict[str, Any]],
+    filter_instances_fixture: Callable[..., dict[str, Any]],
 ):
     """Tests the smoother implementation for the Bellman Filter."""
     # Arrange: Use fixtures for params, data, filter
     params: DFSVParamsDataclass = params_fixture(
         N=3, K=1
     )  # Use smaller model for speed
-    sim_data: Dict[str, Any] = data_fixture(params, T=50, seed=555)  # Shorter series
+    sim_data: dict[str, Any] = data_fixture(params, T=50, seed=555)  # Shorter series
     observations: jax.Array = sim_data["observations"]
     bf: DFSVBellmanFilter = filter_instances_fixture(params)["bellman"]
     T = sim_data["T"]
@@ -170,13 +170,13 @@ def test_smooth(
 
 def test_bellman_filter_estimation(
     params_fixture: Callable[..., DFSVParamsDataclass],
-    data_fixture: Callable[..., Dict[str, Any]],
-    filter_instances_fixture: Callable[..., Dict[str, Any]],
+    data_fixture: Callable[..., dict[str, Any]],
+    filter_instances_fixture: Callable[..., dict[str, Any]],
 ):
     """Tests the filter's state estimation accuracy on simulated data."""
     # Arrange: Use fixtures
     params: DFSVParamsDataclass = params_fixture()  # Default N=4, K=2
-    sim_data: Dict[str, Any] = data_fixture(params, T=200, seed=42)
+    sim_data: dict[str, Any] = data_fixture(params, T=200, seed=42)
     observations: jax.Array = sim_data["observations"]
     true_factors: np.ndarray = np.asarray(
         sim_data["true_factors"]
@@ -254,7 +254,7 @@ def test_bellman_filter_estimation(
 def _create_visual_comparison(
     params: DFSVParamsDataclass,
     bf: DFSVBellmanFilter,
-    sim_data: Dict[str, Any],
+    sim_data: dict[str, Any],
     save_path: str = None,
 ) -> plt.Figure:
     """Creates visual comparisons between true and filtered states."""
@@ -310,13 +310,13 @@ def _create_visual_comparison(
 def test_visualization(
     tmp_path: Path,  # Use pytest's tmp_path fixture for temporary file saving
     params_fixture: Callable[..., DFSVParamsDataclass],
-    data_fixture: Callable[..., Dict[str, Any]],
-    filter_instances_fixture: Callable[..., Dict[str, Any]],
+    data_fixture: Callable[..., dict[str, Any]],
+    filter_instances_fixture: Callable[..., dict[str, Any]],
 ):
     """Generates and saves a visual comparison of filter results."""
     # Arrange
     params: DFSVParamsDataclass = params_fixture()  # Default N=4, K=2
-    sim_data: Dict[str, Any] = data_fixture(params, T=300, seed=456)
+    sim_data: dict[str, Any] = data_fixture(params, T=300, seed=456)
     observations: jax.Array = sim_data["observations"]
     bf: DFSVBellmanFilter = filter_instances_fixture(params)["bellman"]
 

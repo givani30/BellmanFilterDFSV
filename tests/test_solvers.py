@@ -2,21 +2,14 @@
 Tests for the solver utilities in bellman_filter_dfsv.utils.solvers.
 """
 
-import pytest
+
 import jax
 import jax.numpy as jnp
-import numpy as np
-import equinox as eqx
-import optimistix as optx
-from typing import Dict, Any, List, Tuple
+import pytest
 
 from bellman_filter_dfsv.core.optimization.solvers import (
-    create_optimizer,
-    get_available_optimizers,
-    get_optimizer_config,
     create_learning_rate_scheduler,
-    DogLegBFGS,
-    ArmijoBFGS,
+    create_optimizer,
 )
 
 # Enable float64 for tests

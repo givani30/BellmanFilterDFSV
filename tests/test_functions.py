@@ -1,20 +1,17 @@
 import unittest
-import numpy as np
+
 import jax.numpy as jnp  # Add JAX numpy import
-import matplotlib.pyplot as plt
-import sys
-import os
+import numpy as np
+
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
 
 # Remove sys.path hack
 # sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 # Updated imports
 from bellman_filter_dfsv.core.models.dfsv import (
     DFSVParamsDataclass,
 )  # Import the JAX dataclass
 from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
-from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
-
 
 # Removed TestDFSVParams class as it tested the deleted DFSV_params class
 

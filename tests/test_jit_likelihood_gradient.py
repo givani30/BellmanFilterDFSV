@@ -9,20 +9,22 @@ This script:
 4. Compares the gradients to validate correctness
 """
 
-import numpy as np
+import copy
+import time
+
 import jax
 import jax.numpy as jnp
-import time
 import matplotlib.pyplot as plt
-import copy
+import numpy as np
 
-# Import the necessary functions
-from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
 from bellman_filter_dfsv.core.models.dfsv import (
     DFSVParamsDataclass,
     dfsv_params_to_dict,
 )  # Removed DFSV_params
-from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+
+# Import the necessary functions
+from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
 
 # Enable 64-bit precision for numerical stability
 jax.config.update("jax_enable_x64", True)

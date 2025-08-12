@@ -1,5 +1,6 @@
+from collections.abc import Callable
 from functools import partial
-from typing import Any, Callable, Dict, Tuple, Union
+from typing import Any
 
 import equinox as eqx
 import jax
@@ -7,17 +8,16 @@ import jax.numpy as jnp
 import jax.scipy.linalg
 import numpy as np
 import optimistix as optx
-# Removed jit import in favor of eqx.filter_jit
 
+# Removed jit import in favor of eqx.filter_jit
 from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 
 # Import reusable components from _bellman_impl and _bellman_optim
 from ._bellman_impl import (
     bif_likelihood_penalty_impl,
     build_covariance_impl,
+    expected_fim_impl,
     log_posterior_impl,
-    observed_fim_impl,
-    expected_fim_impl
 )
 from ._bellman_optim import _block_coordinate_update_impl
 
@@ -115,7 +115,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
     """
 
     # Add storage for filtered covariances needed by smoother
-    filtered_covs: Union[np.ndarray, None] = None
+    filtered_covs: np.ndarray | None = None
 
     def __init__(self, N: int, K: int):
         """Initializes the DFSVBellmanInformationFilter.
@@ -265,8 +265,8 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         return (result + result.T) / 2
 
     def initialize_state(
-        self, params: Union[Dict[str, Any], DFSVParamsDataclass]
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        self, params: dict[str, Any] | DFSVParamsDataclass
+    ) -> tuple[jnp.ndarray, jnp.ndarray]:
         """Initializes the BIF state from unconditional model moments.
 
         For the DFSV model, we initialize using:
@@ -335,7 +335,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         params: DFSVParamsDataclass, # Expect JAX arrays inside
         state_post: jnp.ndarray,     # Posterior state α_{t-1|t-1} (JAX array)
         info_post: jnp.ndarray,      # Posterior information Ω_{t-1|t-1} (JAX array)
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    ) -> tuple[jnp.ndarray, jnp.ndarray]:
         """Performs the BIF prediction step using information form.
 
         Propagates the information state (α, Ω) forward using a numerically stable
@@ -435,7 +435,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         fisher_info_fn: Callable,
         log_posterior_fn: Callable,
         kl_penalty_fn: Callable
-    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
         """Performs the BIF update step using posterior mode optimization.
 
         This step finds the posterior mode α_{t|t} and updates the information
@@ -546,10 +546,10 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
     def predict(
         self,
-        params: Union[Dict[str, Any], DFSVParamsDataclass],
+        params: dict[str, Any] | DFSVParamsDataclass,
         state: np.ndarray,
         info: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Performs the BIF prediction step.
 
         Accepts NumPy arrays for state and information, converts them to JAX,
@@ -582,11 +582,11 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
     def update(
         self,
-        params: Union[Dict[str, Any], DFSVParamsDataclass],
+        params: dict[str, Any] | DFSVParamsDataclass,
         predicted_state: jnp.ndarray,
         predicted_info: jnp.ndarray,
         observation: jnp.ndarray
-    ) -> Tuple[jnp.ndarray, jnp.ndarray, float]:
+    ) -> tuple[jnp.ndarray, jnp.ndarray, float]:
         """Performs the BIF update step.
 
         Accepts NumPy arrays for predicted state/info and observation, converts
@@ -621,8 +621,8 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
     # --- Filtering Methods (Adapted for Information Filter) ---
     def filter(
-        self, params: Union[Dict[str, Any], DFSVParamsDataclass], observations: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray, float]:
+        self, params: dict[str, Any] | DFSVParamsDataclass, observations: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, float]:
         """Runs the Bellman Information Filter using a standard Python loop.
 
         Iterates through time steps, calling the public `predict` and `update`
@@ -712,8 +712,8 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         return self.get_filtered_states(), self.get_filtered_information_matrices(), self.get_total_log_likelihood()
 
     def filter_scan(
-        self, params: Union[Dict[str, Any], DFSVParamsDataclass], observations: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray, jnp.ndarray]:
+        self, params: dict[str, Any] | DFSVParamsDataclass, observations: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, jnp.ndarray]:
         """BIF implementation using JAX's scan primitive for accelerated filtering.
 
         This method uses jax.lax.scan to execute the filter within JAX's compilation
@@ -831,7 +831,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         return self.get_filtered_states(), self.get_filtered_information_matrices(), self.get_total_log_likelihood()
 
     # --- Smoothing Method ---
-    def smooth(self, params: DFSVParamsDataclass) -> Tuple[np.ndarray, np.ndarray]:
+    def smooth(self, params: DFSVParamsDataclass) -> tuple[np.ndarray, np.ndarray]:
         """Performs Rauch-Tung-Striebel (RTS) smoothing for the Dynamic Factor SV model.
 
         Given filtered estimates from the BIF, this method performs backward smoothing
@@ -1093,7 +1093,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
     # --- Likelihood Calculation Methods (Adapted for BIF) ---
 
     def log_likelihood_wrt_params(
-        self, params_dict: Dict[str, Any], observations: np.ndarray
+        self, params_dict: dict[str, Any], observations: np.ndarray
     ) -> jnp.ndarray:
         """Calculates BIF pseudo log-likelihood for parameter estimation.
 
@@ -1153,7 +1153,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
     def _log_likelihood_wrt_params_impl(
         self, params: DFSVParamsDataclass, observations: jnp.ndarray
-    ) -> Union[jnp.ndarray, Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
+    ) -> jnp.ndarray | tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
         """Internal JAX implementation for BIF log-likelihood using scan.
 
         Designed to be JIT-compiled. Assumes inputs are JAX arrays. Can optionally

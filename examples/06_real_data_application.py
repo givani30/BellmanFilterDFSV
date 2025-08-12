@@ -13,24 +13,24 @@ Note: This example requires pandas and yfinance packages for data handling.
 Install them with: pip install pandas yfinance
 """
 
-import numpy as np
-import matplotlib.pyplot as plt
-import jax.numpy as jnp
-import jax
 import time
+from datetime import datetime, timedelta
+
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import yfinance as yf
-from datetime import datetime, timedelta
-from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+
 from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
 from bellman_filter_dfsv.core.filters.bellman_information import (
     DFSVBellmanInformationFilter,
 )
 from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.core.optimization.optimization import (
     FilterType,
     run_optimization,
-    OptimizerResult,
 )
 
 # Set random seed for reproducibility

@@ -11,9 +11,10 @@ The DFSV model combines factor models with stochastic volatility, allowing
 for time-varying volatility in the latent factors that drive returns.
 """
 
-import numpy as np
-import matplotlib.pyplot as plt
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+
 from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
 
