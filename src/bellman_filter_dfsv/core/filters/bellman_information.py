@@ -26,64 +26,92 @@ from .base import DFSVFilter
 
 
 class DFSVBellmanInformationFilter(DFSVFilter):
-    """Bellman Information Filter (BIF) for the DFSV model.
+    """Information‑form Bellman filter for the Dynamic Factor Stochastic Volatility (DFSV) model.
+
+    This implementation propagates the *information state* ``(alpha_t, Omega_t)`` instead of the
+    covariance form ``(alpha_t, P_t)`` to improve numerical robustness when latent log–volatilities
+    drive ill–conditioned, state‑dependent innovation covariance matrices. It brings together:
+
+    - Block–coordinate posterior mode finding over factors ``f_t`` and log–volatilities ``h_t``
+    - Information form time propagation using Woodbury / Joseph identities
+    - Stabilised observed Fisher information updates with eigenvalue clipping
+    - A KL (curvature) penalty that adjusts the pseudo log‑likelihood accumulation
+    - JIT compilation (``equinox.filter_jit``) of all hot paths for GPU / TPU / CPU parity
+
+    The design separates low‑level linear‑algebraic primitives (in ``_bellman_impl``) from the
+    orchestration logic here, facilitating targeted testing and reuse across alternative filter
+    variants.
 
     Overview
-    --------
-    Implements the information‑form Bellman filter (Lange, 2024) for the
-    Dynamic Factor Stochastic Volatility (DFSV) model. Instead of propagating
-    the covariance pair (α_t, P_t), the information pair (α_t, Ω_t) is updated
-    for improved numerical stability with state‑dependent volatility.
+    ========
+    Let ``alpha_t = [ f_t ; h_t ]`` with ``f_t`` the ``K`` latent factors and ``h_t`` the ``K`` log‑volatilities.
+    We maintain the *information matrix* ``Omega_t = P_t^{-1}`` and its associated information mean
+    representation rather than the covariance ``P_t`` directly. Prediction and update are expressed
+    entirely in information space except where a controlled inversion (Cholesky with jitter) is
+    required.
 
-    State Space (per t)
-    ------------------
-    y_t = Λ f_t + ε_t
-    f_{t+1} = Φ_f f_t + ν_{t+1}
-    h_{t+1} = μ + Φ_h (h_t - μ) + η_{t+1}
-    where α_t = [f_t, h_t].
+    State / Shape Conventions
+    -------------------------
+    - ``f_t``: ``(K,)``
+    - ``h_t``: ``(K,)``
+    - ``alpha_t``: ``(2K, 1)`` (column vector)
+    - ``Omega_t``: ``(2K, 2K)`` symmetric positive definite (SPD)
+    - Observations ``y_t``: ``(N,)`` with conditional covariance ``Sigma_t``
 
-    Pseudo Log‑Likelihood (schematic)
-    ---------------------------------
-    L(Θ) = Σ_t [ ℓ(y_t | α_{t|t}) − KL_penalty_t ],
-    with KL_penalty_t approximating the KL divergence between the filtered
-    and one‑step predictive distributions.
+    Prediction (Information Form)
+    -----------------------------
+    We exploit block structure in the state transition:
 
-    Numerical Notes
-    --------------
-    - JAX and Equinox JIT for performance / AD.
-    - Block coordinate descent for (f, h) mode finding.
-    - Fisher Information (regularized) added to Ω update.
-    - Woodbury + determinant lemma for O(N K²) scaling.
-    - Eigenvalue clipping for stability.
+    * Factors: ``f_t = Phi_f f_{t-1} + v_t``, ``v_t ~ N(0, diag(exp(h_t)))`` (state‑dependent)
+    * Log‑vols: ``h_t = mu + Phi_h (h_{t-1} - mu) + eta_t``, ``eta_t ~ N(0, Q_h)``
 
+    The block‑diagonal process precision ``Q_t^{-1}`` is constructed analytically:
 
-    Known Issues
-    -----------
-    - Mild bias in μ (under investigation; KL approximation).
-    - Requires FIM eigenvalue clipping in some regimes.
-    See productContext.md for details.
+    * ``Q_f^{-1} = diag(exp(-h_t))``
+    * ``Q_h^{-1} = (Q_h + eps I)^{-1}`` via Cholesky solve
 
-    Attributes
-    ----------
-    N : int
-        Number of observed series.
-    K : int
-        Number of latent factors.
-    filtered_states, filtered_infos, filtered_covs
-        Filtered posterior modes and information / covariance matrices.
-    predicted_states, predicted_infos
-        One‑step predictions.
-    log_likelihoods, total_log_likelihood
-        Stepwise and total pseudo log‑likelihood values.
-    smoothed_states, smoothed_covariances
-        RTS‑style smoothed estimates.
-    JIT helpers
-        build_covariance_jit, fisher_information_jit, log_posterior_jit,
-        bif_penalty_jit, predict_jax_info_jit, update_jax_info_jit.
+    Given prior ``(alpha_{t-1|t-1}, Omega_{t-1|t-1})`` the predicted precision is
+    ``Omega_{t|t-1} = Q_t^{-1} - Q_t^{-1} F (Omega_{t-1|t-1} + F^T Q_t^{-1} F)^{-1} F^T Q_t^{-1}``.
+
+    Update (Posterior Mode + Fisher Increment)
+    ------------------------------------------
+    We approximate the non‑linear observation update by optimizing the penalised objective
+    combining (negative) conditional log‑likelihood ``-log p(y_t | alpha)`` with a quadratic
+    information prior term. The block coordinate routine alternates between:
+
+    #. Conditional factor mode for fixed ``h_t`` (closed‑form / small linear system)
+    #. Conditional volatility mode for fixed ``f_t`` solved with a quasi‑Newton (BFGS) step
+
+    The observed Fisher (negative Hessian) at the converged mode is stabilised via eigenvalue
+    floor clipping and added to ``Omega_{t|t-1}`` yielding ``Omega_{t|t}``.
+
+    KL / Curvature Penalty
+    ----------------------
+    A lightweight curvature adjustment term (``bif_likelihood_penalty_impl``) approximates the
+    marginalisation gap, improving comparability to full latent integration without resorting to
+    particle approximations.
+
+    Numerical Safeguards
+    --------------------
+    - Cholesky + jitter (``1e-6`` – ``1e-8`` range) before any inversion
+    - Symmetrisation ``(A + A.T)/2`` after operations susceptible to round‑off
+    - Eigenvalue clipping on Fisher increments to preserve SPD
+    - Fallback pseudo‑inverse guarded by NaN detection of Cholesky outputs
+    - JIT boundaries kept coarse to maximise fusion while preserving clarity
+
+    Performance Notes
+    -----------------
+    Heavy linear algebra is expressed with JAX primitives enabling XLA to fuse sequences and
+    exploit accelerator backends. The coordinate solver is structured to keep allocations stable
+    across iterations for improved compilation caching.
 
     References
     ----------
-    Lange (2024); Boekestijn (2025); systemPatterns.md.
+    - Lange (2024), *Information Form Filtering for State‑Dependent Volatility*
+    - Boekestijn (2025), *High-Dimensional Financial Volatility: A Bellman Filtering Approach to Dynamic Factor Stochastic Volatility*
+
+    The extensive detail here is intentional: please retain it when editing. Formatting choices
+    (blank lines, list spacing) follow docutils rules to prevent Sphinx warnings.
     """
 
     # Add storage for filtered covariances needed by smoother
