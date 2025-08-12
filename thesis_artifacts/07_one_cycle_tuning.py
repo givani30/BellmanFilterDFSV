@@ -19,7 +19,7 @@ from bellman_filter_dfsv.models.simulation import simulate_DFSV
 from bellman_filter_dfsv.utils.optimization import (
     FilterType,
     run_optimization,
-    OptimizerResult
+    OptimizerResult,
 )
 from bellman_filter_dfsv.utils.optimization_helpers import create_stable_initial_params
 from bellman_filter_dfsv.utils.transformations import apply_identification_constraint
@@ -48,25 +48,12 @@ def create_test_data(N=3, K=2, T=300):
     true_params = DFSVParamsDataclass(
         N=N,
         K=K,
-        lambda_r=jnp.array([
-            [1.0, 0.0],
-            [0.8, 0.0],
-            [0.6, 0.0]
-        ]),
-        Phi_f=jnp.array([
-            [0.45, 0.02],
-            [0.01, 0.44]
-        ]),
-        Phi_h=jnp.array([
-            [0.98, 0.0],
-            [0.0, 0.97]
-        ]),
+        lambda_r=jnp.array([[1.0, 0.0], [0.8, 0.0], [0.6, 0.0]]),
+        Phi_f=jnp.array([[0.45, 0.02], [0.01, 0.44]]),
+        Phi_h=jnp.array([[0.98, 0.0], [0.0, 0.97]]),
         mu=jnp.zeros(K),
-        Q_h=jnp.array([
-            [0.1, 0.0],
-            [0.0, 0.1]
-        ]),
-        sigma2=jnp.array([0.1, 0.1, 0.1])
+        Q_h=jnp.array([[0.1, 0.0], [0.0, 0.1]]),
+        sigma2=jnp.array([0.1, 0.1, 0.1]),
     )
 
     # Apply identification constraint
@@ -91,7 +78,7 @@ def run_one_cycle_experiment(
     max_steps=400,
     fix_mu=True,
     use_transformations=True,
-    verbose=True
+    verbose=True,
 ) -> OptimizerResult:
     """
     Run an experiment with a specific one-cycle scheduler configuration.
@@ -154,7 +141,7 @@ def run_one_cycle_experiment(
         learning_rate=init_lr,
         max_learning_rate=max_lr,
         min_learning_rate=min_lr,
-        warmup_steps=warmup_steps
+        warmup_steps=warmup_steps,
     )
     return result
 
@@ -178,50 +165,50 @@ def compare_one_cycle_configs(true_params, returns, max_steps=400):
             "init_lr": 5e-4,
             "min_lr": 1e-6,
             "warmup_pct": 0.1,
-            "cycle_shape": "cosine"
+            "cycle_shape": "cosine",
         },
         "higher_max_lr": {
             "max_lr": 2e-3,
             "init_lr": 5e-4,
             "min_lr": 1e-6,
             "warmup_pct": 0.1,
-            "cycle_shape": "cosine"
+            "cycle_shape": "cosine",
         },
         "lower_max_lr": {
             "max_lr": 5e-4,
             "init_lr": 2e-4,
             "min_lr": 1e-6,
             "warmup_pct": 0.1,
-            "cycle_shape": "cosine"
+            "cycle_shape": "cosine",
         },
         "longer_warmup": {
             "max_lr": 1e-3,
             "init_lr": 5e-4,
             "min_lr": 1e-6,
             "warmup_pct": 0.2,
-            "cycle_shape": "cosine"
+            "cycle_shape": "cosine",
         },
         "shorter_warmup": {
             "max_lr": 1e-3,
             "init_lr": 5e-4,
             "min_lr": 1e-6,
             "warmup_pct": 0.05,
-            "cycle_shape": "cosine"
+            "cycle_shape": "cosine",
         },
         "linear_cycle": {
             "max_lr": 1e-3,
             "init_lr": 5e-4,
             "min_lr": 1e-6,
             "warmup_pct": 0.1,
-            "cycle_shape": "linear"
+            "cycle_shape": "linear",
         },
         "higher_min_lr": {
             "max_lr": 1e-3,
             "init_lr": 5e-4,
             "min_lr": 1e-5,
             "warmup_pct": 0.1,
-            "cycle_shape": "cosine"
-        }
+            "cycle_shape": "cosine",
+        },
     }
 
     # Run optimization with each configuration
@@ -230,13 +217,12 @@ def compare_one_cycle_configs(true_params, returns, max_steps=400):
         print(f"\n=== Testing {name} configuration ===")
         try:
             result = run_one_cycle_experiment(
-                true_params=true_params,
-                returns=returns,
-                max_steps=max_steps,
-                **config
+                true_params=true_params, returns=returns, max_steps=max_steps, **config
             )
             results[name] = result
-            print(f"Final loss: {result.final_loss:.6f}, Success: {result.success}, Steps: {result.steps}")
+            print(
+                f"Final loss: {result.final_loss:.6f}, Success: {result.success}, Steps: {result.steps}"
+            )
         except Exception as e:
             print(f"Error with {name} configuration: {str(e)}")
             results[name] = None
@@ -256,16 +242,20 @@ def plot_loss_curves(results, title, filename):
     plt.figure(figsize=(12, 8))
 
     for name, result in results.items():
-        if result is not None and hasattr(result, 'loss_history') and result.loss_history:
+        if (
+            result is not None
+            and hasattr(result, "loss_history")
+            and result.loss_history
+        ):
             # Get loss history
             loss_history = result.loss_history
 
             # Plot loss curve
             plt.plot(range(len(loss_history)), loss_history, label=f"{name}")
 
-    plt.xlabel('Optimization Step')
-    plt.ylabel('Loss')
-    plt.yscale('log')  # Use log scale for better visualization
+    plt.xlabel("Optimization Step")
+    plt.ylabel("Loss")
+    plt.yscale("log")  # Use log scale for better visualization
     plt.title(title)
     plt.legend()
     plt.grid(True, alpha=0.3)
@@ -311,7 +301,7 @@ def plot_learning_rate_schedules(configs, max_steps=400):
             peak_lr=max_lr,
             min_lr=min_lr,
             decay_steps=max_steps,
-            warmup_steps=warmup_steps
+            warmup_steps=warmup_steps,
         )
 
         # Get learning rates
@@ -320,16 +310,16 @@ def plot_learning_rate_schedules(configs, max_steps=400):
         # Plot learning rate curve
         plt.plot(steps, learning_rates, label=name)
 
-    plt.xlabel('Step')
-    plt.ylabel('Learning Rate')
-    plt.yscale('log')  # Use log scale for better visualization
-    plt.title('One-Cycle Learning Rate Schedules')
+    plt.xlabel("Step")
+    plt.ylabel("Learning Rate")
+    plt.yscale("log")  # Use log scale for better visualization
+    plt.title("One-Cycle Learning Rate Schedules")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
 
     # Save figure
-    plt.savefig(output_dir / f'one_cycle_schedules_{timestamp}.png')
+    plt.savefig(output_dir / f"one_cycle_schedules_{timestamp}.png")
     plt.close()
 
 
@@ -348,17 +338,23 @@ def analyze_convergence_speed(results):
 
     data = []
     for name, result in results.items():
-        if result is not None and hasattr(result, 'loss_history') and result.loss_history:
+        if (
+            result is not None
+            and hasattr(result, "loss_history")
+            and result.loss_history
+        ):
             loss_history = result.loss_history
 
             # Find steps to reach each threshold
             steps_to_threshold = {}
             for threshold in thresholds:
                 try:
-                    step = next(i for i, loss in enumerate(loss_history) if loss < threshold)
+                    step = next(
+                        i for i, loss in enumerate(loss_history) if loss < threshold
+                    )
                     steps_to_threshold[threshold] = step
                 except StopIteration:
-                    steps_to_threshold[threshold] = float('inf')
+                    steps_to_threshold[threshold] = float("inf")
 
             # Calculate stability metrics
             loss_diffs = np.diff(loss_history)
@@ -366,20 +362,22 @@ def analyze_convergence_speed(results):
             max_jump = np.max(loss_diffs) if len(loss_diffs) > 0 else 0
 
             row = {
-                'Name': name,
-                'Success': result.success,
-                'Final Loss': result.final_loss if jnp.isfinite(result.final_loss) else float('inf'),
-                'Steps': result.steps,
-                'Time (s)': result.time_taken
+                "Name": name,
+                "Success": result.success,
+                "Final Loss": result.final_loss
+                if jnp.isfinite(result.final_loss)
+                else float("inf"),
+                "Steps": result.steps,
+                "Time (s)": result.time_taken,
             }
 
             # Add steps to thresholds
             for threshold in thresholds:
-                row[f'Steps to {threshold:.0e}'] = steps_to_threshold[threshold]
+                row[f"Steps to {threshold:.0e}"] = steps_to_threshold[threshold]
 
             # Add stability metrics
-            row['Positive Jumps'] = positive_jumps
-            row['Max Jump'] = max_jump
+            row["Positive Jumps"] = positive_jumps
+            row["Max Jump"] = max_jump
 
             data.append(row)
 
@@ -404,11 +402,13 @@ def save_results_to_csv(results, filename):
     for name, result in results.items():
         if result is not None:
             row = {
-                'Name': name,
-                'Success': result.success,
-                'Final Loss': result.final_loss if jnp.isfinite(result.final_loss) else float('inf'),
-                'Steps': result.steps,
-                'Time (s)': result.time_taken
+                "Name": name,
+                "Success": result.success,
+                "Final Loss": result.final_loss
+                if jnp.isfinite(result.final_loss)
+                else float("inf"),
+                "Steps": result.steps,
+                "Time (s)": result.time_taken,
             }
             data.append(row)
 
@@ -437,50 +437,50 @@ def main():
             "init_lr": 5e-4,
             "min_lr": 1e-6,
             "warmup_pct": 0.1,
-            "cycle_shape": "cosine"
+            "cycle_shape": "cosine",
         },
         "higher_max_lr": {
             "max_lr": 2e-3,
             "init_lr": 5e-4,
             "min_lr": 1e-6,
             "warmup_pct": 0.1,
-            "cycle_shape": "cosine"
+            "cycle_shape": "cosine",
         },
         "lower_max_lr": {
             "max_lr": 5e-4,
             "init_lr": 2e-4,
             "min_lr": 1e-6,
             "warmup_pct": 0.1,
-            "cycle_shape": "cosine"
+            "cycle_shape": "cosine",
         },
         "longer_warmup": {
             "max_lr": 1e-3,
             "init_lr": 5e-4,
             "min_lr": 1e-6,
             "warmup_pct": 0.2,
-            "cycle_shape": "cosine"
+            "cycle_shape": "cosine",
         },
         "shorter_warmup": {
             "max_lr": 1e-3,
             "init_lr": 5e-4,
             "min_lr": 1e-6,
             "warmup_pct": 0.05,
-            "cycle_shape": "cosine"
+            "cycle_shape": "cosine",
         },
         "linear_cycle": {
             "max_lr": 1e-3,
             "init_lr": 5e-4,
             "min_lr": 1e-6,
             "warmup_pct": 0.1,
-            "cycle_shape": "linear"
+            "cycle_shape": "linear",
         },
         "higher_min_lr": {
             "max_lr": 1e-3,
             "init_lr": 5e-4,
             "min_lr": 1e-5,
             "warmup_pct": 0.1,
-            "cycle_shape": "cosine"
-        }
+            "cycle_shape": "cosine",
+        },
     }
 
     # Plot learning rate schedules
@@ -490,35 +490,36 @@ def main():
     # Compare one-cycle configurations
     print("\nComparing one-cycle configurations...")
     results = compare_one_cycle_configs(
-        true_params=true_params,
-        returns=returns,
-        max_steps=400
+        true_params=true_params, returns=returns, max_steps=400
     )
 
     # Plot loss curves
     plot_loss_curves(
         results=results,
-        title='Loss Curves for Different One-Cycle Configurations with AdamW',
-        filename=f'one_cycle_loss_curves_{timestamp}.png'
+        title="Loss Curves for Different One-Cycle Configurations with AdamW",
+        filename=f"one_cycle_loss_curves_{timestamp}.png",
     )
 
     # Analyze convergence speed
     print("\nAnalyzing convergence speed...")
     convergence_df = analyze_convergence_speed(results)
-    convergence_df.to_csv(output_dir / f'one_cycle_convergence_analysis_{timestamp}.csv', index=False)
-    print(f"Convergence analysis saved to {output_dir / f'one_cycle_convergence_analysis_{timestamp}.csv'}")
+    convergence_df.to_csv(
+        output_dir / f"one_cycle_convergence_analysis_{timestamp}.csv", index=False
+    )
+    print(
+        f"Convergence analysis saved to {output_dir / f'one_cycle_convergence_analysis_{timestamp}.csv'}"
+    )
 
     # Save results to CSV
     basic_df = save_results_to_csv(
-        results=results,
-        filename=f'one_cycle_results_{timestamp}.csv'
+        results=results, filename=f"one_cycle_results_{timestamp}.csv"
     )
 
     print("\nOne-cycle scheduler tuning experiment completed!")
 
     # Print summary of results
     print("\nSummary of results:")
-    print(basic_df.sort_values('Final Loss').to_string(index=False))
+    print(basic_df.sort_values("Final Loss").to_string(index=False))
 
 
 if __name__ == "__main__":

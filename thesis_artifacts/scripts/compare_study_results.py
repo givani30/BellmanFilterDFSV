@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import sys
 
+
 def compare_metrics(metrics1, metrics2, tolerance=1e-6):
     """Compares two metrics dictionaries with numerical tolerance."""
     if metrics1.keys() != metrics2.keys():
@@ -15,7 +16,7 @@ def compare_metrics(metrics1, metrics2, tolerance=1e-6):
     match = True
     for key in metrics1:
         # --- Skip timing keys ---
-        if key in ['bf_time', 'pf_time']:
+        if key in ["bf_time", "pf_time"]:
             continue
         # --- End skip ---
         val1 = metrics1[key]
@@ -29,46 +30,59 @@ def compare_metrics(metrics1, metrics2, tolerance=1e-6):
         if isinstance(val1, np.ndarray) and isinstance(val2, np.ndarray):
             # Replace None/NaN with a placeholder for comparison if needed, or check shape first
             if val1.shape != val2.shape:
-                 print(f"  - Metrics['{key}'] shape mismatch: {val1.shape} vs {val2.shape}")
-                 match = False
-                 continue
+                print(
+                    f"  - Metrics['{key}'] shape mismatch: {val1.shape} vs {val2.shape}"
+                )
+                match = False
+                continue
             # Handle potential NaNs before comparison
             nan_mask1 = np.isnan(val1)
             nan_mask2 = np.isnan(val2)
             if not np.array_equal(nan_mask1, nan_mask2):
-                 print(f"  - Metrics['{key}'] NaN pattern mismatch.")
-                 match = False
-                 continue
+                print(f"  - Metrics['{key}'] NaN pattern mismatch.")
+                match = False
+                continue
             # Compare non-NaN values
-            if not np.allclose(val1[~nan_mask1], val2[~nan_mask2], rtol=tolerance, atol=tolerance, equal_nan=True):
+            if not np.allclose(
+                val1[~nan_mask1],
+                val2[~nan_mask2],
+                rtol=tolerance,
+                atol=tolerance,
+                equal_nan=True,
+            ):
                 print(f"  - Metrics['{key}'] numerical mismatch (Array):")
                 print(f"    Val 1: {val1}")
                 print(f"    Val 2: {val2}")
                 match = False
         elif isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
-            if not np.allclose(val1, val2, rtol=tolerance, atol=tolerance, equal_nan=True):
+            if not np.allclose(
+                val1, val2, rtol=tolerance, atol=tolerance, equal_nan=True
+            ):
                 print(f"  - Metrics['{key}'] numerical mismatch:")
                 print(f"    Val 1: {val1}")
                 print(f"    Val 2: {val2}")
                 match = False
         elif val1 != val2:
-             # Handle case where one is None and the other isn't, or other type mismatches
-             if (val1 is None) != (val2 is None): # Check if None mismatch
-                 print(f"  - Metrics['{key}'] mismatch (None vs Value):")
-                 print(f"    Val 1: {val1}")
-                 print(f"    Val 2: {val2}")
-                 match = False
-             elif type(val1) != type(val2):
-                 print(f"  - Metrics['{key}'] type mismatch: {type(val1)} vs {type(val2)}")
-                 print(f"    Val 1: {val1}")
-                 print(f"    Val 2: {val2}")
-                 match = False
-             elif key != 'error': # Don't strictly compare error messages if they exist
-                 print(f"  - Metrics['{key}'] mismatch:")
-                 print(f"    Val 1: {val1}")
-                 print(f"    Val 2: {val2}")
-                 match = False
+            # Handle case where one is None and the other isn't, or other type mismatches
+            if (val1 is None) != (val2 is None):  # Check if None mismatch
+                print(f"  - Metrics['{key}'] mismatch (None vs Value):")
+                print(f"    Val 1: {val1}")
+                print(f"    Val 2: {val2}")
+                match = False
+            elif type(val1) != type(val2):
+                print(
+                    f"  - Metrics['{key}'] type mismatch: {type(val1)} vs {type(val2)}"
+                )
+                print(f"    Val 1: {val1}")
+                print(f"    Val 2: {val2}")
+                match = False
+            elif key != "error":  # Don't strictly compare error messages if they exist
+                print(f"  - Metrics['{key}'] mismatch:")
+                print(f"    Val 1: {val1}")
+                print(f"    Val 2: {val2}")
+                match = False
     return match
+
 
 def compare_npz_files(path1, path2, tolerance=1e-6):
     """Compares two NPZ files."""
@@ -85,19 +99,27 @@ def compare_npz_files(path1, path2, tolerance=1e-6):
                 arr1 = data1[key]
                 arr2 = data2[key]
                 if arr1.shape != arr2.shape:
-                    print(f"  - NPZ['{key}'] shape mismatch: {arr1.shape} vs {arr2.shape}")
+                    print(
+                        f"  - NPZ['{key}'] shape mismatch: {arr1.shape} vs {arr2.shape}"
+                    )
                     match = False
-                elif not np.allclose(arr1, arr2, rtol=tolerance, atol=tolerance, equal_nan=True):
+                elif not np.allclose(
+                    arr1, arr2, rtol=tolerance, atol=tolerance, equal_nan=True
+                ):
                     print(f"  - NPZ['{key}'] numerical mismatch.")
                     # Avoid printing large arrays, maybe print diff summary?
                     # print(f"    Arr 1: {arr1}")
                     # print(f"    Arr 2: {arr2}")
                     diff = np.abs(arr1 - arr2)
-                    print(f"    Max Abs Diff: {np.nanmax(diff) if np.isnan(diff).any() else np.max(diff)}")
+                    print(
+                        f"    Max Abs Diff: {np.nanmax(diff) if np.isnan(diff).any() else np.max(diff)}"
+                    )
                     match = False
             return match
     except FileNotFoundError:
-        print(f"  - NPZ file not found in one of the directories ({path1.name} or {path2.name})")
+        print(
+            f"  - NPZ file not found in one of the directories ({path1.name} or {path2.name})"
+        )
         return False
     except Exception as e:
         print(f"  - Error comparing NPZ files {path1.name} and {path2.name}: {e}")
@@ -105,10 +127,17 @@ def compare_npz_files(path1, path2, tolerance=1e-6):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Compare results from two simulation study directories.')
-    parser.add_argument('dir1', type=str, help='Path to the first study directory.')
-    parser.add_argument('dir2', type=str, help='Path to the second study directory.')
-    parser.add_argument('--tolerance', type=float, default=1e-6, help='Relative and absolute tolerance for numerical comparisons.')
+    parser = argparse.ArgumentParser(
+        description="Compare results from two simulation study directories."
+    )
+    parser.add_argument("dir1", type=str, help="Path to the first study directory.")
+    parser.add_argument("dir2", type=str, help="Path to the second study directory.")
+    parser.add_argument(
+        "--tolerance",
+        type=float,
+        default=1e-6,
+        help="Relative and absolute tolerance for numerical comparisons.",
+    )
     args = parser.parse_args()
 
     path1 = Path(args.dir1)
@@ -129,7 +158,7 @@ def main():
     config2_path = path2 / "simulation_config.json"
     config_match = True
     try:
-        with open(config1_path, 'r') as f1, open(config2_path, 'r') as f2:
+        with open(config1_path, "r") as f1, open(config2_path, "r") as f2:
             cfg1 = json.load(f1)
             cfg2 = json.load(f2)
             # Optionally ignore base_results_dir if it contains the study timestamp
@@ -146,18 +175,24 @@ def main():
         config_match = False
 
     # 2. Compare replicate subdirectories
-    subdirs1 = sorted([d.name for d in path1.iterdir() if d.is_dir() and d.name.startswith('config_')])
-    subdirs2 = sorted([d.name for d in path2.iterdir() if d.is_dir() and d.name.startswith('config_')])
+    subdirs1 = sorted(
+        [d.name for d in path1.iterdir() if d.is_dir() and d.name.startswith("config_")]
+    )
+    subdirs2 = sorted(
+        [d.name for d in path2.iterdir() if d.is_dir() and d.name.startswith("config_")]
+    )
 
     if subdirs1 != subdirs2:
         print("\n❌ Replicate subdirectory lists differ:")
         print(f"  Dirs in {path1.name}: {subdirs1}")
         print(f"  Dirs in {path2.name}: {subdirs2}")
-        sys.exit(1) # Stop comparison if directory structure differs fundamentally
+        sys.exit(1)  # Stop comparison if directory structure differs fundamentally
 
-    print(f"\nFound {len(subdirs1)} matching replicate subdirectories. Comparing contents...")
+    print(
+        f"\nFound {len(subdirs1)} matching replicate subdirectories. Comparing contents..."
+    )
 
-    all_match = config_match # Start with config match status
+    all_match = config_match  # Start with config match status
     for subdir_name in subdirs1:
         print(f"\nComparing: {subdir_name}")
         rep_path1 = path1 / subdir_name
@@ -174,7 +209,7 @@ def main():
 
         if metrics1_path.exists() and metrics2_path.exists():
             try:
-                with open(metrics1_path, 'r') as f1, open(metrics2_path, 'r') as f2:
+                with open(metrics1_path, "r") as f1, open(metrics2_path, "r") as f2:
                     m1 = json.load(f1)
                     m2 = json.load(f2)
                     if compare_metrics(m1, m2, tolerance):
@@ -187,17 +222,23 @@ def main():
                 print(f"  ❌ Error comparing metrics.json: {e}")
                 all_match = False
         elif error_metrics1_path.exists() and error_metrics2_path.exists():
-             print("  ✅ metrics_error.json found in both (skipped content check).")
-             metrics_match = True # Assume error states are equivalent for this test
+            print("  ✅ metrics_error.json found in both (skipped content check).")
+            metrics_match = True  # Assume error states are equivalent for this test
         elif metrics1_path.exists() != metrics2_path.exists():
-             print(f"  ❌ metrics.json existence mismatch (Dir1: {metrics1_path.exists()}, Dir2: {metrics2_path.exists()})")
-             all_match = False
+            print(
+                f"  ❌ metrics.json existence mismatch (Dir1: {metrics1_path.exists()}, Dir2: {metrics2_path.exists()})"
+            )
+            all_match = False
         elif error_metrics1_path.exists() != error_metrics2_path.exists():
-             print(f"  ❌ metrics_error.json existence mismatch (Dir1: {error_metrics1_path.exists()}, Dir2: {error_metrics2_path.exists()})")
-             all_match = False
+            print(
+                f"  ❌ metrics_error.json existence mismatch (Dir1: {error_metrics1_path.exists()}, Dir2: {error_metrics2_path.exists()})"
+            )
+            all_match = False
         else:
-             print(f"  ❓ Neither metrics.json nor metrics_error.json found in {subdir_name} (might be ok if skipped).")
-             metrics_match = True # Treat as match if neither exists
+            print(
+                f"  ❓ Neither metrics.json nor metrics_error.json found in {subdir_name} (might be ok if skipped)."
+            )
+            metrics_match = True  # Treat as match if neither exists
 
         # Compare raw_data.npz (only if metrics matched or were errors)
         if metrics_match:
@@ -216,29 +257,38 @@ def main():
                     print("  ❌ raw_data.npz files differ.")
                     all_match = False
             elif npz1_exists != npz2_exists:
-                 # Only flag as error if metrics.json existed (i.e., not an error run)
-                 if metrics1_path.exists() and metrics2_path.exists():
-                     print(f"  ❌ raw_data.npz existence mismatch (Dir1: {npz1_exists}, Dir2: {npz2_exists})")
-                     all_match = False
-                 else:
-                     print(f"  ✅ raw_data.npz existence mismatch (likely due to error run, skipped).")
-                     npz_match = True # Match if due to error
+                # Only flag as error if metrics.json existed (i.e., not an error run)
+                if metrics1_path.exists() and metrics2_path.exists():
+                    print(
+                        f"  ❌ raw_data.npz existence mismatch (Dir1: {npz1_exists}, Dir2: {npz2_exists})"
+                    )
+                    all_match = False
+                else:
+                    print(
+                        f"  ✅ raw_data.npz existence mismatch (likely due to error run, skipped)."
+                    )
+                    npz_match = True  # Match if due to error
             else:
-                 # Neither exists - this is fine if it was an error run
-                 if metrics1_path.exists() and metrics2_path.exists():
-                      print(f"  ❓ raw_data.npz not found in either directory for {subdir_name} (was data expected?).")
-                      # Decide if this is an error? For now, assume ok.
-                      npz_match = True
-                 else:
-                      print(f"  ✅ raw_data.npz not found in either directory (likely due to error run, skipped).")
-                      npz_match = True # Match if due to error
+                # Neither exists - this is fine if it was an error run
+                if metrics1_path.exists() and metrics2_path.exists():
+                    print(
+                        f"  ❓ raw_data.npz not found in either directory for {subdir_name} (was data expected?)."
+                    )
+                    # Decide if this is an error? For now, assume ok.
+                    npz_match = True
+                else:
+                    print(
+                        f"  ✅ raw_data.npz not found in either directory (likely due to error run, skipped)."
+                    )
+                    npz_match = True  # Match if due to error
 
     print("\n--- Comparison Summary ---")
     if all_match:
         print("✅✅✅ All compared files match within tolerance! ✅✅✅")
     else:
         print("❌❌❌ Differences found between study directories! ❌❌❌")
-        sys.exit(1) # Exit with error code if differences found
+        sys.exit(1)  # Exit with error code if differences found
+
 
 if __name__ == "__main__":
     main()

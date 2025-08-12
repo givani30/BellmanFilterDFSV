@@ -31,21 +31,21 @@ __email__ = "givaniboek@hotmail.com"
 
 # Core imports for easy access
 from .core import (
-    # Filters
-    DFSVFilter,
     DFSVBellmanFilter,
     DFSVBellmanInformationFilter,
-    DFSVParticleFilter,
+    # Filters
+    DFSVFilter,
     # Models
     DFSVParamsDataclass,
-    simulate_DFSV,
+    DFSVParticleFilter,
+    create_optimizer,
     # Optimization
     run_optimization,
-    create_optimizer,
+    simulate_DFSV,
 )
 
 # Utilities
-from .utils import jax_helpers, analysis
+from .utils import analysis, jax_helpers
 
 __all__ = [
     # Version info

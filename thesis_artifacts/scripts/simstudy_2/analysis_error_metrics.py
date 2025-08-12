@@ -16,8 +16,7 @@ from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 
 
 def calculate_comprehensive_param_errors(
-    true_params: DFSVParamsDataclass,
-    estimated_params: DFSVParamsDataclass
+    true_params: DFSVParamsDataclass, estimated_params: DFSVParamsDataclass
 ) -> Dict[str, float]:
     """Calculate comprehensive error metrics between true and estimated parameters.
 
@@ -62,7 +61,9 @@ def calculate_comprehensive_param_errors(
         else:
             errors[f"param_{name}_frob_rel_diff"] = np.nan
 
-    def calc_square_matrix_metrics(true: np.ndarray, est: np.ndarray, name: str) -> None:
+    def calc_square_matrix_metrics(
+        true: np.ndarray, est: np.ndarray, name: str
+    ) -> None:
         """Calculate square matrix-specific error metrics."""
         try:
             true_eigs = jnp.linalg.eigvals(true)
@@ -77,7 +78,9 @@ def calculate_comprehensive_param_errors(
             errors[f"param_{name}_eig_mae"] = float(jnp.mean(jnp.abs(eig_diff)))
             errors[f"param_{name}_eig_rmse"] = float(jnp.sqrt(jnp.mean(eig_diff**2)))
         except Exception as e:
-            logging.warning(f"Failed to calculate eigenvalue metrics for {name}: {str(e)}")
+            logging.warning(
+                f"Failed to calculate eigenvalue metrics for {name}: {str(e)}"
+            )
             errors[f"param_{name}_eig_bias"] = np.nan
             errors[f"param_{name}_eig_mae"] = np.nan
             errors[f"param_{name}_eig_rmse"] = np.nan
@@ -96,7 +99,9 @@ def calculate_comprehensive_param_errors(
             # Trace difference
             errors[f"param_{name}_trace_diff"] = float(jnp.trace(est) - jnp.trace(true))
         except Exception as e:
-            logging.warning(f"Failed to calculate covariance metrics for {name}: {str(e)}")
+            logging.warning(
+                f"Failed to calculate covariance metrics for {name}: {str(e)}"
+            )
             errors[f"param_{name}_logdet_diff"] = np.nan
             errors[f"param_{name}_trace_diff"] = np.nan
 
@@ -129,15 +134,31 @@ def calculate_comprehensive_param_errors(
     calc_covariance_metrics(true_q_h, est_q_h, "Q_h")
 
     # mu (scalar)
-    if hasattr(true_params, 'mu') and hasattr(estimated_params, 'mu'):
-        true_mu = np.array([true_params.mu]) if true_params.mu is not None else np.array([0.0])
-        est_mu = np.array([estimated_params.mu]) if estimated_params.mu is not None else np.array([0.0])
+    if hasattr(true_params, "mu") and hasattr(estimated_params, "mu"):
+        true_mu = (
+            np.array([true_params.mu])
+            if true_params.mu is not None
+            else np.array([0.0])
+        )
+        est_mu = (
+            np.array([estimated_params.mu])
+            if estimated_params.mu is not None
+            else np.array([0.0])
+        )
         calc_elementwise_metrics(true_mu, est_mu, "mu")
 
     # sigma2 (scalar)
-    if hasattr(true_params, 'sigma2') and hasattr(estimated_params, 'sigma2'):
-        true_sigma2 = np.array([true_params.sigma2]) if true_params.sigma2 is not None else np.array([0.0])
-        est_sigma2 = np.array([estimated_params.sigma2]) if estimated_params.sigma2 is not None else np.array([0.0])
+    if hasattr(true_params, "sigma2") and hasattr(estimated_params, "sigma2"):
+        true_sigma2 = (
+            np.array([true_params.sigma2])
+            if true_params.sigma2 is not None
+            else np.array([0.0])
+        )
+        est_sigma2 = (
+            np.array([estimated_params.sigma2])
+            if estimated_params.sigma2 is not None
+            else np.array([0.0])
+        )
         calc_elementwise_metrics(true_sigma2, est_sigma2, "sigma2")
 
     return errors
@@ -146,7 +167,7 @@ def calculate_comprehensive_param_errors(
 def calculate_param_errors_for_replicate(
     unique_id: str,
     true_params_dict: Dict[str, DFSVParamsDataclass],
-    estimated_params_dict: Dict[str, DFSVParamsDataclass]
+    estimated_params_dict: Dict[str, DFSVParamsDataclass],
 ) -> Optional[Dict[str, float]]:
     """Calculate parameter errors for a single replicate.
 
@@ -166,13 +187,13 @@ def calculate_param_errors_for_replicate(
         return None
 
     errors = calculate_comprehensive_param_errors(true_params, estimated_params)
-    return {'unique_id': unique_id, **errors}
+    return {"unique_id": unique_id, **errors}
 
 
 def create_param_errors_df(
     df_success: pl.DataFrame,
     true_params_dict: Dict[str, DFSVParamsDataclass],
-    estimated_params_dict: Dict[str, DFSVParamsDataclass]
+    estimated_params_dict: Dict[str, DFSVParamsDataclass],
 ) -> pl.DataFrame:
     """Create a DataFrame with parameter error metrics for all successful runs.
 
@@ -187,7 +208,7 @@ def create_param_errors_df(
     param_errors_list = []
 
     for row in df_success.iter_rows(named=True):
-        unique_id = row['unique_id']
+        unique_id = row["unique_id"]
         errors = calculate_param_errors_for_replicate(
             unique_id, true_params_dict, estimated_params_dict
         )
@@ -199,7 +220,9 @@ def create_param_errors_df(
 
     # Convert to Polars DataFrame
     df_param_errors = pl.from_dicts(param_errors_list)
-    logging.info("Created parameter errors DataFrame with shape: %s", df_param_errors.shape)
+    logging.info(
+        "Created parameter errors DataFrame with shape: %s", df_param_errors.shape
+    )
 
     return df_param_errors
 
@@ -207,7 +230,7 @@ def create_param_errors_df(
 def calculate_matrix_element_errors(
     true_params: DFSVParamsDataclass,
     estimated_params: DFSVParamsDataclass,
-    param_name: str
+    param_name: str,
 ) -> Dict[str, float]:
     """Calculate element-wise errors for matrix parameters.
 

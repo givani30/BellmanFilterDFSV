@@ -20,7 +20,7 @@ from bellman_filter_dfsv.models.simulation import simulate_DFSV
 from bellman_filter_dfsv.utils.optimization import (
     FilterType,
     run_optimization,
-    OptimizerResult
+    OptimizerResult,
 )
 from bellman_filter_dfsv.utils.optimization_helpers import create_stable_initial_params
 from bellman_filter_dfsv.utils.transformations import apply_identification_constraint
@@ -49,25 +49,12 @@ def create_test_data(N=3, K=2, T=600):
     true_params = DFSVParamsDataclass(
         N=N,
         K=K,
-        lambda_r=jnp.array([
-            [1.0, 0.0],
-            [0.8, 0.0],
-            [0.6, 0.0]
-        ]),
-        Phi_f=jnp.array([
-            [0.95, 0.02],
-            [0.01, 0.94]
-        ]),
-        Phi_h=jnp.array([
-            [0.98, 0.0],
-            [0.0, 0.97]
-        ]),
+        lambda_r=jnp.array([[1.0, 0.0], [0.8, 0.0], [0.6, 0.0]]),
+        Phi_f=jnp.array([[0.95, 0.02], [0.01, 0.94]]),
+        Phi_h=jnp.array([[0.98, 0.0], [0.0, 0.97]]),
         mu=jnp.zeros(K),
-        Q_h=jnp.array([
-            [0.1, 0.0],
-            [0.0, 0.1]
-        ]),
-        sigma2=jnp.array([0.1, 0.1, 0.1])
+        Q_h=jnp.array([[0.1, 0.0], [0.0, 0.1]]),
+        sigma2=jnp.array([0.1, 0.1, 0.1]),
     )
 
     # Apply identification constraint
@@ -90,6 +77,7 @@ def create_robust_objective(base_objective_fn, stability_penalty_weight=1000.0):
     Returns:
         A wrapped objective function with enhanced stability
     """
+
     def robust_objective(params, *args):
         # Get base objective value
         try:
@@ -113,13 +101,13 @@ def create_robust_objective(base_objective_fn, stability_penalty_weight=1000.0):
         stability_penalty_f = jnp.where(
             max_eval_f > 0.95,  # Start penalizing earlier
             stability_penalty_weight * ((max_eval_f - 0.95) / 0.05) ** 2,
-            0.0
+            0.0,
         )
 
         stability_penalty_h = jnp.where(
             max_eval_h > 0.95,  # Start penalizing earlier
             stability_penalty_weight * ((max_eval_h - 0.95) / 0.05) ** 2,
-            0.0
+            0.0,
         )
 
         # 2. Penalize small variances
@@ -129,17 +117,22 @@ def create_robust_objective(base_objective_fn, stability_penalty_weight=1000.0):
         variance_penalty_q_h = jnp.where(
             min_q_h < 0.01,  # Minimum variance threshold
             stability_penalty_weight * ((0.01 - min_q_h) / 0.01) ** 2,
-            0.0
+            0.0,
         )
 
         variance_penalty_sigma2 = jnp.where(
             min_sigma2 < 0.01,  # Minimum variance threshold
             stability_penalty_weight * ((0.01 - min_sigma2) / 0.01) ** 2,
-            0.0
+            0.0,
         )
 
         # Combine penalties
-        total_penalty = stability_penalty_f + stability_penalty_h + variance_penalty_q_h + variance_penalty_sigma2
+        total_penalty = (
+            stability_penalty_f
+            + stability_penalty_h
+            + variance_penalty_q_h
+            + variance_penalty_sigma2
+        )
 
         # Return penalized objective
         return obj_value + total_penalty, aux
@@ -158,7 +151,7 @@ def run_robust_one_cycle_experiment(
     use_transformations=True,
     verbose=True,
     clip_norm=1.0,  # Gradient clipping norm
-    stability_penalty_weight=1000.0  # Explicit stability penalty weight
+    stability_penalty_weight=1000.0,  # Explicit stability penalty weight
 ) -> OptimizerResult:
     """
     Run an experiment with a specific one-cycle scheduler configuration
@@ -222,7 +215,7 @@ def run_robust_one_cycle_experiment(
         learning_rate=init_lr,
         max_learning_rate=max_lr,
         min_learning_rate=min_lr,
-        warmup_steps=warmup_steps
+        warmup_steps=warmup_steps,
     )
     return result
 
@@ -246,36 +239,36 @@ def compare_robust_configurations(true_params, returns, max_steps=1500):
             "max_lr": 2e-3,
             "min_lr": 1e-5,
             "clip_norm": 1.0,
-            "stability_penalty_weight": 1000.0
+            "stability_penalty_weight": 1000.0,
         },
         "aggressive_clipping": {
             "init_lr": 5e-4,
             "max_lr": 2e-3,
             "min_lr": 1e-5,
             "clip_norm": 0.5,
-            "stability_penalty_weight": 1000.0
+            "stability_penalty_weight": 1000.0,
         },
         "higher_stability": {
             "init_lr": 5e-4,
             "max_lr": 2e-3,
             "min_lr": 1e-5,
             "clip_norm": 1.0,
-            "stability_penalty_weight": 2000.0
+            "stability_penalty_weight": 2000.0,
         },
         "lower_max_lr": {
             "init_lr": 5e-4,
             "max_lr": 1e-3,
             "min_lr": 1e-5,
             "clip_norm": 1.0,
-            "stability_penalty_weight": 1000.0
+            "stability_penalty_weight": 1000.0,
         },
         "combined_robust": {
             "init_lr": 5e-4,
             "max_lr": 2e-3,
             "min_lr": 1e-5,
             "clip_norm": 0.5,
-            "stability_penalty_weight": 2000.0
-        }
+            "stability_penalty_weight": 2000.0,
+        },
     }
 
     # Run optimization with each configuration
@@ -284,13 +277,12 @@ def compare_robust_configurations(true_params, returns, max_steps=1500):
         print(f"\n=== Testing {name} configuration ===")
         try:
             result = run_robust_one_cycle_experiment(
-                true_params=true_params,
-                returns=returns,
-                max_steps=max_steps,
-                **config
+                true_params=true_params, returns=returns, max_steps=max_steps, **config
             )
             results[name] = result
-            print(f"Final loss: {result.final_loss:.6f}, Success: {result.success}, Steps: {result.steps}")
+            print(
+                f"Final loss: {result.final_loss:.6f}, Success: {result.success}, Steps: {result.steps}"
+            )
         except Exception as e:
             print(f"Error with {name} configuration: {str(e)}")
             results[name] = None
@@ -310,21 +302,29 @@ def plot_loss_curves(results, title, filename):
     plt.figure(figsize=(12, 8))
 
     for name, result in results.items():
-        if result is not None and hasattr(result, 'loss_history') and result.loss_history:
+        if (
+            result is not None
+            and hasattr(result, "loss_history")
+            and result.loss_history
+        ):
             # Get loss history
             loss_history = result.loss_history
 
             # Filter out infinite values for better visualization
-            valid_indices = [i for i, loss in enumerate(loss_history) if np.isfinite(loss) and loss < 1e10]
+            valid_indices = [
+                i
+                for i, loss in enumerate(loss_history)
+                if np.isfinite(loss) and loss < 1e10
+            ]
             valid_steps = [i for i in valid_indices]
             valid_losses = [loss_history[i] for i in valid_indices]
 
             # Plot loss curve
             plt.plot(valid_steps, valid_losses, label=f"{name}")
 
-    plt.xlabel('Optimization Step')
-    plt.ylabel('Loss')
-    plt.yscale('log')  # Use log scale for better visualization
+    plt.xlabel("Optimization Step")
+    plt.ylabel("Loss")
+    plt.yscale("log")  # Use log scale for better visualization
     plt.title(title)
     plt.legend()
     plt.grid(True, alpha=0.3)
@@ -350,17 +350,23 @@ def analyze_convergence_speed(results):
 
     data = []
     for name, result in results.items():
-        if result is not None and hasattr(result, 'loss_history') and result.loss_history:
+        if (
+            result is not None
+            and hasattr(result, "loss_history")
+            and result.loss_history
+        ):
             loss_history = result.loss_history
 
             # Find steps to reach each threshold
             steps_to_threshold = {}
             for threshold in thresholds:
                 try:
-                    step = next(i for i, loss in enumerate(loss_history) if loss < threshold)
+                    step = next(
+                        i for i, loss in enumerate(loss_history) if loss < threshold
+                    )
                     steps_to_threshold[threshold] = step
                 except StopIteration:
-                    steps_to_threshold[threshold] = float('inf')
+                    steps_to_threshold[threshold] = float("inf")
 
             # Calculate stability metrics
             loss_diffs = np.diff(loss_history)
@@ -368,20 +374,22 @@ def analyze_convergence_speed(results):
             max_jump = np.max(loss_diffs) if len(loss_diffs) > 0 else 0
 
             row = {
-                'Name': name,
-                'Success': result.success,
-                'Final Loss': result.final_loss if jnp.isfinite(result.final_loss) else float('inf'),
-                'Steps': result.steps,
-                'Time (s)': result.time_taken
+                "Name": name,
+                "Success": result.success,
+                "Final Loss": result.final_loss
+                if jnp.isfinite(result.final_loss)
+                else float("inf"),
+                "Steps": result.steps,
+                "Time (s)": result.time_taken,
             }
 
             # Add steps to thresholds
             for threshold in thresholds:
-                row[f'Steps to {threshold:.0e}'] = steps_to_threshold[threshold]
+                row[f"Steps to {threshold:.0e}"] = steps_to_threshold[threshold]
 
             # Add stability metrics
-            row['Positive Jumps'] = positive_jumps
-            row['Max Jump'] = max_jump
+            row["Positive Jumps"] = positive_jumps
+            row["Max Jump"] = max_jump
 
             data.append(row)
 
@@ -406,11 +414,13 @@ def save_results_to_csv(results, filename):
     for name, result in results.items():
         if result is not None:
             row = {
-                'Name': name,
-                'Success': result.success,
-                'Final Loss': result.final_loss if jnp.isfinite(result.final_loss) else float('inf'),
-                'Steps': result.steps,
-                'Time (s)': result.time_taken
+                "Name": name,
+                "Success": result.success,
+                "Final Loss": result.final_loss
+                if jnp.isfinite(result.final_loss)
+                else float("inf"),
+                "Steps": result.steps,
+                "Time (s)": result.time_taken,
             }
             data.append(row)
 
@@ -435,35 +445,37 @@ def main():
     # Compare robust configurations
     print("\nComparing robust configurations...")
     results = compare_robust_configurations(
-        true_params=true_params,
-        returns=returns,
-        max_steps=1500
+        true_params=true_params, returns=returns, max_steps=1500
     )
 
     # Plot loss curves
     plot_loss_curves(
         results=results,
-        title='Loss Curves for Robust One-Cycle Configurations with AdamW',
-        filename=f'robust_one_cycle_loss_curves_{timestamp}.png'
+        title="Loss Curves for Robust One-Cycle Configurations with AdamW",
+        filename=f"robust_one_cycle_loss_curves_{timestamp}.png",
     )
 
     # Analyze convergence speed
     print("\nAnalyzing convergence speed...")
     convergence_df = analyze_convergence_speed(results)
-    convergence_df.to_csv(output_dir / f'robust_one_cycle_convergence_analysis_{timestamp}.csv', index=False)
-    print(f"Convergence analysis saved to {output_dir / f'robust_one_cycle_convergence_analysis_{timestamp}.csv'}")
+    convergence_df.to_csv(
+        output_dir / f"robust_one_cycle_convergence_analysis_{timestamp}.csv",
+        index=False,
+    )
+    print(
+        f"Convergence analysis saved to {output_dir / f'robust_one_cycle_convergence_analysis_{timestamp}.csv'}"
+    )
 
     # Save results to CSV
     basic_df = save_results_to_csv(
-        results=results,
-        filename=f'robust_one_cycle_results_{timestamp}.csv'
+        results=results, filename=f"robust_one_cycle_results_{timestamp}.csv"
     )
 
     print("\nRobust one-cycle experiment completed!")
 
     # Print summary of results
     print("\nSummary of results:")
-    print(basic_df.sort_values('Final Loss').to_string(index=False))
+    print(basic_df.sort_values("Final Loss").to_string(index=False))
 
 
 if __name__ == "__main__":

@@ -16,17 +16,22 @@ from bellman_filter_dfsv.core.optimization.optimization import (
     create_filter,
     get_objective_function,
     minimize_with_logging,
-    run_optimization
+    run_optimization,
 )
 from bellman_filter_dfsv.core.optimization.solvers import (
     create_optimizer,
     get_available_optimizers,
-    get_optimizer_config
+    get_optimizer_config,
 )
 from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
-from bellman_filter_dfsv.core.optimization.transformations import transform_params, untransform_params
-from bellman_filter_dfsv.core.optimization.optimization_helpers import create_stable_initial_params # Added import
+from bellman_filter_dfsv.core.optimization.transformations import (
+    transform_params,
+    untransform_params,
+)
+from bellman_filter_dfsv.core.optimization.optimization_helpers import (
+    create_stable_initial_params,
+)  # Added import
 
 # Enable float64 for tests
 jax.config.update("jax_enable_x64", True)
@@ -40,22 +45,22 @@ def simple_model_params():
     K = 1  # Number of factors
 
     # Factor loadings
-    lambda_r = jnp.array([[0.9], [0.6], [0.3]]) # Use jnp
+    lambda_r = jnp.array([[0.9], [0.6], [0.3]])  # Use jnp
 
     # Factor persistence
-    Phi_f = jnp.array([[0.95]]) # Use jnp
+    Phi_f = jnp.array([[0.95]])  # Use jnp
 
     # Log-volatility persistence
-    Phi_h = jnp.array([[0.98]]) # Use jnp
+    Phi_h = jnp.array([[0.98]])  # Use jnp
 
     # Long-run mean for log-volatilities
-    mu = jnp.array([-1.0]) # Use jnp
+    mu = jnp.array([-1.0])  # Use jnp
 
     # Idiosyncratic variance (diagonal)
-    sigma2 = jnp.array([0.1, 0.1, 0.1]) # Use jnp
+    sigma2 = jnp.array([0.1, 0.1, 0.1])  # Use jnp
 
     # Log-volatility noise covariance
-    Q_h = jnp.array([[0.1]]) # Use jnp
+    Q_h = jnp.array([[0.1]])  # Use jnp
 
     # Create parameter object using the standard dataclass
     params = DFSVParamsDataclass(
@@ -77,11 +82,7 @@ def simulated_data(simple_model_params):
     """Generate simulated data for testing."""
     # Use a short time series for testing
     T = 100
-    returns, factors, log_vols = simulate_DFSV(
-        params=simple_model_params,
-        T=T,
-        seed=42
-    )
+    returns, factors, log_vols = simulate_DFSV(params=simple_model_params, T=T, seed=42)
     return returns, factors, log_vols
 
 
@@ -94,8 +95,16 @@ def test_get_available_optimizers():
 
     # Check that the dictionary contains the expected optimizers
     expected_optimizers = [
-        "BFGS", "Adam", "AdamW", "RMSProp", "SGD", "Adagrad", "Adadelta",
-        "DampedTrustRegionBFGS", "ArmijoBFGS", "DogLegBFGS"
+        "BFGS",
+        "Adam",
+        "AdamW",
+        "RMSProp",
+        "SGD",
+        "Adagrad",
+        "Adadelta",
+        "DampedTrustRegionBFGS",
+        "ArmijoBFGS",
+        "DogLegBFGS",
     ]
 
     for optimizer in expected_optimizers:
@@ -113,7 +122,9 @@ def test_get_optimizer_config():
     assert "atol" in config
 
     # Test with custom parameters
-    custom_config = get_optimizer_config("Adam", learning_rate=0.01, rtol=1e-4, atol=1e-4)
+    custom_config = get_optimizer_config(
+        "Adam", learning_rate=0.01, rtol=1e-4, atol=1e-4
+    )
     assert custom_config["learning_rate"] == 0.01
     assert custom_config["rtol"] == 1e-4
     assert custom_config["atol"] == 1e-4
@@ -127,15 +138,28 @@ def test_create_optimizer():
     """Test that create_optimizer returns the correct optimizer instances."""
     # Test creating different optimizers
     optimizers = [
-        "BFGS", "Adam", "AdamW", "RMSProp", "SGD", "Adagrad", "Adadelta",
-        "DampedTrustRegionBFGS", "ArmijoBFGS", "DogLegBFGS"
+        "BFGS",
+        "Adam",
+        "AdamW",
+        "RMSProp",
+        "SGD",
+        "Adagrad",
+        "Adadelta",
+        "DampedTrustRegionBFGS",
+        "ArmijoBFGS",
+        "DogLegBFGS",
     ]
 
     for optimizer_name in optimizers:
         optimizer = create_optimizer(optimizer_name)
 
         # Check that the optimizer is an instance of the correct class
-        if optimizer_name in ["BFGS", "DampedTrustRegionBFGS", "ArmijoBFGS", "DogLegBFGS"]:
+        if optimizer_name in [
+            "BFGS",
+            "DampedTrustRegionBFGS",
+            "ArmijoBFGS",
+            "DogLegBFGS",
+        ]:
             assert isinstance(optimizer, optx.AbstractMinimiser)
         else:
             assert isinstance(optimizer, optx.OptaxMinimiser)
@@ -184,7 +208,7 @@ def test_get_objective_function():
         filter_instance=filter_instance,
         stability_penalty_weight=1000.0,
         priors=None,
-        is_transformed=False
+        is_transformed=False,
     )
 
     # Check that the objective function has the correct signature
@@ -199,7 +223,7 @@ def test_get_objective_function():
         Phi_h=0.8 * jnp.eye(K),
         mu=jnp.zeros(K),
         sigma2=0.1 * jnp.ones(N),
-        Q_h=0.2 * jnp.eye(K)
+        Q_h=0.2 * jnp.eye(K),
     )
 
     # Create some dummy observations
@@ -218,13 +242,13 @@ def test_get_objective_function():
     # Test with unknown filter type
     with pytest.raises(ValueError):
         get_objective_function(
-            filter_type="UnknownFilter",
-            filter_instance=filter_instance
+            filter_type="UnknownFilter", filter_instance=filter_instance
         )
 
 
 def test_minimize_with_logging_quadratic():
     """Test minimize_with_logging with a simple quadratic function."""
+
     # Define a simple quadratic function
     def quadratic_fn(params, args=None):
         x, y = params
@@ -243,7 +267,7 @@ def test_minimize_with_logging_quadratic():
         solver=optimizer,
         max_steps=20,
         log_interval=1,
-        options={}
+        options={},
     )
 
     # Check that the solution is close to the true minimum
@@ -259,10 +283,11 @@ def test_minimize_with_logging_quadratic():
 
 def test_minimize_with_logging_rosenbrock():
     """Test minimize_with_logging with the Rosenbrock function."""
+
     # Define the Rosenbrock function
     def rosenbrock_fn(params, args=None):
         x, y = params
-        return 100.0 * (y - x**2)**2 + (1 - x)**2, None
+        return 100.0 * (y - x**2) ** 2 + (1 - x) ** 2, None
 
     # Create optimizer
     optimizer = create_optimizer("BFGS")
@@ -277,7 +302,7 @@ def test_minimize_with_logging_rosenbrock():
         solver=optimizer,
         max_steps=50,
         log_interval=1,
-        options={}
+        options={},
     )
 
     # Check that the solution is close to the true minimum
@@ -288,11 +313,14 @@ def test_minimize_with_logging_rosenbrock():
 
     # Check that the final loss is close to zero
     final_loss, _ = rosenbrock_fn(sol.value)
-    assert final_loss < 1.0  # Rosenbrock can be challenging, so we use a looser tolerance
+    assert (
+        final_loss < 1.0
+    )  # Rosenbrock can be challenging, so we use a looser tolerance
 
 
 def test_minimize_with_logging_error_handling():
     """Test that minimize_with_logging handles errors correctly."""
+
     # Define a function that raises an error
     def error_fn(params, args=None):
         if params[0] > 0.5:
@@ -313,7 +341,7 @@ def test_minimize_with_logging_error_handling():
         max_steps=20,
         log_interval=1,
         options={},
-        throw=False
+        throw=False,
     )
 
     # Check that the solution is returned even though an error occurred
@@ -329,25 +357,25 @@ def test_minimize_with_logging_error_handling():
             max_steps=20,
             log_interval=1,
             options={},
-            throw=True
+            throw=True,
         )
 
 
 def test_run_optimization_bif(simulated_data):
     """Test run_optimization with BIF filter."""
     returns, _, _ = simulated_data
-    N, K = returns.shape[1], 1 # Assuming K=1 based on simple_model_params
+    N, K = returns.shape[1], 1  # Assuming K=1 based on simple_model_params
     initial_params = create_stable_initial_params(N, K)
 
     # Run optimization with BIF filter
     result = run_optimization(
         filter_type=FilterType.BIF,
         returns=returns,
-        initial_params=initial_params, # Added
+        initial_params=initial_params,  # Added
         optimizer_name="BFGS",
         max_steps=5,  # Use a small number of steps for testing
-        fix_mu=False, # Added: Avoid error when true_mu is None
-        verbose=True
+        fix_mu=False,  # Added: Avoid error when true_mu is None
+        verbose=True,
     )
 
     # Check that the result is an OptimizerResult
@@ -357,8 +385,10 @@ def test_run_optimization_bif(simulated_data):
     assert result.filter_type == FilterType.BIF
     assert result.optimizer_name == "BFGS"
     assert isinstance(result.final_params, DFSVParamsDataclass)
-    assert len(result.param_history) >= 1 # Changed > to >= for default log_params=False
-    assert len(result.loss_history) >= 1 # Changed > 0 to >= 1 for consistency
+    assert (
+        len(result.param_history) >= 1
+    )  # Changed > to >= for default log_params=False
+    assert len(result.loss_history) >= 1  # Changed > 0 to >= 1 for consistency
 
     # Check that the final parameters have the correct shape
     N, K = returns.shape[1], 1
@@ -373,18 +403,18 @@ def test_run_optimization_bif(simulated_data):
 def test_run_optimization_bf(simulated_data):
     """Test run_optimization with BF filter."""
     returns, _, _ = simulated_data
-    N, K = returns.shape[1], 1 # Assuming K=1 based on simple_model_params
+    N, K = returns.shape[1], 1  # Assuming K=1 based on simple_model_params
     initial_params = create_stable_initial_params(N, K)
 
     # Run optimization with BF filter
     result = run_optimization(
         filter_type=FilterType.BF,
         returns=returns,
-        initial_params=initial_params, # Added
+        initial_params=initial_params,  # Added
         optimizer_name="Adam",  # Use Adam for better stability
         max_steps=5,  # Use a small number of steps for testing
-        fix_mu=False, # Added: Avoid error when true_mu is None
-        verbose=True
+        fix_mu=False,  # Added: Avoid error when true_mu is None
+        verbose=True,
     )
 
     # Check that the result is an OptimizerResult
@@ -408,19 +438,19 @@ def test_run_optimization_bf(simulated_data):
 def test_run_optimization_pf(simulated_data):
     """Test run_optimization with PF filter."""
     returns, _, _ = simulated_data
-    N, K = returns.shape[1], 1 # Assuming K=1 based on simple_model_params
+    N, K = returns.shape[1], 1  # Assuming K=1 based on simple_model_params
     initial_params = create_stable_initial_params(N, K)
 
     # Run optimization with PF filter
     result = run_optimization(
         filter_type=FilterType.PF,
         returns=returns,
-        initial_params=initial_params, # Added
+        initial_params=initial_params,  # Added
         optimizer_name="Adam",  # Use Adam for better stability
         max_steps=5,  # Use a small number of steps for testing
         num_particles=100,  # Use a small number of particles for testing
-        fix_mu=False, # Added: Avoid error when true_mu is None
-        verbose=True
+        fix_mu=False,  # Added: Avoid error when true_mu is None
+        verbose=True,
     )
 
     # Check that the result is an OptimizerResult
@@ -444,31 +474,31 @@ def test_run_optimization_pf(simulated_data):
 def test_run_optimization_with_transformations(simulated_data):
     """Test run_optimization with parameter transformations."""
     returns, _, _ = simulated_data
-    N, K = returns.shape[1], 1 # Assuming K=1 based on simple_model_params
+    N, K = returns.shape[1], 1  # Assuming K=1 based on simple_model_params
     initial_params = create_stable_initial_params(N, K)
 
     # Run optimization with transformations
     result_transformed = run_optimization(
         filter_type=FilterType.BIF,
         returns=returns,
-        initial_params=initial_params, # Added
+        initial_params=initial_params,  # Added
         optimizer_name="BFGS",
         use_transformations=True,
         max_steps=5,  # Use a small number of steps for testing
-        fix_mu=False, # Added: Avoid error when true_mu is None
-        verbose=True
+        fix_mu=False,  # Added: Avoid error when true_mu is None
+        verbose=True,
     )
 
     # Run optimization without transformations
     result_untransformed = run_optimization(
         filter_type=FilterType.BIF,
         returns=returns,
-        initial_params=initial_params, # Added
+        initial_params=initial_params,  # Added
         optimizer_name="BFGS",
         use_transformations=False,
         max_steps=5,  # Use a small number of steps for testing
-        fix_mu=False, # Added: Avoid error when true_mu is None
-        verbose=True
+        fix_mu=False,  # Added: Avoid error when true_mu is None
+        verbose=True,
     )
 
     # Check that both results are OptimizerResults
@@ -495,11 +525,11 @@ def test_run_optimization_with_true_params(simple_model_params, simulated_data):
     result = run_optimization(
         filter_type=FilterType.BIF,
         returns=returns,
-        initial_params=initial_params, # Added
+        initial_params=initial_params,  # Added
         true_params=simple_model_params,
         optimizer_name="BFGS",
         max_steps=5,  # Use a small number of steps for testing
-        verbose=True
+        verbose=True,
     )
 
     # Check that the result is an OptimizerResult
@@ -507,7 +537,7 @@ def test_run_optimization_with_true_params(simple_model_params, simulated_data):
 
     # Check that the fix_mu field is set correctly
     # When true_params is provided, fix_mu defaults to True in run_optimization
-    assert result.fix_mu is True # Changed assertion
+    assert result.fix_mu is True  # Changed assertion
 
     # Check that the final parameters have the correct shape
     N, K = returns.shape[1], 1
@@ -522,26 +552,23 @@ def test_run_optimization_with_true_params(simple_model_params, simulated_data):
 def test_run_optimization_with_priors(simulated_data):
     """Test run_optimization with priors."""
     returns, _, _ = simulated_data
-    N, K = returns.shape[1], 1 # Assuming K=1 based on simple_model_params
+    N, K = returns.shape[1], 1  # Assuming K=1 based on simple_model_params
     initial_params = create_stable_initial_params(N, K)
 
     # Define priors
-    priors = {
-        "mu_mean": jnp.array([-1.0]),
-        "mu_std": jnp.array([0.5])
-    }
+    priors = {"mu_mean": jnp.array([-1.0]), "mu_std": jnp.array([0.5])}
 
     # Run optimization with priors
     result = run_optimization(
         filter_type=FilterType.BIF,
         returns=returns,
-        initial_params=initial_params, # Added
+        initial_params=initial_params,  # Added
         optimizer_name="BFGS",
         priors=priors,
         prior_config_name="Test Priors",
         max_steps=5,  # Use a small number of steps for testing
-        fix_mu=False, # Added: Avoid error when true_mu is None
-        verbose=True
+        fix_mu=False,  # Added: Avoid error when true_mu is None
+        verbose=True,
     )
 
     # Check that the result is an OptimizerResult
@@ -564,18 +591,18 @@ def test_run_optimization_error_handling():
     """Test that run_optimization handles errors correctly."""
     # Create invalid returns data (NaN values)
     invalid_returns = jnp.ones((10, 3)) * jnp.nan  # Contains NaN values
-    N, K = 3, 1 # Define N, K for initial params
+    N, K = 3, 1  # Define N, K for initial params
     initial_params = create_stable_initial_params(N, K)
 
     # Run optimization with invalid data
     result = run_optimization(
         filter_type=FilterType.BIF,
         returns=invalid_returns,
-        initial_params=initial_params, # Added
+        initial_params=initial_params,  # Added
         optimizer_name="BFGS",
         max_steps=5,
-        fix_mu=False, # Added: Avoid error when true_mu is None
-        verbose=True
+        fix_mu=False,  # Added: Avoid error when true_mu is None
+        verbose=True,
     )
 
     # Check that the result is an OptimizerResult

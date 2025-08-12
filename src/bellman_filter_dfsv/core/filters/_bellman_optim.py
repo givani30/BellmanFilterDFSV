@@ -25,14 +25,13 @@ The implementation provides efficient functions for:
 3. Log-volatility state updates
 4. Complete state vector optimization
 """
-from functools import partial
-from typing import Callable, Tuple
+
+from collections.abc import Callable
 
 import equinox as eqx  # Add equinox import
 import jax
 import jax.numpy as jnp
 import jax.scipy.linalg  # Add linalg import
-import numpy as np  # Add numpy import
 import optimistix as optx
 from jaxtyping import PyTree, Scalar
 
@@ -120,9 +119,9 @@ def update_h_bfgs(
     K: int,
     build_covariance_fn: BuildCovarianceFn,
     log_posterior_fn: LogPosteriorFn,
-    h_solver: optx.AbstractMinimiser, # Pass solver instance
+    h_solver: optx.AbstractMinimiser,  # Pass solver instance
     inner_max_steps: int = 100,
-) -> Tuple[jnp.ndarray, bool]:
+) -> tuple[jnp.ndarray, bool]:
     """Updates log-volatilities h using trust-region BFGS optimization.
 
     This function minimizes J(h) = -ℓ(y_t|f,h) + Prior_Penalty(h) with respect to h,
@@ -163,12 +162,19 @@ def update_h_bfgs(
             - h_new: Updated log-volatility values (K,)
             - success: Boolean indicating optimization success
     """
+
     # Objective function wrapper to match optimistix fn(y, args) signature
     def objective_fn_h(h, objective_args):
         (
-            current_factors, current_lambda_r, current_sigma2,
-            current_predicted_state, current_I_pred, current_observation,
-            static_K, static_build_cov_fn, static_log_post_fn
+            current_factors,
+            current_lambda_r,
+            current_sigma2,
+            current_predicted_state,
+            current_I_pred,
+            current_observation,
+            static_K,
+            static_build_cov_fn,
+            static_log_post_fn,
         ) = objective_args
         # Call the standalone neg_log_post_h function
         return neg_log_post_h(
@@ -181,13 +187,20 @@ def update_h_bfgs(
             observation=current_observation,
             K=static_K,
             build_covariance_fn=static_build_cov_fn,
-            log_posterior_fn=static_log_post_fn
+            log_posterior_fn=static_log_post_fn,
         )
 
     # Prepare arguments tuple for the objective function
     objective_args = (
-        factors, lambda_r, sigma2, pred_state, I_pred, observation,
-        K, build_covariance_fn, log_posterior_fn
+        factors,
+        lambda_r,
+        sigma2,
+        pred_state,
+        I_pred,
+        observation,
+        K,
+        build_covariance_fn,
+        log_posterior_fn,
     )
 
     # Run the minimization using the passed solver instance
@@ -198,7 +211,7 @@ def update_h_bfgs(
         args=objective_args,
         options={},
         max_steps=inner_max_steps,
-        throw=False # Prevent errors from stopping JIT compilation
+        throw=False,  # Prevent errors from stopping JIT compilation
     )
 
     # Check if optimization was successful
@@ -303,13 +316,15 @@ def update_factors(
 
     # Construct the linear system Ax = b for factors f
     # A = Lambda^T Sigma_t^-1 Lambda + Omega_ff
-    lhs_mat = jnp.dot(lambda_r.T, A_inv(lambda_r)) + I_f + 1e-8 * jnp.eye(I_f.shape[0]) # Add jitter
+    lhs_mat = (
+        jnp.dot(lambda_r.T, A_inv(lambda_r)) + I_f + 1e-8 * jnp.eye(I_f.shape[0])
+    )  # Add jitter
 
     # b = Lambda^T Sigma_t^-1 y_t + Omega_ff f_pred + Omega_fh (h - h_pred)
     rhs_vec = (
         jnp.dot(lambda_r.T, A_inv(observation))
         + jnp.dot(I_f, factors_pred)
-        + jnp.dot(I_fh, (log_volatility - log_vols_pred)) # Corrected term
+        + jnp.dot(I_fh, (log_volatility - log_vols_pred))  # Corrected term
     )
 
     # Solve the linear system A f = b
@@ -322,21 +337,21 @@ def update_factors(
 
 def _block_coordinate_update_impl(
     lambda_r: jnp.ndarray,
-    sigma2: jnp.ndarray, # Expect 1D JAX array
+    sigma2: jnp.ndarray,  # Expect 1D JAX array
     alpha: jnp.ndarray,
     pred_state: jnp.ndarray,
-    I_pred: jnp.ndarray, # Predicted Information Matrix (Omega_{t|t-1})
+    I_pred: jnp.ndarray,  # Predicted Information Matrix (Omega_{t|t-1})
     observation: jnp.ndarray,
-    K: int, # Pass K explicitly
-    max_iters: int, # Static arg
-    h_solver: optx.AbstractMinimiser, # Static arg
-    build_covariance_fn: BuildCovarianceFn, # Pass JITted build_covariance
-    log_posterior_fn: LogPosteriorFn # Pass JITted log_posterior
+    K: int,  # Pass K explicitly
+    max_iters: int,  # Static arg
+    h_solver: optx.AbstractMinimiser,  # Static arg
+    build_covariance_fn: BuildCovarianceFn,  # Pass JITted build_covariance
+    log_posterior_fn: LogPosteriorFn,  # Pass JITted log_posterior
 ) -> jnp.ndarray:
     """Optimizes the state vector α_t in the BIF update step.
 
     This function finds α_{t|t} by minimizing:
-    
+
     J(α) = -ℓ(y_t|α_t) + 1/2||α_t - α_{t|t-1}||²_{Ω_{t|t-1}}
 
     The optimization alternates between:
@@ -381,9 +396,10 @@ def _block_coordinate_update_impl(
 
     # Define the loop body for coordinate descent iterations
     def body_fn(
-        i, carry: Tuple[jnp.ndarray, jnp.ndarray] # Loop index, (f, h) carry
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        """ Single iteration of the block-coordinate update. `carry` is (f, h). """
+        i,
+        carry: tuple[jnp.ndarray, jnp.ndarray],  # Loop index, (f, h) carry
+    ) -> tuple[jnp.ndarray, jnp.ndarray]:
+        """Single iteration of the block-coordinate update. `carry` is (f, h)."""
         f_current, h_current = carry
 
         # 1. Update factors (f) holding h fixed
@@ -396,23 +412,23 @@ def _block_coordinate_update_impl(
             log_vols_pred=log_vols_pred,
             I_f=I_f,
             I_fh=I_fh,
-            build_covariance_fn=build_covariance_fn
+            build_covariance_fn=build_covariance_fn,
         )
 
         # 2. Update log-volatilities (h) holding f fixed (using the new f_new)
         h_new, h_update_success = update_h_bfgs(
-            h_init=h_current, # Start from previous h
-            factors=f_new,    # Use the newly updated factors
+            h_init=h_current,  # Start from previous h
+            factors=f_new,  # Use the newly updated factors
             lambda_r=lambda_r,
             sigma2=sigma2,
-            pred_state=pred_state, # Pass full predicted state
-            I_pred=I_pred,         # Pass full predicted precision
+            pred_state=pred_state,  # Pass full predicted state
+            I_pred=I_pred,  # Pass full predicted precision
             observation=observation,
             K=K,
             build_covariance_fn=build_covariance_fn,
             log_posterior_fn=log_posterior_fn,
             h_solver=h_solver,
-            inner_max_steps=100 # Max steps for BFGS
+            inner_max_steps=100,  # Max steps for BFGS
         )
         # Note: h_update_success is currently ignored, could be used for diagnostics
         return (f_new, h_new)
@@ -423,6 +439,7 @@ def _block_coordinate_update_impl(
 
     # Return the final concatenated state vector
     return jnp.concatenate([f_final, h_final])
+
 
 class CustomBFGS(optx.AbstractBFGS):
     """Custom BFGS solver optimized for BIF state updates.
@@ -443,13 +460,15 @@ class CustomBFGS(optx.AbstractBFGS):
         - Default tolerances tuned for state estimation context
         - Maintains JAX-compatibility for JIT compilation
     """
-    rtol:float
-    atol:float
+
+    rtol: float
+    atol: float
     norm: Callable[[PyTree], Scalar]
-    use_inverse:bool
-    descent:optx.AbstractDescent=optx.DoglegDescent()
-    search:optx.AbstractSearch=optx.ClassicalTrustRegion()
+    use_inverse: bool
+    descent: optx.AbstractDescent = optx.DoglegDescent()
+    search: optx.AbstractSearch = optx.ClassicalTrustRegion()
     verbose: frozenset[str]
+
     def __init__(
         self,
         rtol: float,
@@ -457,12 +476,12 @@ class CustomBFGS(optx.AbstractBFGS):
         norm: Callable[[PyTree], Scalar] = optx.max_norm,
         use_inverse: bool = False,
         verbose: frozenset[str] = frozenset(),
-):
+    ):
         self.rtol = rtol
         self.atol = atol
         self.norm = norm
         self.use_inverse = use_inverse
         self.descent = optx.DoglegDescent()
         # self.search = optx.BacktrackingArmijo(decrease_factor=0.1,step_init=0.1)
-        self.search=optx.ClassicalTrustRegion()
+        self.search = optx.ClassicalTrustRegion()
         self.verbose = verbose

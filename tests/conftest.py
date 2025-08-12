@@ -42,17 +42,17 @@ def params_fixture() -> Callable[..., DFSVParamsDataclass]:
         key, subkey_qh = jr.split(key)
         key, subkey_lambda = jr.split(key)
         key, subkey_mu = jr.split(key)
-        key, subkey_sigma2 = jr.split(key) # Added key for sigma2
+        key, subkey_sigma2 = jr.split(key)  # Added key for sigma2
 
         # Sensible default values matching DFSVParamsDataclass structure
         phi_f_diag = jnp.array([0.98] * K)
         phi_h_diag = jnp.array([0.95] * K)
-        q_h_diag = jnp.array([0.25]*K )  # Variances for Q_h diagonal
+        q_h_diag = jnp.array([0.25] * K)  # Variances for Q_h diagonal
         lambda_r_init = jr.normal(subkey_lambda, (N, K)) * 0.6
-        mu_init = -jnp.abs(
-            jr.normal(subkey_mu, (K,))
-        ) * 0.5  # Ensure mu is negative
-        sigma2_init = jnp.ones(N) * 0.05 # Default value for sigma2, shape N for idiosyncratic variances
+        mu_init = -jnp.abs(jr.normal(subkey_mu, (K,))) * 0.5  # Ensure mu is negative
+        sigma2_init = (
+            jnp.ones(N) * 0.05
+        )  # Default value for sigma2, shape N for idiosyncratic variances
 
         params = DFSVParamsDataclass(
             N=N,
@@ -92,7 +92,9 @@ def data_fixture() -> Callable[..., Dict[str, Any]]:
         key = jr.PRNGKey(seed)
         # Assuming simulate_DFSV takes DFSVParamsDataclass directly
         observations_np, true_factors_np, true_log_vols_np = simulate_DFSV(
-            params=params, T=T, seed=seed # Pass seed instead of key
+            params=params,
+            T=T,
+            seed=seed,  # Pass seed instead of key
         )
         # Convert to JAX arrays as expected by some filter methods
         return {

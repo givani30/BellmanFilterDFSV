@@ -8,25 +8,29 @@ introduced by stochastic volatility.
 """
 
 import warnings
-from typing import Tuple, Union, NamedTuple, Callable
-from functools import partial
-from dataclasses import asdict
+from collections.abc import Callable
+from typing import NamedTuple
 
+# Removed jit import in favor of eqx.filter_jit
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.scipy.linalg
 import jax.scipy.special
 import numpy as np
-# Removed jit import in favor of eqx.filter_jit
-import equinox as eqx
+
 # Local imports
-from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass # Only import the dataclass
-from .base import DFSVFilter # Import base class from sibling module
+from bellman_filter_dfsv.core.models.dfsv import (
+    DFSVParamsDataclass,
+)  # Only import the dataclass
+
+from .base import DFSVFilter  # Import base class from sibling module
 
 # Try importing tqdm for progress bars, provide a fallback
 try:
     from tqdm import tqdm
 except ImportError:
+
     def tqdm(iterable, **kwargs):
         """Fallback tqdm iterator if tqdm is not installed."""
         warnings.warn("tqdm not installed. Progress bars will not be shown.")
@@ -38,9 +42,11 @@ except ImportError:
 
 # --- Particle Filter Implementation ---
 
+
 # Define a structure for the state carried through lax.scan
 class PFScanState(NamedTuple):
     """State carried through the particle filter's scan loop."""
+
     rng_key: jax.random.PRNGKey
     particles: jnp.ndarray  # Shape (state_dim, num_particles)
     normalized_log_weights: jnp.ndarray  # Shape (num_particles,)
@@ -87,8 +93,8 @@ class DFSVParticleFilter(DFSVFilter):
 
     def __init__(
         self,
-        N: int, # Pass N directly
-        K: int, # Pass K directly
+        N: int,  # Pass N directly
+        K: int,  # Pass K directly
         num_particles: int = 1000,
         resample_threshold_frac: float = 0.5,
         seed: int = 42,
@@ -125,11 +131,15 @@ class DFSVParticleFilter(DFSVFilter):
 
         # Storage for results (optional, set after filtering)
         self.particles: jnp.ndarray | None = None
-        self.weights: jnp.ndarray | None = None # Stores normalized log weights
-        self.effective_sample_size: np.ndarray | None = None # Stored as NumPy array
-        self.last_filter_params: DFSVParamsDataclass | None = None # Store params used in last filter call
+        self.weights: jnp.ndarray | None = None  # Stores normalized log weights
+        self.effective_sample_size: np.ndarray | None = None  # Stored as NumPy array
+        self.last_filter_params: DFSVParamsDataclass | None = (
+            None  # Store params used in last filter call
+        )
 
-    def _ensure_params_are_jax(self, params: DFSVParamsDataclass) -> DFSVParamsDataclass:
+    def _ensure_params_are_jax(
+        self, params: DFSVParamsDataclass
+    ) -> DFSVParamsDataclass:
         """
         Ensure the provided DFSVParamsDataclass contains JAX arrays.
 
@@ -147,18 +157,25 @@ class DFSVParticleFilter(DFSVFilter):
             raise TypeError(f"Input must be a DFSVParamsDataclass, got {type(params)}")
 
         # Convert relevant fields to JAX arrays, ensuring correct dtype (e.g., float32)
-        default_dtype = jnp.float32 # Use float32 for potential speedup
+        default_dtype = jnp.float32  # Use float32 for potential speedup
         updates = {}
         changed = False
         for field_name in ["lambda_r", "Phi_f", "Phi_h", "mu", "sigma2", "Q_h"]:
             current_value = getattr(params, field_name)
             # Check if it's already a JAX array of the correct type to avoid unnecessary conversion
-            if not isinstance(current_value, jnp.ndarray) or current_value.dtype != default_dtype:
+            if (
+                not isinstance(current_value, jnp.ndarray)
+                or current_value.dtype != default_dtype
+            ):
                 try:
-                    updates[field_name] = jnp.asarray(current_value, dtype=default_dtype)
+                    updates[field_name] = jnp.asarray(
+                        current_value, dtype=default_dtype
+                    )
                     changed = True
                 except (TypeError, ValueError) as e:
-                    raise ValueError(f"Could not convert parameter '{field_name}' to JAX array: {e}")
+                    raise ValueError(
+                        f"Could not convert parameter '{field_name}' to JAX array: {e}"
+                    )
 
         # If any arrays were converted, create a new instance with the JAX arrays
         if changed:
@@ -169,7 +186,7 @@ class DFSVParticleFilter(DFSVFilter):
 
     def initialize_state(
         self, params: DFSVParamsDataclass
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    ) -> tuple[jnp.ndarray, jnp.ndarray]:
         """Initializes the state vector and covariance matrix using the base method.
 
         Args:
@@ -186,7 +203,7 @@ class DFSVParticleFilter(DFSVFilter):
 
     def _initialize_particles(
         self, params: DFSVParamsDataclass, rng_key: jax.random.PRNGKey
-    ) -> Tuple[jax.random.PRNGKey, jnp.ndarray, jnp.ndarray]:
+    ) -> tuple[jax.random.PRNGKey, jnp.ndarray, jnp.ndarray]:
         """
         Initialize particle states and weights using the prior distribution derived
         from the provided parameters.
@@ -216,7 +233,7 @@ class DFSVParticleFilter(DFSVFilter):
                 sample_key, shape=(self.state_dim, self.num_particles)
             )
             # Affine transformation: mean + L @ noise
-            particles = initial_state_mean.reshape(-1,1) + L @ noise
+            particles = initial_state_mean.reshape(-1, 1) + L @ noise
         except np.linalg.LinAlgError as e:
             raise ValueError(
                 "Initial covariance matrix must be positive definite for sampling."
@@ -234,9 +251,9 @@ class DFSVParticleFilter(DFSVFilter):
         self,
         rng_key: jax.random.PRNGKey,
         particles: jnp.ndarray,
-        params: DFSVParamsDataclass, # Pass params
-        chol_Q_h: jnp.ndarray        # Pass Cholesky of Q_h
-    ) -> Tuple[jax.random.PRNGKey, jnp.ndarray]:
+        params: DFSVParamsDataclass,  # Pass params
+        chol_Q_h: jnp.ndarray,  # Pass Cholesky of Q_h
+    ) -> tuple[jax.random.PRNGKey, jnp.ndarray]:
         """
         Propagate particles one step forward using the state transition dynamics
         defined by the provided parameters.
@@ -252,7 +269,7 @@ class DFSVParticleFilter(DFSVFilter):
                 - Updated JAX random key.
                 - Predicted particles (state_dim, num_particles).
         """
-        K = self.K # K is from self (instance dimension)
+        K = self.K  # K is from self (instance dimension)
 
         # Split key for factor and volatility noise
         rng_key, key_h, key_f = jax.random.split(rng_key, 3)
@@ -268,9 +285,7 @@ class DFSVParticleFilter(DFSVFilter):
         h_deviation = log_vols_t - mu_col
         h_mean_pred = mu_col + params.Phi_h @ h_deviation
         # Sample volatility noise: eta_t ~ N(0, Q_h) using passed Cholesky
-        noise_h = chol_Q_h @ jax.random.normal(
-            key_h, shape=(K, self.num_particles)
-        )
+        noise_h = chol_Q_h @ jax.random.normal(key_h, shape=(K, self.num_particles))
         log_vols_tp1 = h_mean_pred + noise_h
 
         # 2. Predict factors: f_{t+1} = Phi_f * f_t + diag(exp(h_{t+1}/2)) * eps_t
@@ -287,16 +302,16 @@ class DFSVParticleFilter(DFSVFilter):
 
         return rng_key, predicted_particles
 
-    @eqx.filter_jit # self, K, N are static
+    @eqx.filter_jit  # self, K, N are static
     def compute_log_likelihood_particle(
         self,
-        particles: jnp.ndarray,          # (state_dim, P)
-        observation: jnp.ndarray,        # (N, 1)
-        factor_loadings: jnp.ndarray,    # (N, K)
-        obs_noise_variances: jnp.ndarray,# (N,) - Diagonal elements of R_t
+        particles: jnp.ndarray,  # (state_dim, P)
+        observation: jnp.ndarray,  # (N, 1)
+        factor_loadings: jnp.ndarray,  # (N, K)
+        obs_noise_variances: jnp.ndarray,  # (N,) - Diagonal elements of R_t
         K: int,
         N: int,
-    ) -> jnp.ndarray:                     # (P,)
+    ) -> jnp.ndarray:  # (P,)
         """
         Compute the log-likelihood log p(y_t | x_t) for each particle x_t,
         assuming diagonal observation noise covariance R_t = diag(obs_noise_variances).
@@ -329,13 +344,15 @@ class DFSVParticleFilter(DFSVFilter):
         # Pre-calculate log determinant of R_t = diag(variances)
         # Add epsilon for numerical stability if variances are near zero
         safe_variances = jnp.maximum(obs_noise_variances, 1e-10)
-        log_det_R = jnp.sum(jnp.log(safe_variances)) # log|R| = sum(log(variances))
+        log_det_R = jnp.sum(jnp.log(safe_variances))  # log|R| = sum(log(variances))
 
         # --- Vectorized Calculation ---
         # Quadratic form: sum_i (error_i^2 / variance_i) for each particle
         # observation_error is (N, P), safe_variances is (N,)
         # Use broadcasting: safe_variances[:, None] becomes (N, 1)
-        quad_form = jnp.sum((observation_error ** 2) / safe_variances[:, None], axis=0) # Sum over N -> shape (P,)
+        quad_form = jnp.sum(
+            (observation_error**2) / safe_variances[:, None], axis=0
+        )  # Sum over N -> shape (P,)
 
         # Log likelihood: -0.5 * (N*log(2pi) + log_det_R + quad_form)
         log2pi = jnp.log(jnp.array(2 * jnp.pi, dtype=jnp.float32))
@@ -346,13 +363,13 @@ class DFSVParticleFilter(DFSVFilter):
 
     # Removed _compute_logprob_cholesky static method as it's replaced by direct calculation
 
-    @eqx.filter_jit # self is static
+    @eqx.filter_jit  # self is static
     def resample_particles(
         self,
         rng_key: jax.random.PRNGKey,
-        particles: jnp.ndarray,             # (state_dim, P)
-        unnormalized_log_weights: jnp.ndarray # (P,)
-    ) -> Tuple[jax.random.PRNGKey, jnp.ndarray, jnp.ndarray, float]:
+        particles: jnp.ndarray,  # (state_dim, P)
+        unnormalized_log_weights: jnp.ndarray,  # (P,)
+    ) -> tuple[jax.random.PRNGKey, jnp.ndarray, jnp.ndarray, float]:
         """
         Perform systematic resampling if ESS is below threshold.
 
@@ -383,7 +400,9 @@ class DFSVParticleFilter(DFSVFilter):
         needs_resampling = ess < self.resample_threshold_ess
 
         # --- Define Resampling Logic (Systematic Resampling) ---
-        def _systematic_resample(key_resample, particles_resample, weights_linear_resample):
+        def _systematic_resample(
+            key_resample, particles_resample, weights_linear_resample
+        ):
             """Performs systematic resampling."""
             key_resample, subkey = jax.random.split(key_resample)
             n = weights_linear_resample.shape[0]
@@ -406,7 +425,7 @@ class DFSVParticleFilter(DFSVFilter):
         # --- Define Conditional Branches ---
         def _resample_branch(op):
             """Branch executed if resampling is needed."""
-            key_in, particles_in, weights_lin_in, _ = op # Unpack, ignore log weights
+            key_in, particles_in, weights_lin_in, _ = op  # Unpack, ignore log weights
             key_out, particles_out, log_weights_out = _systematic_resample(
                 key_in, particles_in, weights_lin_in
             )
@@ -414,25 +433,28 @@ class DFSVParticleFilter(DFSVFilter):
 
         def _no_resample_branch(op):
             """Branch executed if resampling is not needed."""
-            key_in, particles_in, _, log_weights_in = op # Unpack, ignore linear weights
+            key_in, particles_in, _, log_weights_in = (
+                op  # Unpack, ignore linear weights
+            )
             # Return original key, predicted particles, and normalized log weights
             return key_in, particles_in, log_weights_in
 
         # 4. Use lax.cond to select branch
-        operand = (rng_key, particles, normalized_weights_linear, normalized_log_weights)
+        operand = (
+            rng_key,
+            particles,
+            normalized_weights_linear,
+            normalized_log_weights,
+        )
         rng_key, next_particles, next_normalized_log_weights = jax.lax.cond(
-            needs_resampling,
-            _resample_branch,
-            _no_resample_branch,
-            operand
+            needs_resampling, _resample_branch, _no_resample_branch, operand
         )
 
         return rng_key, next_particles, next_normalized_log_weights, ess
 
-
     def predict(
         self, params: DFSVParamsDataclass, state: jnp.ndarray, cov: jnp.ndarray
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    ) -> tuple[jnp.ndarray, jnp.ndarray]:
         """Predict step is not applicable for the particle filter in this standard form."""
         raise NotImplementedError(
             "Predict method with single state/covariance input is not applicable to Particle Filter."
@@ -444,7 +466,7 @@ class DFSVParticleFilter(DFSVFilter):
         predicted_state: jnp.ndarray,
         predicted_cov: jnp.ndarray,
         observation: jnp.ndarray,
-    ) -> Tuple[jnp.ndarray, jnp.ndarray, float]:
+    ) -> tuple[jnp.ndarray, jnp.ndarray, float]:
         """Update step is not applicable for the particle filter in this standard form."""
         raise NotImplementedError(
             "Update method with single state/covariance input is not applicable to Particle Filter."
@@ -453,12 +475,14 @@ class DFSVParticleFilter(DFSVFilter):
     @staticmethod
     @eqx.filter_jit
     def _jit_filter_scan_for_filter(
-        self_static, # Pass the instance statically (handled by eqx.filter_jit)
+        self_static,  # Pass the instance statically (handled by eqx.filter_jit)
         params: DFSVParamsDataclass,
         observations: jnp.ndarray,
-        obs_noise_variances: jnp.ndarray, # Pass precomputed variances statically
-        chol_Q_h_local: jnp.ndarray      # Pass precomputed Cholesky statically
-    ) -> Tuple[PFScanState, Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]: # Return final state and scan outputs
+        obs_noise_variances: jnp.ndarray,  # Pass precomputed variances statically
+        chol_Q_h_local: jnp.ndarray,  # Pass precomputed Cholesky statically
+    ) -> tuple[
+        PFScanState, tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]
+    ]:  # Return final state and scan outputs
         """
         Static, JIT-compiled function to run the particle filter scan for the main filter method.
 
@@ -481,24 +505,29 @@ class DFSVParticleFilter(DFSVFilter):
         # --- Initialize state for scan ---
         # Use instance's methods but with the provided `params` and a fresh key from seed
         rng_key = jax.random.PRNGKey(self_static.seed)
-        init_rng_key, init_particles, init_log_weights = self_static._initialize_particles(
-            params, rng_key # Use input params here
+        init_rng_key, init_particles, init_log_weights = (
+            self_static._initialize_particles(
+                params,
+                rng_key,  # Use input params here
+            )
         )
         initial_scan_state = PFScanState(
             rng_key=init_rng_key,
             particles=init_particles,
             normalized_log_weights=init_log_weights,
-            log_likelihood_accum=jnp.array(0.0, dtype=jnp.float32), # Use float32 accumulator
+            log_likelihood_accum=jnp.array(
+                0.0, dtype=jnp.float32
+            ),  # Use float32 accumulator
         )
 
         # --- Define the scan body function (identical to the one previously in filter) ---
         def scan_body(
-            state: PFScanState,                 # The dynamic state
-            obs_t: jnp.ndarray                  # The dynamic observation
-            ):
+            state: PFScanState,  # The dynamic state
+            obs_t: jnp.ndarray,  # The dynamic observation
+        ):
             """Body function for jax.lax.scan, performs one filter step."""
             key, current_particles, current_norm_log_weights, ll_accum = state
-            observation = obs_t.reshape(-1, 1) # Ensure (N, 1)
+            observation = obs_t.reshape(-1, 1)  # Ensure (N, 1)
 
             # 1. Predict (pass params and chol_Q_h)
             key, predicted_particles = self_static.predict_particles(
@@ -509,8 +538,8 @@ class DFSVParticleFilter(DFSVFilter):
             log_likelihood_terms = self_static.compute_log_likelihood_particle(
                 predicted_particles,
                 observation,
-                params.lambda_r, # Get factor loadings from params
-                obs_noise_variances,    # Use passed obs_noise_variances (matches signature)
+                params.lambda_r,  # Get factor loadings from params
+                obs_noise_variances,  # Use passed obs_noise_variances (matches signature)
                 K,
                 N,
             )
@@ -522,8 +551,10 @@ class DFSVParticleFilter(DFSVFilter):
             ll_accum_next = ll_accum + ll_increment
 
             # 4. Resample (uses self_static for threshold etc.)
-            key, particles_next, next_norm_log_weights, ess = self_static.resample_particles(
-                key, predicted_particles, unnormalized_log_weights
+            key, particles_next, next_norm_log_weights, ess = (
+                self_static.resample_particles(
+                    key, predicted_particles, unnormalized_log_weights
+                )
             )
 
             # --- Calculate outputs for storage ---
@@ -536,8 +567,8 @@ class DFSVParticleFilter(DFSVFilter):
             filtered_mean = jnp.sum(particles_next * weights_linear, axis=1)
 
             # Weighted covariance estimate of state x_t
-            diff = particles_next - filtered_mean.reshape(-1, 1) # Shape (state_dim, P)
-            weighted_diff = diff * weights_linear[None, :] # Shape (state_dim, P)
+            diff = particles_next - filtered_mean.reshape(-1, 1)  # Shape (state_dim, P)
+            weighted_diff = diff * weights_linear[None, :]  # Shape (state_dim, P)
             filtered_cov = weighted_diff @ diff.T
             filtered_cov = (filtered_cov + filtered_cov.T) / 2.0
 
@@ -551,21 +582,21 @@ class DFSVParticleFilter(DFSVFilter):
             scan_output = (predicted_mean, filtered_mean, filtered_cov, ess)
 
             return next_scan_state, scan_output
+
         # --- End of scan_body definition ---
 
         # --- Run the scan ---
         final_state, scan_outputs = jax.lax.scan(
-            scan_body, # Use the scan_body defined above
+            scan_body,  # Use the scan_body defined above
             initial_scan_state,
-            observations
+            observations,
         )
 
         return final_state, scan_outputs
 
-
     def filter(
-        self, params: DFSVParamsDataclass, observations: Union[np.ndarray, jnp.ndarray]
-    ) -> Tuple[np.ndarray, np.ndarray, float]:
+        self, params: DFSVParamsDataclass, observations: np.ndarray | jnp.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, float]:
         """
         Run the Particle Filter using JAX scan with externally provided parameters.
 
@@ -586,26 +617,33 @@ class DFSVParticleFilter(DFSVFilter):
         if observations is None:
             raise ValueError("Observations must be provided.")
         if not isinstance(params, DFSVParamsDataclass):
-             raise TypeError(f"Input params must be a DFSVParamsDataclass, got {type(params)}")
+            raise TypeError(
+                f"Input params must be a DFSVParamsDataclass, got {type(params)}"
+            )
         if params.N != self.N or params.K != self.K:
-             raise ValueError(f"Parameter dimensions (N={params.N}, K={params.K}) do not match filter dimensions (N={self.N}, K={self.K})")
-
+            raise ValueError(
+                f"Parameter dimensions (N={params.N}, K={params.K}) do not match filter dimensions (N={self.N}, K={self.K})"
+            )
 
         # Ensure observations are JAX array and in (T, N) format
         obs_jax = jnp.asarray(observations)
         if obs_jax.ndim != 2:
-             raise ValueError(f"Observations must be a 2D array, but got shape {obs_jax.shape}")
+            raise ValueError(
+                f"Observations must be a 2D array, but got shape {obs_jax.shape}"
+            )
         if obs_jax.shape[1] != self.N:
-             if obs_jax.shape[0] == self.N:
-                 obs_jax = obs_jax.T # Transpose if (N, T)
-             else:
-                 raise ValueError(f"Observations dimension mismatch: expected {self.N} columns/rows, got {obs_jax.shape}")
+            if obs_jax.shape[0] == self.N:
+                obs_jax = obs_jax.T  # Transpose if (N, T)
+            else:
+                raise ValueError(
+                    f"Observations dimension mismatch: expected {self.N} columns/rows, got {obs_jax.shape}"
+                )
         T = obs_jax.shape[0]
 
         # --- Prepare parameters and derived values ---
         jax_params = self._ensure_params_are_jax(params)
-        K = self.K # From self
-        N = self.N # From self
+        K = self.K  # From self
+        N = self.N  # From self
 
         # Compute Cholesky of Q_h from passed params, adding jitter for stability
         jitter = 1e-6 * jnp.eye(K)
@@ -620,14 +658,18 @@ class DFSVParticleFilter(DFSVFilter):
         sigma2_curr = jax_params.sigma2
         if sigma2_curr.ndim == 1:
             if sigma2_curr.shape[0] != N:
-                raise ValueError(f"sigma2 (1D) length {sigma2_curr.shape[0]} != N ({N})")
-            obs_noise_variances = sigma2_curr # Assume it's already the variances
+                raise ValueError(
+                    f"sigma2 (1D) length {sigma2_curr.shape[0]} != N ({N})"
+                )
+            obs_noise_variances = sigma2_curr  # Assume it's already the variances
         elif sigma2_curr.ndim == 2:
             if sigma2_curr.shape != (N, N):
                 raise ValueError(f"sigma2 (2D) shape {sigma2_curr.shape} != ({N}, {N})")
             # Ensure it's diagonal and extract variances
             if not jnp.allclose(sigma2_curr, jnp.diag(jnp.diag(sigma2_curr))):
-                warnings.warn("sigma2 is 2D but not diagonal. Extracting diagonal for particle filter likelihood.")
+                warnings.warn(
+                    "sigma2 is 2D but not diagonal. Extracting diagonal for particle filter likelihood."
+                )
             obs_noise_variances = jnp.diag(sigma2_curr)
         else:
             raise ValueError(f"sigma2 has invalid shape {sigma2_curr.shape}")
@@ -638,32 +680,42 @@ class DFSVParticleFilter(DFSVFilter):
         )
 
         # Unpack results
-        predicted_states_means, filtered_states_means, filtered_states_covs, ess_history = scan_outputs
+        (
+            predicted_states_means,
+            filtered_states_means,
+            filtered_states_covs,
+            ess_history,
+        ) = scan_outputs
         # Handle potential NaN in final LL consistently with _jit_filter_scan_for_likelihood
         final_ll_jax = final_state.log_likelihood_accum
-        final_log_likelihood = float(jnp.where(jnp.isnan(final_ll_jax), -jnp.inf, final_ll_jax))
+        final_log_likelihood = float(
+            jnp.where(jnp.isnan(final_ll_jax), -jnp.inf, final_ll_jax)
+        )
 
         # Update instance state
-        self.rng_key = final_state.rng_key # Store final key state
-        self.particles = final_state.particles # Store final JAX particles
-        self.weights = final_state.normalized_log_weights # Store final JAX log weights
+        self.rng_key = final_state.rng_key  # Store final key state
+        self.particles = final_state.particles  # Store final JAX particles
+        self.weights = final_state.normalized_log_weights  # Store final JAX log weights
 
         # Store results as NumPy arrays in the instance
-        self.predicted_states = np.array(predicted_states_means)  # Store predicted states for smoother
+        self.predicted_states = np.array(
+            predicted_states_means
+        )  # Store predicted states for smoother
         self.filtered_states = np.array(filtered_states_means)
         self.filtered_covs = np.array(filtered_states_covs)
         self.log_likelihood = final_log_likelihood
         self.effective_sample_size = np.array(ess_history)
         self.is_filtered = True
-        self.is_smoothed = False # Reset smoothed flag
-        self.last_filter_params = jax_params # Store params used for this filter run
-        self.params = jax_params # Store for smoother
+        self.is_smoothed = False  # Reset smoothed flag
+        self.last_filter_params = jax_params  # Store params used for this filter run
+        self.params = jax_params  # Store for smoother
 
         return self.filtered_states, self.filtered_covs, self.log_likelihood
 
-
     # --- Methods for RTS Smoothing ---
-    def _get_transition_matrix_np(self, params: DFSVParamsDataclass, state: np.ndarray) -> np.ndarray:
+    def _get_transition_matrix_np(
+        self, params: DFSVParamsDataclass, state: np.ndarray
+    ) -> np.ndarray:
         """
         Get the linearized state transition matrix F_t (NumPy version for smoother).
 
@@ -681,7 +733,9 @@ class DFSVParticleFilter(DFSVFilter):
             RuntimeError: If filter has not been run or params were not stored.
         """
         if self.last_filter_params is None:
-            raise RuntimeError("Filter must be run successfully before smoothing to store parameters.")
+            raise RuntimeError(
+                "Filter must be run successfully before smoothing to store parameters."
+            )
 
         K = self.K
         # Convert necessary params from JAX to NumPy for the smoother
@@ -696,7 +750,7 @@ class DFSVParticleFilter(DFSVFilter):
 
     def _predict_with_matrix_np(
         self, state: np.ndarray, cov: np.ndarray, transition_matrix: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Predict state and covariance using a given transition matrix (NumPy version).
 
@@ -717,7 +771,9 @@ class DFSVParticleFilter(DFSVFilter):
             RuntimeError: If filter has not been run or params were not stored.
         """
         if self.last_filter_params is None:
-            raise RuntimeError("Filter must be run successfully before smoothing to store parameters.")
+            raise RuntimeError(
+                "Filter must be run successfully before smoothing to store parameters."
+            )
 
         # Ensure params are JAX arrays first
         jax_params = self._ensure_params_are_jax(self.last_filter_params)
@@ -756,39 +812,39 @@ class DFSVParticleFilter(DFSVFilter):
 
         return predicted_state_mean_col, predicted_cov
 
-
-
-    def smooth(self, params: DFSVParamsDataclass) -> Tuple[np.ndarray, np.ndarray]:
+    def smooth(self, params: DFSVParamsDataclass) -> tuple[np.ndarray, np.ndarray]:
         """Runs the Rauch-Tung-Striebel (RTS) smoother using base implementation.
 
-        Relies on filtered_states and filtered_covs computed during the filter pass.
+         Relies on filtered_states and filtered_covs computed during the filter pass.
 
-        Returns:
-            A tuple containing:
-                - smoothed_states: Smoothed state estimates (T, state_dim) as NumPy array.
-                - smoothed_covs: Smoothed state covariances (T, state_dim, state_dim)
-                  as NumPy array.
+         Returns:
+             A tuple containing:
+                 - smoothed_states: Smoothed state estimates (T, state_dim) as NumPy array.
+                 - smoothed_covs: Smoothed state covariances (T, state_dim, state_dim)
+                   as NumPy array.
 
-       Raises:
-           RuntimeError: If the filter has not been run yet (results are None) or
-                         if parameters from the last filter run were not stored.
-       """
+        Raises:
+            RuntimeError: If the filter has not been run yet (results are None) or
+                          if parameters from the last filter run were not stored.
+        """
         # Check if filter results (NumPy arrays) are available
-        if not self.is_filtered or self.filtered_states is None or self.filtered_covs is None:
-            raise RuntimeError(
-                "Filter must be run successfully before smoothing."
-            )
+        if (
+            not self.is_filtered
+            or self.filtered_states is None
+            or self.filtered_covs is None
+        ):
+            raise RuntimeError("Filter must be run successfully before smoothing.")
         # Check if parameters from the last filter run are stored (needed by _predict_with_matrix_np)
         if self.last_filter_params is None:
             raise RuntimeError(
                 "Parameters from the last filter run are required for smoothing but were not stored."
             )
         # Ensure self.params is set (should have been done by filter method)
-        if getattr(self, 'params', None) is None:
+        if getattr(self, "params", None) is None:
             # This should ideally not happen if filter was run correctly
             self.params = self.last_filter_params
 
-       # Call the base class implementation which expects NumPy arrays and now params
+        # Call the base class implementation which expects NumPy arrays and now params
         # Base class returns 3 values: states, covs, lag1_covs
         smoothed_states_np, smoothed_covs_np, _ = super().smooth(params)
 
@@ -804,7 +860,7 @@ class DFSVParticleFilter(DFSVFilter):
 
     def log_likelihood_wrt_params(
         self,
-        params: DFSVParamsDataclass, # Expecting JAX compatible Pytree
+        params: DFSVParamsDataclass,  # Expecting JAX compatible Pytree
         observations: jnp.ndarray,
     ) -> float:
         """
@@ -833,10 +889,10 @@ class DFSVParticleFilter(DFSVFilter):
     # JIT compile using Equinox JIT. self_static is handled automatically.
     @eqx.filter_jit
     def _jit_filter_scan_for_likelihood(
-        self_static, # Pass the instance statically (handled by eqx.filter_jit)
+        self_static,  # Pass the instance statically (handled by eqx.filter_jit)
         params: DFSVParamsDataclass,
-        observations: jnp.ndarray
-    ) -> jnp.ndarray: # Return JAX scalar
+        observations: jnp.ndarray,
+    ) -> jnp.ndarray:  # Return JAX scalar
         """
         Static, JIT-compiled function to run the particle filter scan for likelihood calculation.
 
@@ -861,7 +917,13 @@ class DFSVParticleFilter(DFSVFilter):
         obs_noise_variances = jnp.where(
             sigma2_curr.ndim == 1,
             sigma2_curr,
-            jnp.diag(jnp.where(sigma2_curr.ndim == 2, sigma2_curr, jnp.diag(sigma2_curr.reshape(-1))))
+            jnp.diag(
+                jnp.where(
+                    sigma2_curr.ndim == 2,
+                    sigma2_curr,
+                    jnp.diag(sigma2_curr.reshape(-1)),
+                )
+            ),
         )
 
         # --- Compute Cholesky of Q_h with jitter ---
@@ -870,21 +932,25 @@ class DFSVParticleFilter(DFSVFilter):
             jnp.all(jnp.isfinite(params.Q_h + jitter)),
             lambda x: jax.scipy.linalg.cholesky(x, lower=True),
             lambda x: jnp.full_like(x, jnp.inf),
-            params.Q_h + jitter
+            params.Q_h + jitter,
         )
-
 
         # --- Initialize state for scan ---
         # Use instance's methods but with the provided `params` and a fresh key from seed
         rng_key = jax.random.PRNGKey(self_static.seed)
-        init_rng_key, init_particles, init_log_weights = self_static._initialize_particles(
-            params, rng_key # Use input params here
+        init_rng_key, init_particles, init_log_weights = (
+            self_static._initialize_particles(
+                params,
+                rng_key,  # Use input params here
+            )
         )
         initial_scan_state = PFScanState(
             rng_key=init_rng_key,
             particles=init_particles,
             normalized_log_weights=init_log_weights,
-            log_likelihood_accum=jnp.array(0.0, dtype=jnp.float32), # Use float32 accumulator
+            log_likelihood_accum=jnp.array(
+                0.0, dtype=jnp.float32
+            ),  # Use float32 accumulator
         )
 
         # --- Define the scan body function (similar to filter, but uses input params) ---
@@ -904,7 +970,7 @@ class DFSVParticleFilter(DFSVFilter):
                 predicted_particles,
                 observation,
                 params.lambda_r,
-                obs_noise_variances, # Use precomputed variances
+                obs_noise_variances,  # Use precomputed variances
                 K,
                 N,
             )
@@ -919,8 +985,10 @@ class DFSVParticleFilter(DFSVFilter):
             # End LL Increment
 
             # 4. Resample (using instance's resample method)
-            key, particles_next, next_norm_log_weights, ess = self_static.resample_particles( # Capture ess
-                key, predicted_particles, unnormalized_log_weights
+            key, particles_next, next_norm_log_weights, ess = (
+                self_static.resample_particles(  # Capture ess
+                    key, predicted_particles, unnormalized_log_weights
+                )
             )
             # End Resample
 
@@ -930,10 +998,12 @@ class DFSVParticleFilter(DFSVFilter):
             filtered_mean = jnp.sum(particles_next * weights_linear, axis=1)
 
             # Weighted covariance estimate of state x_t
-            diff = particles_next - filtered_mean.reshape(-1, 1) # Shape (state_dim, P)
-            weighted_diff = diff * weights_linear[None, :] # Shape (state_dim, P)
-            filtered_cov = weighted_diff @ diff.T # (state_dim, P) @ (P, state_dim) -> (state_dim, state_dim)
-            filtered_cov = (filtered_cov + filtered_cov.T) / 2.0 # Ensure symmetry
+            diff = particles_next - filtered_mean.reshape(-1, 1)  # Shape (state_dim, P)
+            weighted_diff = diff * weights_linear[None, :]  # Shape (state_dim, P)
+            filtered_cov = (
+                weighted_diff @ diff.T
+            )  # (state_dim, P) @ (P, state_dim) -> (state_dim, state_dim)
+            filtered_cov = (filtered_cov + filtered_cov.T) / 2.0  # Ensure symmetry
             # --- End added calculations ---
             next_scan_state = PFScanState(
                 rng_key=key,
@@ -942,19 +1012,16 @@ class DFSVParticleFilter(DFSVFilter):
                 log_likelihood_accum=ll_accum_next,
             )
             # Return same structure as filter's scan_body for JIT consistency
-            scan_output = (filtered_mean, filtered_cov, ess) # Now use captured ess
+            scan_output = (filtered_mean, filtered_cov, ess)  # Now use captured ess
             return next_scan_state, scan_output
 
         # --- Run the scan ---
-        final_state, _ = jax.lax.scan(
-            scan_body_opt, initial_scan_state, observations
-        )
+        final_state, _ = jax.lax.scan(scan_body_opt, initial_scan_state, observations)
 
         # Return the final accumulated log-likelihood (as JAX scalar)
         # Handle case where accumulation resulted in NaN (e.g., from -inf + inf)
         final_ll = final_state.log_likelihood_accum
         return jnp.where(jnp.isnan(final_ll), -jnp.inf, final_ll)
-
 
     @eqx.filter_jit
     def jit_log_likelihood_wrt_params(self) -> Callable:
@@ -968,9 +1035,12 @@ class DFSVParticleFilter(DFSVFilter):
             A JIT-compiled function `likelihood_fn(params, observations)` that returns
             a scalar log-likelihood value.
         """
+
         # Define a closure that captures self and calls the static helper
         def likelihood_fn(params, observations):
-            return DFSVParticleFilter._jit_filter_scan_for_likelihood(self, params, observations)
+            return DFSVParticleFilter._jit_filter_scan_for_likelihood(
+                self, params, observations
+            )
 
         return likelihood_fn
 

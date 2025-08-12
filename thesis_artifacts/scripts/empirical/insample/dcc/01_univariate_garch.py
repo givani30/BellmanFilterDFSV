@@ -13,15 +13,21 @@ SCRIPT_DIR = pathlib.Path(__file__).parent.absolute()
 DATA_DIR = os.path.join(SCRIPT_DIR, "data")
 INPUT_FILE = os.path.join(SCRIPT_DIR.parent.parent, "vw_returns_final_with_date.csv")
 OUTPUT_FILE = os.path.join(DATA_DIR, "garch_outputs.npz")
-DATE_INDEX_FILE = os.path.join(DATA_DIR, "date_index.txt") # To save date index
+DATE_INDEX_FILE = os.path.join(DATA_DIR, "date_index.txt")  # To save date index
 
 # Ensure data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # Parse command-line arguments
-parser = argparse.ArgumentParser(description='Fit univariate GARCH models to return series')
-parser.add_argument('--rescale', type=float, default=1.0,
-                    help='Factor to rescale returns by (default: 1.0)')
+parser = argparse.ArgumentParser(
+    description="Fit univariate GARCH models to return series"
+)
+parser.add_argument(
+    "--rescale",
+    type=float,
+    default=1.0,
+    help="Factor to rescale returns by (default: 1.0)",
+)
 args = parser.parse_args()
 
 # Load data using polars
@@ -32,7 +38,9 @@ try:
     return_cols = df_pl.columns[1:]
 
     # Convert to pandas DataFrame for arch, setting date as index
-    df_pd = df_pl.with_columns(pl.col(date_col_name).str.strptime(pl.Date, "%Y-%m-%d").cast(pl.Datetime)).to_pandas()
+    df_pd = df_pl.with_columns(
+        pl.col(date_col_name).str.strptime(pl.Date, "%Y-%m-%d").cast(pl.Datetime)
+    ).to_pandas()
     df_pd = df_pd.set_index(date_col_name)
     R = df_pd[return_cols]
 
@@ -47,7 +55,7 @@ except Exception as e:
 
 # Save the date index
 try:
-    with open(DATE_INDEX_FILE, 'w') as f:
+    with open(DATE_INDEX_FILE, "w") as f:
         for date in R.index:
             f.write(f"{date.strftime('%Y-%m-%d')}\n")
 except Exception as e:
@@ -62,14 +70,19 @@ def fit_one(x):
         x = pd.Series(x)
 
     try:
-        res = arch_model(x, vol='Garch', p=1, q=1, dist='t').fit(disp='off')
-        return pd.DataFrame({'sigma2': res.conditional_volatility**2,
-                             'resid' : res.resid / res.conditional_volatility})
+        res = arch_model(x, vol="Garch", p=1, q=1, dist="t").fit(disp="off")
+        return pd.DataFrame(
+            {
+                "sigma2": res.conditional_volatility**2,
+                "resid": res.resid / res.conditional_volatility,
+            }
+        )
     except Exception as e:
         print(f"Error fitting GARCH model: {e}")
         # Return empty DataFrame or handle error as appropriate
-        return pd.DataFrame({'sigma2': np.full(len(x), np.nan),
-                             'resid' : np.full(len(x), np.nan)})
+        return pd.DataFrame(
+            {"sigma2": np.full(len(x), np.nan), "resid": np.full(len(x), np.nan)}
+        )
 
 
 # Parallel univariate GARCH(1,1) fitting
@@ -78,7 +91,7 @@ out = Parallel(n_jobs=-1)(delayed(fit_one)(R[col]) for col in R.columns)
 
 # Concatenate results and save
 sigma2 = pd.concat([o.sigma2 for o in out], axis=1).to_numpy()
-eps    = pd.concat([o.resid  for o in out], axis=1).to_numpy()
+eps = pd.concat([o.resid for o in out], axis=1).to_numpy()
 
 try:
     np.savez(OUTPUT_FILE, sigma2=sigma2, eps=eps)

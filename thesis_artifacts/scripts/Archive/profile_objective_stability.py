@@ -15,6 +15,7 @@ from bellman_filter_dfsv.utils.optimization_helpers import (
     create_stable_initial_params,
 )
 
+
 def main():
     """Runs the baseline profiling for BIF optimization."""
     # --- Configuration ---
@@ -50,7 +51,7 @@ def main():
     # --- Run Optimization ---
     print(f"\nRunning optimization for {max_steps} steps...")
     start_time = time.time()
-    
+
     result = run_optimization(
         filter_type=FilterType.BIF,
         returns=observations,
@@ -62,7 +63,7 @@ def main():
         stability_penalty_weight=stability_penalty_weight,
         max_steps=max_steps,
         log_params=False,  # Disable parameter logging
-        verbose=True
+        verbose=True,
     )
 
     end_time = time.time()
@@ -72,6 +73,7 @@ def main():
     print("\n--- Optimization Results ---")
     print(f"Total Execution Time: {execution_time:.2f} seconds")
     print(f"Final Result: {result}")
+
 
 if __name__ == "__main__":
     main()

@@ -21,7 +21,7 @@ from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
 from bellman_filter_dfsv.core.optimization.optimization import (
     FilterType,
-    run_optimization
+    run_optimization,
 )
 from bellman_filter_dfsv.core.optimization.solvers import get_optimizer_config
 
@@ -67,7 +67,7 @@ def create_simple_dfsv_model(N=3, K=1):
         Phi_h=jnp.array(Phi_h),
         mu=jnp.array(mu),
         sigma2=jnp.array(sigma2),
-        Q_h=jnp.array(Q_h)
+        Q_h=jnp.array(Q_h),
     )
 
     return params
@@ -92,7 +92,7 @@ def compare_optimizers(true_params, returns, filter_type=FilterType.BIF, max_ste
     # Define optimizers to compare
     optimizers = [
         "AdamW",
-        "DampedTrustRegionBFGS"  # Default optimizer
+        "DampedTrustRegionBFGS",  # Default optimizer
     ]
 
     # Run optimization with each optimizer
@@ -116,7 +116,7 @@ def compare_optimizers(true_params, returns, filter_type=FilterType.BIF, max_ste
                 optimizer_name=optimizer_name,
                 max_steps=max_steps,
                 log_params=True,
-                verbose=True
+                verbose=True,
             )
             success = True
         except Exception as e:
@@ -129,9 +129,9 @@ def compare_optimizers(true_params, returns, filter_type=FilterType.BIF, max_ste
 
         # Store results
         results[optimizer_name] = {
-            'result': result,
-            'time': opt_time,
-            'success': success
+            "result": result,
+            "time": opt_time,
+            "success": success,
         }
 
     return results
@@ -153,18 +153,18 @@ def analyze_optimizer_results(true_params, optimizer_results):
 
     # Calculate parameter errors for each optimizer
     for optimizer_name, result_dict in optimizer_results.items():
-        if not result_dict['success'] or result_dict['result'] is None:
+        if not result_dict["success"] or result_dict["result"] is None:
             print(f"Skipping {optimizer_name} because optimization failed")
             performance[optimizer_name] = {
-                'param_errors': None,
-                'final_loss': float('inf'),
-                'time': result_dict['time'],
-                'success': False
+                "param_errors": None,
+                "final_loss": float("inf"),
+                "time": result_dict["time"],
+                "success": False,
             }
             continue
 
         # Extract result
-        result = result_dict['result']
+        result = result_dict["result"]
 
         # Calculate parameter errors
         def param_error(true, est):
@@ -173,12 +173,20 @@ def analyze_optimizer_results(true_params, optimizer_results):
 
         # Calculate errors for each parameter
         param_errors = {
-            'lambda_r': param_error(np.array(true_params.lambda_r), np.array(result.params.lambda_r)),
-            'Phi_f': param_error(np.array(true_params.Phi_f), np.array(result.params.Phi_f)),
-            'Phi_h': param_error(np.array(true_params.Phi_h), np.array(result.params.Phi_h)),
-            'mu': param_error(np.array(true_params.mu), np.array(result.params.mu)),
-            'sigma2': param_error(np.array(true_params.sigma2), np.array(result.params.sigma2)),
-            'Q_h': param_error(np.array(true_params.Q_h), np.array(result.params.Q_h))
+            "lambda_r": param_error(
+                np.array(true_params.lambda_r), np.array(result.params.lambda_r)
+            ),
+            "Phi_f": param_error(
+                np.array(true_params.Phi_f), np.array(result.params.Phi_f)
+            ),
+            "Phi_h": param_error(
+                np.array(true_params.Phi_h), np.array(result.params.Phi_h)
+            ),
+            "mu": param_error(np.array(true_params.mu), np.array(result.params.mu)),
+            "sigma2": param_error(
+                np.array(true_params.sigma2), np.array(result.params.sigma2)
+            ),
+            "Q_h": param_error(np.array(true_params.Q_h), np.array(result.params.Q_h)),
         }
 
         # Calculate average error
@@ -186,12 +194,12 @@ def analyze_optimizer_results(true_params, optimizer_results):
 
         # Store performance metrics
         performance[optimizer_name] = {
-            'param_errors': param_errors,
-            'avg_error': avg_error,
-            'final_loss': float(result.loss),
-            'time': result_dict['time'],
-            'success': True,
-            'num_iterations': len(result.loss_history)
+            "param_errors": param_errors,
+            "avg_error": avg_error,
+            "final_loss": float(result.loss),
+            "time": result_dict["time"],
+            "success": True,
+            "num_iterations": len(result.loss_history),
         }
 
     # Print performance comparison
@@ -201,7 +209,7 @@ def analyze_optimizer_results(true_params, optimizer_results):
     # Print average parameter error
     print("\nAverage Parameter Error:")
     for optimizer_name, metrics in performance.items():
-        if metrics['success']:
+        if metrics["success"]:
             print(f"{optimizer_name}: {metrics['avg_error']:.4f}")
         else:
             print(f"{optimizer_name}: Failed")
@@ -209,7 +217,7 @@ def analyze_optimizer_results(true_params, optimizer_results):
     # Print final loss
     print("\nFinal Loss:")
     for optimizer_name, metrics in performance.items():
-        if metrics['success']:
+        if metrics["success"]:
             print(f"{optimizer_name}: {metrics['final_loss']:.4f}")
         else:
             print(f"{optimizer_name}: Failed")
@@ -222,7 +230,7 @@ def analyze_optimizer_results(true_params, optimizer_results):
     # Print number of iterations
     print("\nNumber of Iterations:")
     for optimizer_name, metrics in performance.items():
-        if metrics['success']:
+        if metrics["success"]:
             print(f"{optimizer_name}: {metrics['num_iterations']}")
         else:
             print(f"{optimizer_name}: Failed")
@@ -242,16 +250,16 @@ def plot_optimizer_comparison(optimizer_results, performance_metrics):
     plt.figure(figsize=(12, 6))
 
     for optimizer_name, result_dict in optimizer_results.items():
-        if result_dict['success'] and result_dict['result'] is not None:
-            loss_history = result_dict['result'].loss_history
+        if result_dict["success"] and result_dict["result"] is not None:
+            loss_history = result_dict["result"].loss_history
             plt.plot(loss_history, label=optimizer_name)
 
-    plt.title('Optimization Loss History')
-    plt.xlabel('Iteration')
-    plt.ylabel('Loss')
+    plt.title("Optimization Loss History")
+    plt.xlabel("Iteration")
+    plt.ylabel("Loss")
     plt.legend()
     plt.grid(True)
-    plt.yscale('log')  # Log scale for better visualization
+    plt.yscale("log")  # Log scale for better visualization
     plt.tight_layout()
     plt.show()
 
@@ -259,12 +267,12 @@ def plot_optimizer_comparison(optimizer_results, performance_metrics):
     plt.figure(figsize=(10, 5))
 
     optimizer_names = list(optimizer_results.keys())
-    times = [result_dict['time'] for result_dict in optimizer_results.values()]
+    times = [result_dict["time"] for result_dict in optimizer_results.values()]
 
     plt.bar(optimizer_names, times)
-    plt.title('Optimization Time')
-    plt.ylabel('Time (seconds)')
-    plt.grid(True, axis='y')
+    plt.title("Optimization Time")
+    plt.ylabel("Time (seconds)")
+    plt.grid(True, axis="y")
     plt.tight_layout()
     plt.show()
 
@@ -275,21 +283,21 @@ def plot_optimizer_comparison(optimizer_results, performance_metrics):
     avg_errors = []
 
     for optimizer_name, metrics in performance_metrics.items():
-        if metrics['success']:
+        if metrics["success"]:
             optimizer_names.append(optimizer_name)
-            avg_errors.append(metrics['avg_error'])
+            avg_errors.append(metrics["avg_error"])
 
     plt.bar(optimizer_names, avg_errors)
-    plt.title('Average Parameter Error')
-    plt.ylabel('Relative Error')
-    plt.grid(True, axis='y')
+    plt.title("Average Parameter Error")
+    plt.ylabel("Relative Error")
+    plt.grid(True, axis="y")
     plt.tight_layout()
     plt.show()
 
     # Plot parameter errors by type
     plt.figure(figsize=(12, 8))
 
-    param_names = ['lambda_r', 'Phi_f', 'Phi_h', 'mu', 'sigma2', 'Q_h']
+    param_names = ["lambda_r", "Phi_f", "Phi_h", "mu", "sigma2", "Q_h"]
 
     for i, param in enumerate(param_names):
         plt.subplot(2, 3, i + 1)
@@ -298,15 +306,15 @@ def plot_optimizer_comparison(optimizer_results, performance_metrics):
         errors = []
 
         for optimizer_name, metrics in performance_metrics.items():
-            if metrics['success']:
+            if metrics["success"]:
                 optimizer_names.append(optimizer_name)
-                errors.append(metrics['param_errors'][param])
+                errors.append(metrics["param_errors"][param])
 
         plt.bar(optimizer_names, errors)
-        plt.title(f'{param} Error')
-        plt.ylabel('Relative Error')
+        plt.title(f"{param} Error")
+        plt.ylabel("Relative Error")
         plt.xticks(rotation=45)
-        plt.grid(True, axis='y')
+        plt.grid(True, axis="y")
 
     plt.tight_layout()
     plt.show()
@@ -320,7 +328,9 @@ def main():
     # Create model parameters
     N, K = 3, 1  # 3 observed series, 1 factor
     true_params = create_simple_dfsv_model(N, K)
-    print(f"Created DFSV model with {true_params.N} observed series and {true_params.K} factors")
+    print(
+        f"Created DFSV model with {true_params.N} observed series and {true_params.K} factors"
+    )
 
     # Set simulation parameters
     T = 500  # Number of time periods (shorter for faster optimization)
@@ -328,11 +338,7 @@ def main():
 
     # Run simulation
     print(f"Simulating DFSV model for T={T} time periods...")
-    returns, factors, log_vols = simulate_DFSV(
-        params=true_params,
-        T=T,
-        seed=seed
-    )
+    returns, factors, log_vols = simulate_DFSV(params=true_params, T=T, seed=seed)
     print("Simulation complete!")
 
     # Compare optimizers
@@ -346,7 +352,14 @@ def main():
     # Plot optimizer comparison
     plot_optimizer_comparison(optimizer_results, performance_metrics)
 
-    return true_params, returns, factors, log_vols, optimizer_results, performance_metrics
+    return (
+        true_params,
+        returns,
+        factors,
+        log_vols,
+        optimizer_results,
+        performance_metrics,
+    )
 
 
 if __name__ == "__main__":

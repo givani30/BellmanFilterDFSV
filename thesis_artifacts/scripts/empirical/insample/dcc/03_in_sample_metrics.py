@@ -5,8 +5,11 @@ from scipy.special import gamma
 import joblib
 import os
 import pathlib
-from statsmodels.stats.diagnostic import acorr_ljungbox, het_arch # Import necessary statsmodels functions
-import json # To save metrics as JSON
+from statsmodels.stats.diagnostic import (
+    acorr_ljungbox,
+    het_arch,
+)  # Import necessary statsmodels functions
+import json  # To save metrics as JSON
 
 # Get the script's directory
 SCRIPT_DIR = pathlib.Path(__file__).parent.absolute()
@@ -18,7 +21,7 @@ EPS_TILDE_FILE = os.path.join(DATA_DIR, "eps_tilde.npy")
 RT_FILE = os.path.join(DATA_DIR, "Rt.npy")
 COV_FILE = os.path.join(DATA_DIR, "Ht.npy")
 METADATA_FILE = os.path.join(DATA_DIR, "model_metadata.json")
-DATE_INDEX_FILE = os.path.join(DATA_DIR, "date_index.txt") # To load date index
+DATE_INDEX_FILE = os.path.join(DATA_DIR, "date_index.txt")  # To load date index
 
 # Define output directory relative to the project root
 PROJECT_ROOT = SCRIPT_DIR.parent.parent.parent.parent
@@ -49,7 +52,7 @@ try:
     Sigma_t = np.load(COV_FILE)
 
     # Load metadata
-    with open(METADATA_FILE, 'r') as f:
+    with open(METADATA_FILE, "r") as f:
         metadata = json.load(f)
 
     # Use the date index from the returns dataframe
@@ -91,7 +94,9 @@ else:
                 np.linalg.cholesky(H_t)
             except np.linalg.LinAlgError:
                 # If not positive definite, add a small ridge
-                print(f"Warning: Covariance matrix at time {t} is not positive definite. Adding a small ridge.")
+                print(
+                    f"Warning: Covariance matrix at time {t} is not positive definite. Adding a small ridge."
+                )
                 H_t = H_t + 1e-6 * np.eye(N)
 
             # For t-distribution
@@ -99,12 +104,16 @@ else:
             sign, logdet = np.linalg.slogdet(H_t)
             if sign <= 0:
                 # If determinant is non-positive, add a small ridge
-                print(f"Warning: Non-positive determinant at time {t}. Adding a small ridge.")
+                print(
+                    f"Warning: Non-positive determinant at time {t}. Adding a small ridge."
+                )
                 H_t = H_t + 1e-6 * np.eye(N)
                 sign, logdet = np.linalg.slogdet(H_t)
                 if sign <= 0:
                     # If still non-positive, skip this time point
-                    print(f"Warning: Still non-positive determinant at time {t}. Skipping.")
+                    print(
+                        f"Warning: Still non-positive determinant at time {t}. Skipping."
+                    )
                     continue
 
             log_det_H = logdet
@@ -125,27 +134,33 @@ else:
                     quad_form = r_t @ H_inv @ r_t
                 except np.linalg.LinAlgError:
                     # If inversion fails, skip this time point
-                    print(f"Warning: Failed to compute quadratic form at time {t}. Skipping.")
+                    print(
+                        f"Warning: Failed to compute quadratic form at time {t}. Skipping."
+                    )
                     continue
 
             # Log-likelihood for multivariate t-distribution
             try:
                 llik_t = (
-                    np.log(gamma((N + dof) / 2)) -
-                    np.log(gamma(dof / 2)) -
-                    (N / 2) * np.log(np.pi * (dof - 2)) -
-                    0.5 * log_det_H -
-                    ((N + dof) / 2) * np.log(1 + quad_form / (dof - 2))
+                    np.log(gamma((N + dof) / 2))
+                    - np.log(gamma(dof / 2))
+                    - (N / 2) * np.log(np.pi * (dof - 2))
+                    - 0.5 * log_det_H
+                    - ((N + dof) / 2) * np.log(1 + quad_form / (dof - 2))
                 )
 
                 # Check for invalid values
                 if np.isnan(llik_t) or np.isinf(llik_t):
-                    print(f"Warning: Invalid log-likelihood value at time {t}: {llik_t}. Skipping.")
+                    print(
+                        f"Warning: Invalid log-likelihood value at time {t}: {llik_t}. Skipping."
+                    )
                     continue
 
                 llik += llik_t
             except Exception as e:
-                print(f"Warning: Error calculating log-likelihood at time {t}: {e}. Skipping.")
+                print(
+                    f"Warning: Error calculating log-likelihood at time {t}: {e}. Skipping."
+                )
                 continue
         except Exception as e:
             # Skip if there's a numerical issue
@@ -154,7 +169,9 @@ else:
 
     # Check for invalid log-likelihood
     if np.isnan(llik) or np.isinf(llik):
-        print(f"Warning: Invalid final log-likelihood: {llik}. Setting to a large negative value.")
+        print(
+            f"Warning: Invalid final log-likelihood: {llik}. Setting to a large negative value."
+        )
         llik = -1e10  # Use a large negative value instead of infinity
 
     print(f"Manually calculated log-likelihood: {llik}")
@@ -172,7 +189,7 @@ metadata["AIC"] = float(AIC)
 metadata["BIC"] = float(BIC)
 
 # Save updated metadata
-with open(METADATA_FILE, 'w') as f:
+with open(METADATA_FILE, "w") as f:
     json.dump(metadata, f, indent=4)
 print("Updated metadata with log-likelihood information")
 
@@ -204,7 +221,7 @@ metrics = {
     "log_likelihood": metadata["log_likelihood"],
     "AIC": metadata["AIC"],
     "BIC": metadata["BIC"],
-    "parameters": metadata["parameters"]
+    "parameters": metadata["parameters"],
 }
 
 print("Performing residual diagnostics...")
@@ -214,8 +231,12 @@ try:
     # Perform Ljung-Box test on each column of z
     ljungbox_results = {}
     for i in range(N):
-        lb_test = acorr_ljungbox(z[:, i], lags=[10], return_df=True) # Using lag 10 as an example
-        ljungbox_results[f"LjungBox_pvalue_series_{i+1}"] = lb_test.iloc[0]['lb_pvalue']
+        lb_test = acorr_ljungbox(
+            z[:, i], lags=[10], return_df=True
+        )  # Using lag 10 as an example
+        ljungbox_results[f"LjungBox_pvalue_series_{i + 1}"] = lb_test.iloc[0][
+            "lb_pvalue"
+        ]
     metrics["LjungBox_pvalues"] = ljungbox_results
     print("Ljung-Box test completed.")
 except Exception as e:
@@ -229,8 +250,8 @@ try:
     archlm_results = {}
     for i in range(N):
         # het_arch returns a tuple: (lm_statistic, p_value, f_statistic, f_p_value)
-        arch_test = het_arch(z[:, i], nlags=10) # Using lag 10 as an example
-        archlm_results[f"ARCHLM_pvalue_series_{i+1}"] = arch_test[1]
+        arch_test = het_arch(z[:, i], nlags=10)  # Using lag 10 as an example
+        archlm_results[f"ARCHLM_pvalue_series_{i + 1}"] = arch_test[1]
     metrics["ARCHLM_pvalues"] = archlm_results
     print("ARCH-LM test completed.")
 except Exception as e:
@@ -244,7 +265,7 @@ try:
     jarquebera_results = {}
     for i in range(N):
         jb_test = st.jarque_bera(z[:, i])
-        jarquebera_results[f"JarqueBera_pvalue_series_{i+1}"] = jb_test.pvalue
+        jarquebera_results[f"JarqueBera_pvalue_series_{i + 1}"] = jb_test.pvalue
     metrics["JarqueBera_pvalues"] = jarquebera_results
     print("Jarque-Bera test completed.")
 except Exception as e:
@@ -254,7 +275,7 @@ except Exception as e:
 
 # Save metrics to JSON
 try:
-    with open(METRICS_OUTPUT_FILE, 'w') as f:
+    with open(METRICS_OUTPUT_FILE, "w") as f:
         json.dump(metrics, f, indent=4)
     print(f"In-sample metrics saved to {METRICS_OUTPUT_FILE}")
 except Exception as e:
@@ -262,7 +283,7 @@ except Exception as e:
 
 # Save standardized residuals to CSV
 try:
-    z_df = pd.DataFrame(z, index=date_index, columns=[f"z_{i+1}" for i in range(N)])
+    z_df = pd.DataFrame(z, index=date_index, columns=[f"z_{i + 1}" for i in range(N)])
     z_df.to_csv(RESIDUALS_OUTPUT_FILE)
     print(f"Standardized residuals saved to {RESIDUALS_OUTPUT_FILE}")
 except Exception as e:

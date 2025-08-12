@@ -6,10 +6,12 @@ import time
 # JAX automatically uses the fastest available device by default
 print(f"JAX devices: {jax.devices()}")
 
+
 # Define a simple JAX function
 @jax.jit
 def matrix_multiply(x, y):
-  return jnp.dot(x, y)
+    return jnp.dot(x, y)
+
 
 # Define matrix dimensions
 size = 1000
@@ -35,12 +37,16 @@ print(f"GPU execution time: {gpu_time:.6f} seconds")
 print("\nBenchmarking on CPU...")
 
 # Switch to CPU device
-cpu_device = jax.devices('cpu')[0]
+cpu_device = jax.devices("cpu")[0]
 with jax.default_device(cpu_device):
     # Re-create inputs on CPU device
     # Create inputs and move to CPU device
-    x_cpu = jax.device_put(jax.random.normal(key, (size, size), dtype=x.dtype), cpu_device)
-    y_cpu = jax.device_put(jax.random.normal(key, (size, size), dtype=y.dtype), cpu_device)
+    x_cpu = jax.device_put(
+        jax.random.normal(key, (size, size), dtype=x.dtype), cpu_device
+    )
+    y_cpu = jax.device_put(
+        jax.random.normal(key, (size, size), dtype=y.dtype), cpu_device
+    )
 
     # Run once to compile on CPU
     _ = matrix_multiply(x_cpu, y_cpu).block_until_ready()

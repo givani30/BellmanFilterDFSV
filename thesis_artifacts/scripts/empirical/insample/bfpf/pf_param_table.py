@@ -8,7 +8,9 @@ from rich import print
 
 # Load the PF model results
 print("Loading PF model results...")
-with open('scripts/empirical/insample/bfpf/pf_full_result_20250425_194312.pkl', 'rb') as f:
+with open(
+    "scripts/empirical/insample/bfpf/pf_full_result_20250425_194312.pkl", "rb"
+) as f:
     result_pf = cloudpickle.load(f)
 
 # Extract parameters
@@ -73,5 +75,7 @@ print(f"    Mean(diag($\\hat{{\\mSigma}}_\\epsilon$)) & {sigma_eps_mean:.4f} \\\
 print(f"    Mean(diag($\\hat{{\\mQ}}_h$)) & {Q_h_mean:.4f} \\\\")
 print(r"    \bottomrule")
 print(r"  \end{tabular}")
-print(r"  \par\medskip \footnotesize Note: Summary statistics for key estimated parameters of the DFSV-PF model. Eigenvalues indicate stationarity. $\hat{\vmu}$ represents the unconditional mean of log-volatilities. $\hat{\mSigma}_\epsilon$ captures idiosyncratic variances, and $\hat{\mQ}_h$ captures the volatility of volatilities.")
+print(
+    r"  \par\medskip \footnotesize Note: Summary statistics for key estimated parameters of the DFSV-PF model. Eigenvalues indicate stationarity. $\hat{\vmu}$ represents the unconditional mean of log-volatilities. $\hat{\mSigma}_\epsilon$ captures idiosyncratic variances, and $\hat{\mQ}_h$ captures the volatility of volatilities."
+)
 print(r"\end{table}")

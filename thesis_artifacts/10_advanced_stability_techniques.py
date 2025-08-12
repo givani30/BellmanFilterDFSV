@@ -23,13 +23,13 @@ from bellman_filter_dfsv.utils.optimization import (
     run_optimization,
     OptimizerResult,
     get_objective_function,
-    create_filter
+    create_filter,
 )
 from bellman_filter_dfsv.utils.optimization_helpers import create_stable_initial_params
 from bellman_filter_dfsv.utils.transformations import (
     apply_identification_constraint,
     transform_params,
-    untransform_params
+    untransform_params,
 )
 
 # Create output directory
@@ -56,25 +56,21 @@ def create_test_data(N=3, K=2, T=200):
     true_params = DFSVParamsDataclass(
         N=N,
         K=K,
-        lambda_r=jnp.array([
-            [1.0, 0.0],  # First factor loading fixed to 1.0 (identification constraint)
-            [0.8, 0.5],  # Both factors load on second series
-            [0.6, 0.7]   # Both factors load on third series
-        ]),
-        Phi_f=jnp.array([
-            [0.95, 0.02],
-            [0.01, 0.94]
-        ]),
-        Phi_h=jnp.array([
-            [0.98, 0.0],
-            [0.0, 0.97]
-        ]),
+        lambda_r=jnp.array(
+            [
+                [
+                    1.0,
+                    0.0,
+                ],  # First factor loading fixed to 1.0 (identification constraint)
+                [0.8, 0.5],  # Both factors load on second series
+                [0.6, 0.7],  # Both factors load on third series
+            ]
+        ),
+        Phi_f=jnp.array([[0.95, 0.02], [0.01, 0.94]]),
+        Phi_h=jnp.array([[0.98, 0.0], [0.0, 0.97]]),
         mu=jnp.zeros(K),
-        Q_h=jnp.array([
-            [0.1, 0.0],
-            [0.0, 0.1]
-        ]),
-        sigma2=jnp.array([0.1, 0.1, 0.1])
+        Q_h=jnp.array([[0.1, 0.0], [0.0, 0.1]]),
+        sigma2=jnp.array([0.1, 0.1, 0.1]),
     )
 
     # Apply identification constraint
@@ -96,6 +92,7 @@ def create_error_handling_objective(base_objective_fn: Callable):
     Returns:
         A wrapped objective function with error handling
     """
+
     def robust_objective(params, *args):
         # Get base objective value
         try:
@@ -126,7 +123,7 @@ def custom_optimization_with_recovery(
     warmup_steps: int = 150,
     clip_norm: float = 0.5,
     use_transformations: bool = True,
-    verbose: bool = True
+    verbose: bool = True,
 ) -> Tuple[DFSVParamsDataclass, List[float], List[DFSVParamsDataclass]]:
     """
     Custom optimization loop with recovery from instability.
@@ -167,8 +164,8 @@ def custom_optimization_with_recovery(
         transition_steps=total_steps,
         peak_value=max_learning_rate,
         pct_start=pct_start,
-        div_factor=max_learning_rate/learning_rate,
-        final_div_factor=learning_rate/min_learning_rate
+        div_factor=max_learning_rate / learning_rate,
+        final_div_factor=learning_rate / min_learning_rate,
     )
 
     # Create optimizer with advanced stability techniques
@@ -177,7 +174,7 @@ def custom_optimization_with_recovery(
         optax.clip_by_global_norm(clip_norm),  # Clip gradients
         optax.scale_by_adam(eps=1e-5),  # Use Adam with larger epsilon for stability
         optax.scale_by_schedule(schedule_fn),  # Apply learning rate schedule
-        optax.scale(-1.0)  # Convert maximization to minimization
+        optax.scale(-1.0),  # Convert maximization to minimization
     )
 
     # Initialize optimizer state
@@ -185,20 +182,26 @@ def custom_optimization_with_recovery(
 
     # Initialize tracking variables
     best_params = params
-    best_loss = float('inf')
+    best_loss = float("inf")
     loss_history = []
     param_history = []
     plateau_counter = 0
-    plateau_threshold = 50  # Number of steps with minimal improvement before reducing LR
+    plateau_threshold = (
+        50  # Number of steps with minimal improvement before reducing LR
+    )
     min_improvement = 1e-4  # Minimum improvement to reset plateau counter
     recovery_count = 0
-    max_recoveries = 5  # Maximum number of recovery attempts before reducing learning rate
+    max_recoveries = (
+        5  # Maximum number of recovery attempts before reducing learning rate
+    )
 
     # Run optimization loop
     for step in range(max_steps):
         # Compute loss and gradients
         try:
-            loss_value, grads = jax.value_and_grad(lambda p: objective_fn(p, returns)[0])(params)
+            loss_value, grads = jax.value_and_grad(
+                lambda p: objective_fn(p, returns)[0]
+            )(params)
 
             # Check for NaN or Inf in loss or gradients
             has_nan_loss = not jnp.isfinite(loss_value)
@@ -207,7 +210,7 @@ def custom_optimization_with_recovery(
             grad_leaves = jax.tree_util.tree_leaves(grads)
             has_nan_grads = False
             for leaf in grad_leaves:
-                if hasattr(leaf, 'shape'):  # Check if it's an array-like object
+                if hasattr(leaf, "shape"):  # Check if it's an array-like object
                     if not jnp.all(jnp.isfinite(leaf)):
                         has_nan_grads = True
                         break
@@ -215,7 +218,9 @@ def custom_optimization_with_recovery(
             if has_nan_loss or has_nan_grads:
                 recovery_count += 1
                 if verbose:
-                    print(f"Step {step}: Non-finite values detected (recovery #{recovery_count}), using best parameters")
+                    print(
+                        f"Step {step}: Non-finite values detected (recovery #{recovery_count}), using best parameters"
+                    )
                     if has_nan_loss:
                         print(f"  - Non-finite loss value: {loss_value}")
                     if has_nan_grads:
@@ -224,7 +229,9 @@ def custom_optimization_with_recovery(
                 # If we've had too many recoveries, reduce learning rate
                 if recovery_count >= max_recoveries:
                     if verbose:
-                        print(f"Too many recoveries ({recovery_count}), reducing learning rate")
+                        print(
+                            f"Too many recoveries ({recovery_count}), reducing learning rate"
+                        )
 
                     # Create a new optimizer with reduced learning rate
                     new_max_lr = max_learning_rate * 0.5
@@ -232,16 +239,18 @@ def custom_optimization_with_recovery(
                         transition_steps=total_steps - step,
                         peak_value=new_max_lr,
                         pct_start=0.3,  # Shorter warmup for the remainder
-                        div_factor=new_max_lr/min_learning_rate,
-                        final_div_factor=1.0
+                        div_factor=new_max_lr / min_learning_rate,
+                        final_div_factor=1.0,
                     )
 
                     optimizer = optax.chain(
                         optax.zero_nans(),
-                        optax.clip_by_global_norm(clip_norm * 0.5),  # More aggressive clipping
+                        optax.clip_by_global_norm(
+                            clip_norm * 0.5
+                        ),  # More aggressive clipping
                         optax.scale_by_adam(eps=1e-4),  # Larger epsilon
                         optax.scale_by_schedule(new_schedule_fn),
-                        optax.scale(-1.0)
+                        optax.scale(-1.0),
                     )
 
                     opt_state = optimizer.init(best_params)
@@ -279,7 +288,9 @@ def custom_optimization_with_recovery(
             # Check for plateau
             if plateau_counter >= plateau_threshold:
                 if verbose:
-                    print(f"Step {step}: Optimization plateaued, reducing learning rate")
+                    print(
+                        f"Step {step}: Optimization plateaued, reducing learning rate"
+                    )
 
                 # Create a new optimizer with reduced learning rate
                 new_max_lr = max_learning_rate * 0.5
@@ -287,8 +298,8 @@ def custom_optimization_with_recovery(
                     transition_steps=total_steps - step,
                     peak_value=new_max_lr,
                     pct_start=0.3,  # Shorter warmup for the remainder
-                    div_factor=new_max_lr/min_learning_rate,
-                    final_div_factor=1.0
+                    div_factor=new_max_lr / min_learning_rate,
+                    final_div_factor=1.0,
                 )
 
                 optimizer = optax.chain(
@@ -296,7 +307,7 @@ def custom_optimization_with_recovery(
                     optax.clip_by_global_norm(clip_norm),
                     optax.scale_by_adam(eps=1e-4),
                     optax.scale_by_schedule(new_schedule_fn),
-                    optax.scale(-1.0)
+                    optax.scale(-1.0),
                 )
 
                 opt_state = optimizer.init(params)
@@ -305,7 +316,9 @@ def custom_optimization_with_recovery(
 
             # Print progress
             if verbose and (step % 50 == 0 or step == max_steps - 1):
-                print(f"Step {step}: Loss = {loss_value:.6f}, Best loss = {best_loss:.6f}")
+                print(
+                    f"Step {step}: Loss = {loss_value:.6f}, Best loss = {best_loss:.6f}"
+                )
 
         except Exception as e:
             if verbose:
@@ -350,7 +363,7 @@ def run_advanced_stability_experiment(
     max_steps=300,
     fix_mu=True,
     use_transformations=True,
-    verbose=True
+    verbose=True,
 ) -> Dict[str, Any]:
     """
     Run an experiment with advanced stability techniques.
@@ -406,7 +419,7 @@ def run_advanced_stability_experiment(
         stability_penalty_weight=1000.0,
         fix_mu=fix_mu,
         true_mu=true_params.mu if fix_mu else None,
-        is_transformed=use_transformations
+        is_transformed=use_transformations,
     )
 
     # Create a more robust objective function with error handling
@@ -425,7 +438,7 @@ def run_advanced_stability_experiment(
         warmup_steps=warmup_steps,
         clip_norm=0.1,  # More aggressive gradient clipping
         use_transformations=use_transformations,
-        verbose=verbose
+        verbose=verbose,
     )
 
     # For comparison, also run standard optimization
@@ -450,7 +463,7 @@ def run_advanced_stability_experiment(
         learning_rate=5e-4,
         max_learning_rate=2e-3,
         min_learning_rate=1e-5,
-        warmup_steps=warmup_steps
+        warmup_steps=warmup_steps,
     )
 
     # Create result dictionary
@@ -458,7 +471,7 @@ def run_advanced_stability_experiment(
         "custom_final_params": final_params,
         "custom_loss_history": loss_history,
         "custom_param_history": param_history,
-        "standard_result": standard_result
+        "standard_result": standard_result,
     }
 
     return result
@@ -477,21 +490,33 @@ def plot_loss_comparison(custom_loss_history, standard_loss_history, title, file
     plt.figure(figsize=(12, 8))
 
     # Filter out infinite values for better visualization
-    valid_custom_indices = [i for i, loss in enumerate(custom_loss_history) if np.isfinite(loss) and loss < 1e10]
+    valid_custom_indices = [
+        i
+        for i, loss in enumerate(custom_loss_history)
+        if np.isfinite(loss) and loss < 1e10
+    ]
     valid_custom_steps = [i for i in valid_custom_indices]
     valid_custom_losses = [custom_loss_history[i] for i in valid_custom_indices]
 
-    valid_standard_indices = [i for i, loss in enumerate(standard_loss_history) if np.isfinite(loss) and loss < 1e10]
+    valid_standard_indices = [
+        i
+        for i, loss in enumerate(standard_loss_history)
+        if np.isfinite(loss) and loss < 1e10
+    ]
     valid_standard_steps = [i for i in valid_standard_indices]
     valid_standard_losses = [standard_loss_history[i] for i in valid_standard_indices]
 
     # Plot loss curves
-    plt.plot(valid_custom_steps, valid_custom_losses, label="Custom Optimization with Recovery")
+    plt.plot(
+        valid_custom_steps,
+        valid_custom_losses,
+        label="Custom Optimization with Recovery",
+    )
     plt.plot(valid_standard_steps, valid_standard_losses, label="Standard Optimization")
 
-    plt.xlabel('Optimization Step')
-    plt.ylabel('Loss')
-    plt.yscale('log')  # Use log scale for better visualization
+    plt.xlabel("Optimization Step")
+    plt.ylabel("Loss")
+    plt.yscale("log")  # Use log scale for better visualization
     plt.title(title)
     plt.legend()
     plt.grid(True, alpha=0.3)
@@ -518,20 +543,28 @@ def main():
         max_steps=1500,
         fix_mu=True,
         use_transformations=True,
-        verbose=True
+        verbose=True,
     )
 
     # Plot loss comparison
     plot_loss_comparison(
         custom_loss_history=result["custom_loss_history"],
         standard_loss_history=result["standard_result"].loss_history,
-        title='Loss Curves: Custom vs Standard Optimization',
-        filename=f'advanced_stability_loss_comparison_{timestamp}.png'
+        title="Loss Curves: Custom vs Standard Optimization",
+        filename=f"advanced_stability_loss_comparison_{timestamp}.png",
     )
 
     # Save final parameters
-    custom_final_loss = result["custom_loss_history"][-1] if result["custom_loss_history"] else float('inf')
-    standard_final_loss = result["standard_result"].final_loss if result["standard_result"] else float('inf')
+    custom_final_loss = (
+        result["custom_loss_history"][-1]
+        if result["custom_loss_history"]
+        else float("inf")
+    )
+    standard_final_loss = (
+        result["standard_result"].final_loss
+        if result["standard_result"]
+        else float("inf")
+    )
 
     print("\nAdvanced stability experiment completed!")
     print("\nSummary of results:")
@@ -541,4 +574,5 @@ def main():
 
 if __name__ == "__main__":
     import time
+
     main()

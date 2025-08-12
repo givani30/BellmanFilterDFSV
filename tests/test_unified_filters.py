@@ -54,27 +54,27 @@ def test_filter_stability(
         assert len(filtered_output) >= 2, f"{filter_name} output tuple too short"
         filtered_states = filtered_output[0]
         filtered_covs_or_infos = filtered_output[1]
-        assert jnp.all(
-            jnp.isfinite(filtered_states)
-        ), f"{filter_name} states not finite"
-        assert jnp.all(
-            jnp.isfinite(filtered_covs_or_infos)
-        ), f"{filter_name} covs/infos not finite"
+        assert jnp.all(jnp.isfinite(filtered_states)), (
+            f"{filter_name} states not finite"
+        )
+        assert jnp.all(jnp.isfinite(filtered_covs_or_infos)), (
+            f"{filter_name} covs/infos not finite"
+        )
     elif isinstance(filter_instance, DFSVParticleFilter):
         # Expecting (filtered_states, filtered_weights, log_likelihoods) based on common PF patterns
         assert len(filtered_output) >= 3, f"{filter_name} output tuple too short"
         filtered_states = filtered_output[0]
         filtered_weights = filtered_output[1]
-        log_likelihoods = filtered_output[2] # Per-step likelihoods usually
-        assert jnp.all(
-            jnp.isfinite(filtered_states)
-        ), f"{filter_name} states not finite"
-        assert jnp.all(
-            jnp.isfinite(filtered_weights)
-        ), f"{filter_name} weights not finite"
-        assert jnp.all(
-            jnp.isfinite(log_likelihoods)
-        ), f"{filter_name} log likelihoods not finite"
+        log_likelihoods = filtered_output[2]  # Per-step likelihoods usually
+        assert jnp.all(jnp.isfinite(filtered_states)), (
+            f"{filter_name} states not finite"
+        )
+        assert jnp.all(jnp.isfinite(filtered_weights)), (
+            f"{filter_name} weights not finite"
+        )
+        assert jnp.all(jnp.isfinite(log_likelihoods)), (
+            f"{filter_name} log likelihoods not finite"
+        )
     else:
         pytest.fail(f"Unknown filter type for stability assertion: {filter_name}")
 
@@ -100,8 +100,8 @@ def test_log_likelihood_wrt_params(
     log_likelihood = filter_instance.log_likelihood_wrt_params(params, observations)
 
     # Assert
-    assert isinstance(
-        log_likelihood, (float, jax.Array)
-    ), f"{filter_name} loglik type mismatch: {type(log_likelihood)}"
+    assert isinstance(log_likelihood, (float, jax.Array)), (
+        f"{filter_name} loglik type mismatch: {type(log_likelihood)}"
+    )
     assert jnp.isscalar(log_likelihood), f"{filter_name} loglik is not scalar"
     assert jnp.isfinite(log_likelihood), f"{filter_name} loglik is not finite"

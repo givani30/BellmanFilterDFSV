@@ -23,9 +23,13 @@ def calculate_scalar_metrics(df_success: pl.DataFrame) -> pl.DataFrame:
     logging.info("Starting Phase 3: Scalar Metric Analysis")
 
     # Calculate loss_diff column
-    df_success = df_success.with_columns([
-        (pl.col("results_final_loss") - pl.col("results_loss_at_true_params")).alias("loss_diff")
-    ])
+    df_success = df_success.with_columns(
+        [
+            (
+                pl.col("results_final_loss") - pl.col("results_loss_at_true_params")
+            ).alias("loss_diff")
+        ]
+    )
 
     # Define expanded grouping columns using filter_config
     group_cols = [
@@ -33,7 +37,7 @@ def calculate_scalar_metrics(df_success: pl.DataFrame) -> pl.DataFrame:
         "N",
         "K",
         "config_T",
-        "config_fix_mu"
+        "config_fix_mu",
     ]
     logging.debug(f"Grouping columns for scalar metrics: {group_cols}")
 
@@ -45,21 +49,25 @@ def calculate_scalar_metrics(df_success: pl.DataFrame) -> pl.DataFrame:
         "accuracy_state_estimation_factor_correlation_mean",
         "accuracy_state_estimation_volatility_rmse_mean",
         "accuracy_state_estimation_volatility_correlation_mean",
-        "loss_diff"
+        "loss_diff",
     ]
 
     # Create expressions for aggregation
     agg_exprs = []
     for metric in scalar_metrics:
-        agg_exprs.extend([
-            pl.col(metric).mean().alias(f"{metric}_mean"),
-            pl.col(metric).median().alias(f"{metric}_median"),
-            pl.col(metric).std().alias(f"{metric}_std")
-        ])
+        agg_exprs.extend(
+            [
+                pl.col(metric).mean().alias(f"{metric}_mean"),
+                pl.col(metric).median().alias(f"{metric}_median"),
+                pl.col(metric).std().alias(f"{metric}_std"),
+            ]
+        )
 
     # Add success rate calculation (should be 100% by definition)
     agg_exprs.append(
-        (pl.len().cast(pl.Float64) / pl.len().cast(pl.Float64) * 100.0).alias("success_rate")
+        (pl.len().cast(pl.Float64) / pl.len().cast(pl.Float64) * 100.0).alias(
+            "success_rate"
+        )
     )
 
     # Perform grouping and aggregation
@@ -81,13 +89,13 @@ def aggregate_scalar_metrics(df: pl.DataFrame) -> pl.DataFrame:
     """
     # Define metrics to aggregate with their types
     scalar_metrics = {
-        'results_steps': pl.Int64,
-        'timing_total_script_duration_s': pl.Float64,
-        'accuracy_state_estimation_factor_rmse_mean': pl.Float64,
-        'accuracy_state_estimation_factor_correlation_mean': pl.Float64,
-        'accuracy_state_estimation_volatility_rmse_mean': pl.Float64,
-        'accuracy_state_estimation_volatility_correlation_mean': pl.Float64,
-        'loss_diff': pl.Float64
+        "results_steps": pl.Int64,
+        "timing_total_script_duration_s": pl.Float64,
+        "accuracy_state_estimation_factor_rmse_mean": pl.Float64,
+        "accuracy_state_estimation_factor_correlation_mean": pl.Float64,
+        "accuracy_state_estimation_volatility_rmse_mean": pl.Float64,
+        "accuracy_state_estimation_volatility_correlation_mean": pl.Float64,
+        "loss_diff": pl.Float64,
     }
 
     # Create cast expressions for metrics and grouping columns
@@ -98,11 +106,12 @@ def aggregate_scalar_metrics(df: pl.DataFrame) -> pl.DataFrame:
         pl.col("config_T").cast(pl.Int64),
         pl.col("filter_config").cast(pl.Categorical),
         pl.col("config_fix_mu").cast(pl.Boolean),
-
         # Cast metrics with proper types
-        *[pl.col(metric).cast(dtype).fill_null(0)
-          for metric, dtype in scalar_metrics.items()
-          if metric in df.columns]
+        *[
+            pl.col(metric).cast(dtype).fill_null(0)
+            for metric, dtype in scalar_metrics.items()
+            if metric in df.columns
+        ],
     ]
 
     # Cast columns and fill nulls
@@ -112,27 +121,31 @@ def aggregate_scalar_metrics(df: pl.DataFrame) -> pl.DataFrame:
     agg_expressions = []
     for metric in scalar_metrics.keys():
         if metric in df_clean.columns:
-            agg_expressions.extend([
-                pl.col(metric).mean().alias(f"{metric}_mean"),
-                pl.col(metric).median().alias(f"{metric}_median"),
-                pl.col(metric).std().alias(f"{metric}_std"),
-                pl.col(metric).count().alias(f"{metric}_count")  # Track number of observations
-            ])
+            agg_expressions.extend(
+                [
+                    pl.col(metric).mean().alias(f"{metric}_mean"),
+                    pl.col(metric).median().alias(f"{metric}_median"),
+                    pl.col(metric).std().alias(f"{metric}_std"),
+                    pl.col(metric)
+                    .count()
+                    .alias(f"{metric}_count"),  # Track number of observations
+                ]
+            )
 
     # Group by refined configuration and calculate aggregates
-    result = df_clean.group_by([
-        'filter_config',  # Use filter_config instead of filter_type
-        'N',
-        'K',
-        'config_T',
-        'config_fix_mu'
-    ]).agg(agg_expressions).sort([
-        'filter_config',
-        'N',
-        'K',
-        'config_T',
-        'config_fix_mu'
-    ])
+    result = (
+        df_clean.group_by(
+            [
+                "filter_config",  # Use filter_config instead of filter_type
+                "N",
+                "K",
+                "config_T",
+                "config_fix_mu",
+            ]
+        )
+        .agg(agg_expressions)
+        .sort(["filter_config", "N", "K", "config_T", "config_fix_mu"])
+    )
 
     # Log summary statistics
     logging.info("Scalar metrics aggregation summary:")

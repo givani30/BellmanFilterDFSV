@@ -32,16 +32,16 @@ def create_array_parsing_expression(col_name: str) -> pl.Expr:
     """Creates a Polars expression for parsing array columns and calculating the mean."""
     return (
         pl.col(col_name)
-        .map_elements(parse_array_safely, return_dtype=pl.List(pl.Float64), skip_nulls=False)
+        .map_elements(
+            parse_array_safely, return_dtype=pl.List(pl.Float64), skip_nulls=False
+        )
         .list.mean()
         .alias(f"{col_name}_mean")
     )
 
 
 def create_generic_timing_column(
-    generic_name: str,
-    filter_map: Dict[str, str],
-    available_cols: List[str]
+    generic_name: str, filter_map: Dict[str, str], available_cols: List[str]
 ) -> pl.Expr:
     """Creates a generic timing column expression based on filter type."""
     expr = pl.when(pl.col("filter_type").str.to_lowercase() == "bf")
@@ -51,40 +51,38 @@ def create_generic_timing_column(
         expr = expr.then(None)
 
     if filter_map["pf"] in available_cols:
-        expr = (expr
-               .when(pl.col("filter_type").str.to_lowercase() == "pf")
-               .then(pl.col(filter_map["pf"])))
+        expr = expr.when(pl.col("filter_type").str.to_lowercase() == "pf").then(
+            pl.col(filter_map["pf"])
+        )
 
     if filter_map["bif"] in available_cols:
-        expr = (expr
-               .when(pl.col("filter_type").str.to_lowercase() == "bif")
-               .then(pl.col(filter_map["bif"])))
+        expr = expr.when(pl.col("filter_type").str.to_lowercase() == "bif").then(
+            pl.col(filter_map["bif"])
+        )
 
     return expr.otherwise(None).cast(pl.Float64).alias(generic_name)
 
 
 def create_generic_array_column(
-    generic_name: str,
-    filter_map: Dict[str, str],
-    available_cols: List[str]
+    generic_name: str, filter_map: Dict[str, str], available_cols: List[str]
 ) -> pl.Expr:
     """Creates a generic array metric column expression based on filter type."""
     expr = pl.when(pl.col("filter_type").str.to_lowercase() == "bf")
     # Check if the base column exists, not the derived _mean column
-    if filter_map['bf'] in available_cols:
+    if filter_map["bf"] in available_cols:
         expr = expr.then(pl.col(f"{filter_map['bf']}_mean"))
     else:
         expr = expr.then(None)
 
-    if filter_map['pf'] in available_cols:
-        expr = (expr
-               .when(pl.col("filter_type").str.to_lowercase() == "pf")
-               .then(pl.col(f"{filter_map['pf']}_mean")))
+    if filter_map["pf"] in available_cols:
+        expr = expr.when(pl.col("filter_type").str.to_lowercase() == "pf").then(
+            pl.col(f"{filter_map['pf']}_mean")
+        )
 
-    if filter_map['bif'] in available_cols:
-        expr = (expr
-               .when(pl.col("filter_type").str.to_lowercase() == "bif")
-               .then(pl.col(f"{filter_map['bif']}_mean")))
+    if filter_map["bif"] in available_cols:
+        expr = expr.when(pl.col("filter_type").str.to_lowercase() == "bif").then(
+            pl.col(f"{filter_map['bif']}_mean")
+        )
 
     return expr.otherwise(None).cast(pl.Float64).alias(generic_name)
 
@@ -93,11 +91,13 @@ def create_aggregation_expressions(cols_to_aggregate: List[str]) -> List[pl.Expr
     """Creates simple aggregation expressions for all columns."""
     aggs: List[pl.Expr] = []
     for col in cols_to_aggregate:
-        aggs.extend([
-            pl.col(col).mean().alias(f"{col}_mean"),
-            pl.col(col).std().alias(f"{col}_std"),
-            pl.col(col).median().alias(f"{col}_median"),
-        ])
+        aggs.extend(
+            [
+                pl.col(col).mean().alias(f"{col}_mean"),
+                pl.col(col).std().alias(f"{col}_std"),
+                pl.col(col).median().alias(f"{col}_median"),
+            ]
+        )
     return aggs
 
 
@@ -119,8 +119,18 @@ def aggregate_results(
     grouping_cols = ["N", "K", "T", "filter_type", "num_particles"]
     timing_cols_no_filter = ["param_gen_time", "data_sim_time"]
     array_cols = [
-        "bf_rmse_f", "bf_rmse_h", "pf_rmse_f", "pf_rmse_h", "bif_rmse_f", "bif_rmse_h",
-        "bf_corr_f", "bf_corr_h", "pf_corr_f", "pf_corr_h", "bif_corr_f", "bif_corr_h",
+        "bf_rmse_f",
+        "bf_rmse_h",
+        "pf_rmse_f",
+        "pf_rmse_h",
+        "bif_rmse_f",
+        "bif_rmse_h",
+        "bf_corr_f",
+        "bf_corr_h",
+        "pf_corr_f",
+        "pf_corr_h",
+        "bif_corr_f",
+        "bif_corr_h",
     ]
 
     generic_timing_map = {
@@ -154,13 +164,13 @@ def aggregate_results(
         logging.info(f"Available columns: {available_cols}")
 
         # 2. Pre-processing (Array Columns)
-        logging.info("Creating expressions for parsing array columns and calculating means...")
+        logging.info(
+            "Creating expressions for parsing array columns and calculating means..."
+        )
         array_cols_found = [col for col in array_cols if col in available_cols]
         logging.info(f"Found array columns: {array_cols_found}")
 
-        array_exprs = [
-            create_array_parsing_expression(col) for col in array_cols_found
-        ]
+        array_exprs = [create_array_parsing_expression(col) for col in array_cols_found]
         if array_exprs:
             lazy_df = lazy_df.with_columns(array_exprs)
             logging.info(f"Processed {len(array_exprs)} array columns")
@@ -189,28 +199,36 @@ def aggregate_results(
         ]
 
         # Apply all generic column expressions
-        logging.info(f"Creating {len(generic_timing_exprs)} generic timing columns and {len(generic_array_exprs)} generic array columns")
+        logging.info(
+            f"Creating {len(generic_timing_exprs)} generic timing columns and {len(generic_array_exprs)} generic array columns"
+        )
 
         # Log which generic array columns are being created
         for name, filter_map in generic_array_map.items():
             for filter_type, col_name in filter_map.items():
                 if col_name in available_cols:
-                    logging.info(f"Will create generic column {name} from {col_name} for filter type {filter_type}")
+                    logging.info(
+                        f"Will create generic column {name} from {col_name} for filter type {filter_type}"
+                    )
                 else:
-                    logging.info(f"Column {col_name} not found for filter type {filter_type}")
+                    logging.info(
+                        f"Column {col_name} not found for filter type {filter_type}"
+                    )
 
         lazy_df = lazy_df.with_columns(generic_timing_exprs + generic_array_exprs)
 
         # Check if generic columns were created
         sample_df = lazy_df.limit(2).collect()
-        generic_cols_created = [col for col in sample_df.columns if col in generic_array_map.keys()]
+        generic_cols_created = [
+            col for col in sample_df.columns if col in generic_array_map.keys()
+        ]
         logging.info(f"Generic array columns created: {generic_cols_created}")
 
         # 4. Determine columns to aggregate
         cols_to_aggregate = (
-            timing_cols_no_filter +
-            list(generic_timing_map.keys()) +
-            list(generic_array_map.keys())
+            timing_cols_no_filter
+            + list(generic_timing_map.keys())
+            + list(generic_array_map.keys())
         )
 
         # 5. Aggregation using generic columns
@@ -229,7 +247,9 @@ def aggregate_results(
     except pl.exceptions.ComputeError as e:
         logging.error(f"Polars computation error during aggregation: {e}")
         if "ColumnNotFoundError" in str(e):
-            logging.error("This might be due to missing columns expected by the script.")
+            logging.error(
+                "This might be due to missing columns expected by the script."
+            )
         raise
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}", exc_info=True)

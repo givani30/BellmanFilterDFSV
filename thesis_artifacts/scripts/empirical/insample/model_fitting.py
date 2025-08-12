@@ -20,7 +20,11 @@ import pickle
 # Import DFSV model and filter components
 from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformationFilter
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.utils.optimization import run_optimization, FilterType, OptimizerResult
+from bellman_filter_dfsv.utils.optimization import (
+    run_optimization,
+    FilterType,
+    OptimizerResult,
+)
 from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
 from bellman_filter_dfsv.utils.optimization_helpers import create_stable_initial_params
 
@@ -40,7 +44,7 @@ def main():
     print(f"Loaded data shape: {df.shape}")
 
     N = 95  # Number of assets
-    K = 5   # Number of factors
+    K = 5  # Number of factors
     returns_jax = df.to_jax()
     print(f"Returns data shape: {returns_jax.shape}")
 
@@ -64,11 +68,13 @@ def main():
         verbose=True,
         log_params=False,  # Enable parameter logging for analysis
         log_interval=1,
-        fix_mu=False
+        fix_mu=False,
     )
 
     # Extract results
-    loglik_bif = -bif_result.final_loss  # Convert minimization objective to log-likelihood
+    loglik_bif = (
+        -bif_result.final_loss
+    )  # Convert minimization objective to log-likelihood
     conv_bif = bif_result.success  # Convergence status
 
     print(f"BIF Optimization completed in {bif_result.time_taken:.2f} seconds")
@@ -84,7 +90,8 @@ def main():
 
     print("Model estimation completed successfully.")
 
-def save_result(result: OptimizerResult, output_dir: Path,filter_type: str = "BIF"):
+
+def save_result(result: OptimizerResult, output_dir: Path, filter_type: str = "BIF"):
     """
     Save the entire optimization result object using cloudpickle.
 
@@ -98,7 +105,7 @@ def save_result(result: OptimizerResult, output_dir: Path,filter_type: str = "BI
 
         # Save using cloudpickle (better for complex objects with JAX arrays)
         pickle_file = output_dir / f"{filter_type.lower()}_full_result_{timestamp}.pkl"
-        with open(pickle_file, 'wb') as f:
+        with open(pickle_file, "wb") as f:
             cloudpickle.dump(result, f)
         print(f"Full result object saved to {pickle_file}")
 
@@ -107,8 +114,11 @@ def save_result(result: OptimizerResult, output_dir: Path,filter_type: str = "BI
 
         # Try with regular pickle as fallback
         try:
-            pickle_file = output_dir / f"{filter_type.lower()}_full_result_{timestamp}_fallback.pkl"
-            with open(pickle_file, 'wb') as f:
+            pickle_file = (
+                output_dir
+                / f"{filter_type.lower()}_full_result_{timestamp}_fallback.pkl"
+            )
+            with open(pickle_file, "wb") as f:
                 pickle.dump(result, f)
             print(f"Full result object saved to {pickle_file} using standard pickle")
         except Exception as e2:

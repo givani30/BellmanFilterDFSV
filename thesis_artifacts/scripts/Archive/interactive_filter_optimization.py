@@ -42,15 +42,17 @@ from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.utils.transformations import (
     transform_params,
     untransform_params,
-    apply_identification_constraint
+    apply_identification_constraint,
 )
 from bellman_filter_dfsv.filters.objectives import bellman_objective, pf_objective
 from bellman_filter_dfsv.models.simulation import simulate_DFSV
 from bellman_filter_dfsv.filters._bellman_optim import CustomBFGS
 
+
 # Custom BFGS implementations
 class DogLegBFGS(optx.AbstractBFGS):
     """DogLeg BFGS solver with specific configurations."""
+
     rtol: float
     atol: float
     norm: Callable[[PyTree], Scalar]
@@ -78,6 +80,7 @@ class DogLegBFGS(optx.AbstractBFGS):
 
 class ArmijoBFGS(optx.AbstractBFGS):
     """BFGS solver with Backtracking Armijo line search."""
+
     rtol: float
     atol: float
     norm: Callable[[PyTree], Scalar]
@@ -105,6 +108,7 @@ class ArmijoBFGS(optx.AbstractBFGS):
 
 class DampedTrustRegionBFGS(optx.AbstractBFGS):
     """BFGS solver with Damped Newton descent and Classical Trust Region search."""
+
     rtol: float
     atol: float
     norm: Callable[[PyTree], Scalar]
@@ -132,6 +136,7 @@ class DampedTrustRegionBFGS(optx.AbstractBFGS):
 
 class IndirectTrustRegionBFGS(optx.AbstractBFGS):
     """BFGS solver with Indirect Damped Newton descent and Classical Trust Region search."""
+
     rtol: float
     atol: float
     norm: Callable[[PyTree], Scalar]
@@ -156,38 +161,45 @@ class IndirectTrustRegionBFGS(optx.AbstractBFGS):
         self.search = optx.ClassicalTrustRegion()
         self.verbose = verbose
 
+
 # Enable 64-bit precision for better numerical stability
 jax.config.update("jax_enable_x64", True)
 
 
 # --- Enums and Data Structures ---
 
+
 class FilterType(Enum):
     """Enum for the different filter types."""
+
     BIF = auto()  # Bellman Information Filter
-    BF = auto()   # Bellman Filter
-    PF = auto()   # Particle Filter
+    BF = auto()  # Bellman Filter
+    PF = auto()  # Particle Filter
 
 
 # Result data structure for optimization runs
-OptimizerResult = namedtuple("OptimizerResult", [
-    "filter_type",           # Type of filter used
-    "optimizer_name",        # Name of the optimizer
-    "uses_transformations",  # Whether parameter transformations were used
-    "fix_mu",               # Whether mu parameter was fixed
-    "prior_config_name",    # Description of prior configuration
-    "success",              # Whether optimization succeeded
-    "final_loss",           # Final loss value
-    "steps",                # Number of steps taken
-    "time_taken",           # Time taken in seconds
-    "error_message",        # Error message if any
-    "final_params",         # Final estimated parameters
-    "param_history",        # History of parameter estimates during optimization
-    "loss_history"          # History of loss values during optimization
-])
+OptimizerResult = namedtuple(
+    "OptimizerResult",
+    [
+        "filter_type",  # Type of filter used
+        "optimizer_name",  # Name of the optimizer
+        "uses_transformations",  # Whether parameter transformations were used
+        "fix_mu",  # Whether mu parameter was fixed
+        "prior_config_name",  # Description of prior configuration
+        "success",  # Whether optimization succeeded
+        "final_loss",  # Final loss value
+        "steps",  # Number of steps taken
+        "time_taken",  # Time taken in seconds
+        "error_message",  # Error message if any
+        "final_params",  # Final estimated parameters
+        "param_history",  # History of parameter estimates during optimization
+        "loss_history",  # History of loss values during optimization
+    ],
+)
 
 
 # --- Model and Data Generation Functions ---
+
 
 def create_simple_model(N: int = 3, K: int = 2) -> DFSVParamsDataclass:
     """Create a simple DFSV model with reasonable parameters.
@@ -227,8 +239,14 @@ def create_simple_model(N: int = 3, K: int = 2) -> DFSVParamsDataclass:
 
     # Create parameter object
     params = DFSVParamsDataclass(
-        N=N, K=K, lambda_r=lambda_r, Phi_f=Phi_f, Phi_h=Phi_h,
-        mu=mu, sigma2=sigma2, Q_h=Q_h
+        N=N,
+        K=K,
+        lambda_r=lambda_r,
+        Phi_f=Phi_f,
+        Phi_h=Phi_h,
+        mu=mu,
+        sigma2=sigma2,
+        Q_h=Q_h,
     )
 
     # Ensure constraint is applied correctly
@@ -236,7 +254,9 @@ def create_simple_model(N: int = 3, K: int = 2) -> DFSVParamsDataclass:
     return params
 
 
-def create_training_data(params: DFSVParamsDataclass, T: int = 1000, seed: int = 42) -> jnp.ndarray:
+def create_training_data(
+    params: DFSVParamsDataclass, T: int = 1000, seed: int = 42
+) -> jnp.ndarray:
     """Generate simulated data for training.
 
     Args:
@@ -253,7 +273,10 @@ def create_training_data(params: DFSVParamsDataclass, T: int = 1000, seed: int =
 
 # --- Filter Creation and Initialization ---
 
-def create_filter(filter_type: FilterType, N: int, K: int, num_particles: int = 5000) -> DFSVFilter:
+
+def create_filter(
+    filter_type: FilterType, N: int, K: int, num_particles: int = 5000
+) -> DFSVFilter:
     """Create a filter instance based on the filter type.
 
     Args:
@@ -295,24 +318,30 @@ def create_initial_params(N: int, K: int) -> DFSVParamsDataclass:
     # Different initial values for factor and volatility persistence
     # Lower persistence for factors, higher for volatilities (following working script)
     # Initialize with small non-zero off-diagonal elements to encourage their estimation
-    phi_f_init = 0.3 * jnp.eye(K) + 0.05 * jnp.ones((K, K))  # Add small off-diagonal values
-    phi_h_init = 0.8 * jnp.eye(K) + 0.02 * jnp.ones((K, K))  # Add small off-diagonal values
+    phi_f_init = 0.3 * jnp.eye(K) + 0.05 * jnp.ones(
+        (K, K)
+    )  # Add small off-diagonal values
+    phi_h_init = 0.8 * jnp.eye(K) + 0.02 * jnp.ones(
+        (K, K)
+    )  # Add small off-diagonal values
 
     # Create initial parameters
     initial_params = DFSVParamsDataclass(
-        N=N, K=K,
+        N=N,
+        K=K,
         lambda_r=lambda_r_init,
         Phi_f=phi_f_init,
         Phi_h=phi_h_init,
         mu=jnp.zeros(K),
         sigma2=0.1 * jnp.ones(N),
-        Q_h=0.2 * jnp.eye(K)
+        Q_h=0.2 * jnp.eye(K),
     )
 
     return initial_params
 
 
 # --- Optimization Functions ---
+
 
 def run_optimization(
     filter_type: FilterType,
@@ -326,7 +355,7 @@ def run_optimization(
     num_particles: int = 5000,
     prior_config_name: str = "No Priors",
     log_params: bool = True,
-    log_interval: int = 1
+    log_interval: int = 1,
 ) -> OptimizerResult:
     """Run optimization for a specific filter type and configuration.
 
@@ -373,45 +402,65 @@ def run_optimization(
         init_value=initial_lr,
         peak_value=peak_lr,
         end_value=end_lr,
-        warmup_steps=int(max_steps*0.1),
-        decay_steps=max_steps
+        warmup_steps=int(max_steps * 0.1),
+        decay_steps=max_steps,
     )
 
     if optimizer_name == "BFGS":
-        solver = optx.BFGS(rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset())
+        solver = optx.BFGS(
+            rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset()
+        )
     elif optimizer_name == "NonlinearCG":
         solver = optx.NonlinearCG(rtol=rtol, atol=atol, norm=optx.rms_norm)
     # NonlinearCG is already defined above
     elif optimizer_name == "Adam":
         # Use scheduler and apply_if_finite to handle NaN/Inf values
         optimizer = optax.apply_if_finite(optax.adam(learning_rate=scheduler), 10)
-        solver = optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset())
+        solver = optx.OptaxMinimiser(
+            optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset()
+        )
     elif optimizer_name == "AdamW":
         # Use scheduler and apply_if_finite to handle NaN/Inf values
         optimizer = optax.apply_if_finite(optax.adamw(learning_rate=scheduler), 10)
-        solver = optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset())
+        solver = optx.OptaxMinimiser(
+            optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset()
+        )
     elif optimizer_name == "SGD":
         # Use a more conservative learning rate schedule for SGD
         sgd_scheduler = optax.warmup_cosine_decay_schedule(
             init_value=1e-4,  # Lower initial learning rate
-            peak_value=1e-3,   # Lower peak learning rate
-            end_value=1e-7,    # Lower end learning rate
-            warmup_steps=int(max_steps*0.1),
-            decay_steps=max_steps
+            peak_value=1e-3,  # Lower peak learning rate
+            end_value=1e-7,  # Lower end learning rate
+            warmup_steps=int(max_steps * 0.1),
+            decay_steps=max_steps,
         )
         # Use scheduler and apply_if_finite to handle NaN/Inf values
-        optimizer = optax.apply_if_finite(optax.sgd(learning_rate=sgd_scheduler, momentum=0.9, nesterov=True), 10)
-        solver = optx.OptaxMinimiser(optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset())
+        optimizer = optax.apply_if_finite(
+            optax.sgd(learning_rate=sgd_scheduler, momentum=0.9, nesterov=True), 10
+        )
+        solver = optx.OptaxMinimiser(
+            optimizer, rtol=rtol, atol=atol, norm=optx.rms_norm, verbose=frozenset()
+        )
     elif optimizer_name == "CustomBFGS":
-        solver = CustomBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset())
+        solver = CustomBFGS(
+            rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset()
+        )
     elif optimizer_name == "DogLegBFGS":
-        solver = DogLegBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset())
+        solver = DogLegBFGS(
+            rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset()
+        )
     elif optimizer_name == "ArmijoBFGS":
-        solver = ArmijoBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset())
+        solver = ArmijoBFGS(
+            rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset()
+        )
     elif optimizer_name == "DampedTrustRegionBFGS":
-        solver = DampedTrustRegionBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset())
+        solver = DampedTrustRegionBFGS(
+            rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset()
+        )
     elif optimizer_name == "IndirectTrustRegionBFGS":
-        solver = IndirectTrustRegionBFGS(rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset())
+        solver = IndirectTrustRegionBFGS(
+            rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset()
+        )
     else:
         raise ValueError(f"Unknown optimizer: {optimizer_name}")
 
@@ -427,6 +476,7 @@ def run_optimization(
             print("  Optimizing mu parameter (not fixed)")
 
         if use_transformations:
+
             @eqx.filter_jit
             def objective(t_params, args_tuple):
                 obs, filt, priors_dict, penalty_weight = args_tuple
@@ -439,10 +489,14 @@ def run_optimization(
                 params_fixed_constrained = apply_identification_constraint(params_iter)
                 # 4. Calculate loss
                 return bellman_objective(
-                    params_fixed_constrained, obs, filt,
-                    priors=priors_dict, stability_penalty_weight=penalty_weight
+                    params_fixed_constrained,
+                    obs,
+                    filt,
+                    priors=priors_dict,
+                    stability_penalty_weight=penalty_weight,
                 )
         else:
+
             @eqx.filter_jit
             def objective(params, args_tuple):
                 obs, filt, priors_dict, penalty_weight = args_tuple
@@ -454,8 +508,11 @@ def run_optimization(
                 params_fixed_constrained = apply_identification_constraint(params_iter)
                 # 3. Calculate loss
                 return bellman_objective(
-                    params_fixed_constrained, obs, filt,
-                    priors=priors_dict, stability_penalty_weight=penalty_weight
+                    params_fixed_constrained,
+                    obs,
+                    filt,
+                    priors=priors_dict,
+                    stability_penalty_weight=penalty_weight,
                 )
     elif filter_type == FilterType.BF:
         # Bellman Filter - with extra error handling for shape mismatches
@@ -468,6 +525,7 @@ def run_optimization(
             print("  Optimizing mu parameter (not fixed)")
 
         if use_transformations:
+
             @eqx.filter_jit
             def objective(t_params, args_tuple):
                 obs, filt, priors_dict, penalty_weight = args_tuple
@@ -478,16 +536,22 @@ def run_optimization(
                     if fix_mu:
                         params_iter = eqx.tree_at(lambda p: p.mu, params_iter, true_mu)
                     # 3. Apply identification constraint
-                    params_fixed_constrained = apply_identification_constraint(params_iter)
+                    params_fixed_constrained = apply_identification_constraint(
+                        params_iter
+                    )
                     # 4. Calculate loss
                     return bellman_objective(
-                        params_fixed_constrained, obs, filt,
-                        priors=priors_dict, stability_penalty_weight=penalty_weight
+                        params_fixed_constrained,
+                        obs,
+                        filt,
+                        priors=priors_dict,
+                        stability_penalty_weight=penalty_weight,
                     )
                 except Exception as e:
                     print(f"Error in BF objective: {e}")
                     return jnp.inf
         else:
+
             @eqx.filter_jit
             def objective(params, args_tuple):
                 obs, filt, priors_dict, penalty_weight = args_tuple
@@ -497,11 +561,16 @@ def run_optimization(
                     if fix_mu:
                         params_iter = eqx.tree_at(lambda p: p.mu, params_iter, true_mu)
                     # 2. Apply identification constraint
-                    params_fixed_constrained = apply_identification_constraint(params_iter)
+                    params_fixed_constrained = apply_identification_constraint(
+                        params_iter
+                    )
                     # 3. Calculate loss
                     return bellman_objective(
-                        params_fixed_constrained, obs, filt,
-                        priors=priors_dict, stability_penalty_weight=penalty_weight
+                        params_fixed_constrained,
+                        obs,
+                        filt,
+                        priors=priors_dict,
+                        stability_penalty_weight=penalty_weight,
                     )
                 except Exception as e:
                     print(f"Error in BF objective: {e}")
@@ -517,6 +586,7 @@ def run_optimization(
             print("  Optimizing mu parameter (not fixed)")
 
         if use_transformations:
+
             @eqx.filter_jit
             def objective(t_params, args_tuple):
                 obs, filt, priors_dict, penalty_weight = args_tuple
@@ -527,16 +597,22 @@ def run_optimization(
                     if fix_mu:
                         params_iter = eqx.tree_at(lambda p: p.mu, params_iter, true_mu)
                     # 3. Apply identification constraint
-                    params_fixed_constrained = apply_identification_constraint(params_iter)
+                    params_fixed_constrained = apply_identification_constraint(
+                        params_iter
+                    )
                     # 4. Calculate loss
                     return pf_objective(
-                        params_fixed_constrained, obs, filt,
-                        priors=priors_dict, stability_penalty_weight=penalty_weight
+                        params_fixed_constrained,
+                        obs,
+                        filt,
+                        priors=priors_dict,
+                        stability_penalty_weight=penalty_weight,
                     )
                 except Exception as e:
                     print(f"Error in PF objective: {e}")
                     return jnp.inf
         else:
+
             @eqx.filter_jit
             def objective(params, args_tuple):
                 obs, filt, priors_dict, penalty_weight = args_tuple
@@ -546,11 +622,16 @@ def run_optimization(
                     if fix_mu:
                         params_iter = eqx.tree_at(lambda p: p.mu, params_iter, true_mu)
                     # 2. Apply identification constraint
-                    params_fixed_constrained = apply_identification_constraint(params_iter)
+                    params_fixed_constrained = apply_identification_constraint(
+                        params_iter
+                    )
                     # 3. Calculate loss
                     return pf_objective(
-                        params_fixed_constrained, obs, filt,
-                        priors=priors_dict, stability_penalty_weight=penalty_weight
+                        params_fixed_constrained,
+                        obs,
+                        filt,
+                        priors=priors_dict,
+                        stability_penalty_weight=penalty_weight,
                     )
                 except Exception as e:
                     print(f"Error in PF objective: {e}")
@@ -571,7 +652,9 @@ def run_optimization(
         # Calculate objective with true parameters if available
         if true_params is not None:
             # Apply transformations if needed
-            true_params_y = transform_params(true_params) if use_transformations else true_params
+            true_params_y = (
+                transform_params(true_params) if use_transformations else true_params
+            )
             true_params_loss = objective(true_params_y, static_args)
             print(f"Objective value with true parameters: {true_params_loss:.4f}")
 
@@ -592,7 +675,7 @@ def run_optimization(
             y0=initial_y,
             args=static_args,
             max_steps=max_steps,
-            throw=False
+            throw=False,
         )
 
         # If parameter logging is enabled, generate parameter history by evaluating
@@ -600,14 +683,16 @@ def run_optimization(
         if log_params and sol.result == optx.RESULTS.successful:
             # Get the final parameters
             final_y = sol.value
-            num_steps = sol.stats.get('num_steps', 0)
+            num_steps = sol.stats.get("num_steps", 0)
 
             # Generate a sequence of parameters from initial to final
             alphas = jnp.linspace(0.0, 1.0, min(num_steps, 20))
 
             for alpha in alphas:
                 # Interpolate between initial and final parameters
-                current_y = jax.tree_map(lambda i, f: i + alpha * (f - i), initial_y, final_y)
+                current_y = jax.tree_map(
+                    lambda i, f: i + alpha * (f - i), initial_y, final_y
+                )
 
                 # Untransform parameters if needed
                 if use_transformations:
@@ -617,7 +702,9 @@ def run_optimization(
 
                 # Fix mu if needed
                 if fix_mu:
-                    current_params = eqx.tree_at(lambda p: p.mu, current_params, true_mu)
+                    current_params = eqx.tree_at(
+                        lambda p: p.mu, current_params, true_mu
+                    )
 
                 # Apply identification constraint
                 current_params = apply_identification_constraint(current_params)
@@ -626,8 +713,11 @@ def run_optimization(
                 if filter_type == FilterType.BIF:
                     try:
                         current_loss = bellman_objective(
-                            current_params, returns, filter_instance,
-                            priors=priors, stability_penalty_weight=stability_penalty_weight
+                            current_params,
+                            returns,
+                            filter_instance,
+                            priors=priors,
+                            stability_penalty_weight=stability_penalty_weight,
                         )
                     except Exception as e:
                         print(f"Error calculating loss: {e}")
@@ -635,8 +725,11 @@ def run_optimization(
                 else:
                     try:
                         current_loss = pf_objective(
-                            current_params, returns, filter_instance,
-                            priors=priors, stability_penalty_weight=stability_penalty_weight
+                            current_params,
+                            returns,
+                            filter_instance,
+                            priors=priors,
+                            stability_penalty_weight=stability_penalty_weight,
                         )
                     except Exception as e:
                         print(f"Error calculating loss: {e}")
@@ -650,10 +743,10 @@ def run_optimization(
 
         end_time = time.time()
         time_taken = end_time - start_time
-        num_steps = sol.stats.get('num_steps', -1)
+        num_steps = sol.stats.get("num_steps", -1)
 
         # Check solver success
-        success = (sol.result == optx.RESULTS.successful)
+        success = sol.result == optx.RESULTS.successful
 
         # Get final parameters and loss
         if use_transformations:
@@ -663,31 +756,44 @@ def run_optimization(
 
         # Fix mu in final parameters if it was fixed during optimization
         if fix_mu:
-            final_params_untransformed = eqx.tree_at(lambda p: p.mu, final_params_untransformed, true_mu)
+            final_params_untransformed = eqx.tree_at(
+                lambda p: p.mu, final_params_untransformed, true_mu
+            )
 
         # Apply identification constraint
-        final_params_untransformed = apply_identification_constraint(final_params_untransformed)
+        final_params_untransformed = apply_identification_constraint(
+            final_params_untransformed
+        )
 
         # Recalculate loss using the non-transformed objective function
         try:
             if filter_type == FilterType.BIF:
                 final_loss = bellman_objective(
-                    final_params_untransformed, returns, filter_instance,
-                    priors=priors, stability_penalty_weight=stability_penalty_weight
+                    final_params_untransformed,
+                    returns,
+                    filter_instance,
+                    priors=priors,
+                    stability_penalty_weight=stability_penalty_weight,
                 )
             elif filter_type == FilterType.BF:
                 try:
                     final_loss = bellman_objective(
-                        final_params_untransformed, returns, filter_instance,
-                        priors=priors, stability_penalty_weight=stability_penalty_weight
+                        final_params_untransformed,
+                        returns,
+                        filter_instance,
+                        priors=priors,
+                        stability_penalty_weight=stability_penalty_weight,
                     )
                 except Exception as bf_e:
                     print(f"Error recalculating BF loss: {bf_e}")
                     final_loss = jnp.inf
             else:
                 final_loss = pf_objective(
-                    final_params_untransformed, returns, filter_instance,
-                    priors=priors, stability_penalty_weight=stability_penalty_weight
+                    final_params_untransformed,
+                    returns,
+                    filter_instance,
+                    priors=priors,
+                    stability_penalty_weight=stability_penalty_weight,
                 )
         except Exception as e:
             print(f"Error recalculating final loss: {e}")
@@ -704,15 +810,15 @@ def run_optimization(
         error_msg = f"Exception: {str(e)}"
         print(f"Error during optimization: {e}")
         # Initialize variables that might not be set in case of error
-        if 'final_loss' not in locals():
+        if "final_loss" not in locals():
             final_loss = jnp.inf
-        if 'num_steps' not in locals():
+        if "num_steps" not in locals():
             num_steps = -1
-        if 'final_params_untransformed' not in locals():
+        if "final_params_untransformed" not in locals():
             final_params_untransformed = None
-        if 'param_history' not in locals():
+        if "param_history" not in locals():
             param_history = None
-        if 'loss_history' not in locals():
+        if "loss_history" not in locals():
             loss_history = None
 
     # Create result object
@@ -729,13 +835,14 @@ def run_optimization(
         error_message=error_msg,
         final_params=final_params_untransformed,
         param_history=param_history if log_params else None,
-        loss_history=loss_history if log_params else None
+        loss_history=loss_history if log_params else None,
     )
 
     return result
 
 
 # --- Results Analysis Functions ---
+
 
 def print_results_table(results: List[OptimizerResult]):
     """Print a formatted table of optimization results.
@@ -745,24 +852,40 @@ def print_results_table(results: List[OptimizerResult]):
     """
     print("\n\n--- Optimization Results ---")
     # Header
-    print(f"{'Filter':<6} | {'Optimizer':<10} | {'Transform':<10} | {'Fix_mu':<7} | {'Prior Config':<20} | {'Success':<8} | {'Final Loss':<15} | {'Steps':<8} | {'Time (s)':<10} | {'Error Message'}")
+    print(
+        f"{'Filter':<6} | {'Optimizer':<10} | {'Transform':<10} | {'Fix_mu':<7} | {'Prior Config':<20} | {'Success':<8} | {'Final Loss':<15} | {'Steps':<8} | {'Time (s)':<10} | {'Error Message'}"
+    )
     print("-" * 140)
 
     # Rows
-    for res in sorted(results, key=lambda x: (x.filter_type.name, x.optimizer_name, x.uses_transformations, x.fix_mu)):
+    for res in sorted(
+        results,
+        key=lambda x: (
+            x.filter_type.name,
+            x.optimizer_name,
+            x.uses_transformations,
+            x.fix_mu,
+        ),
+    ):
         filter_str = res.filter_type.name
         success_str = "Yes" if res.success else "No"
         fix_mu_str = "Yes" if res.fix_mu else "No"
-        loss_str = f"{res.final_loss:.4e}" if jnp.isfinite(res.final_loss) else "Inf/NaN"
+        loss_str = (
+            f"{res.final_loss:.4e}" if jnp.isfinite(res.final_loss) else "Inf/NaN"
+        )
         steps_str = str(res.steps) if res.steps >= 0 else "N/A"
         time_str = f"{res.time_taken:.2f}"
         error_str = res.error_message if not res.success else "N/A"
-        print(f"{filter_str:<6} | {res.optimizer_name:<10} | {'Yes' if res.uses_transformations else 'No':<10} | {fix_mu_str:<7} | {res.prior_config_name:<20} | {success_str:<8} | {loss_str:<15} | {steps_str:<8} | {time_str:<10} | {error_str}")
+        print(
+            f"{filter_str:<6} | {res.optimizer_name:<10} | {'Yes' if res.uses_transformations else 'No':<10} | {fix_mu_str:<7} | {res.prior_config_name:<20} | {success_str:<8} | {loss_str:<15} | {steps_str:<8} | {time_str:<10} | {error_str}"
+        )
 
     print("-" * 140)
 
 
-def print_parameter_comparison(results: List[OptimizerResult], true_params: DFSVParamsDataclass):
+def print_parameter_comparison(
+    results: List[OptimizerResult], true_params: DFSVParamsDataclass
+):
     """Print a comparison between true and estimated parameters.
 
     Args:
@@ -774,14 +897,28 @@ def print_parameter_comparison(results: List[OptimizerResult], true_params: DFSV
     print("\n\n--- Parameter Estimation Comparison ---")
 
     # Get parameter names from the dataclass, excluding N and K
-    param_names = [f.name for f in dataclasses.fields(DFSVParamsDataclass) if f.name not in ['N', 'K']]
+    param_names = [
+        f.name
+        for f in dataclasses.fields(DFSVParamsDataclass)
+        if f.name not in ["N", "K"]
+    ]
 
     # Set numpy print options for better readability
     np.set_printoptions(precision=4, suppress=True)
 
-    for res in sorted(results, key=lambda x: (x.filter_type.name, x.optimizer_name, x.uses_transformations, x.fix_mu)):
+    for res in sorted(
+        results,
+        key=lambda x: (
+            x.filter_type.name,
+            x.optimizer_name,
+            x.uses_transformations,
+            x.fix_mu,
+        ),
+    ):
         if res.final_params is not None:
-            print(f"\n-- Run: Filter='{res.filter_type.name}' | Optimizer='{res.optimizer_name}' | Fix_mu='{'Yes' if res.fix_mu else 'No'}' | Success='{'Yes' if res.success else 'No'}' --")
+            print(
+                f"\n-- Run: Filter='{res.filter_type.name}' | Optimizer='{res.optimizer_name}' | Fix_mu='{'Yes' if res.fix_mu else 'No'}' | Success='{'Yes' if res.success else 'No'}' --"
+            )
             print("-" * 80)
             print(f"{'Parameter':<10} | {'True Value':<35} | {'Estimated Value'}")
             print("-" * 80)
@@ -795,8 +932,8 @@ def print_parameter_comparison(results: List[OptimizerResult], true_params: DFSV
                 est_val_np = np.asarray(est_val)
 
                 # Format for printing (handle multi-line arrays)
-                true_str_lines = str(true_val_np).split('\n')
-                est_str_lines = str(est_val_np).split('\n')
+                true_str_lines = str(true_val_np).split("\n")
+                est_str_lines = str(est_val_np).split("\n")
 
                 # Print first line with parameter name
                 print(f"{name:<10} | {true_str_lines[0]:<35} | {est_str_lines[0]}")
@@ -810,11 +947,17 @@ def print_parameter_comparison(results: List[OptimizerResult], true_params: DFSV
 
             print("-" * 80)
         else:
-            print(f"\n-- Run: Filter='{res.filter_type.name}' | Optimizer='{res.optimizer_name}' --")
-            print("  No final parameters available for comparison (likely failed early).")
+            print(
+                f"\n-- Run: Filter='{res.filter_type.name}' | Optimizer='{res.optimizer_name}' --"
+            )
+            print(
+                "  No final parameters available for comparison (likely failed early)."
+            )
 
 
-def save_results_to_csv(results: List[OptimizerResult], filename: str = "filter_optimization_results.csv"):
+def save_results_to_csv(
+    results: List[OptimizerResult], filename: str = "filter_optimization_results.csv"
+):
     """Save optimization results to a CSV file.
 
     Args:
@@ -826,14 +969,14 @@ def save_results_to_csv(results: List[OptimizerResult], filename: str = "filter_
         return
 
     # Get headers from the namedtuple fields, excluding final_params
-    headers = [field for field in OptimizerResult._fields if field != 'final_params']
+    headers = [field for field in OptimizerResult._fields if field != "final_params"]
 
     try:
         # Ensure outputs directory exists
         os.makedirs("outputs", exist_ok=True)
         filepath = os.path.join("outputs", filename)
 
-        with open(filepath, 'w', newline='') as csvfile:
+        with open(filepath, "w", newline="") as csvfile:
             writer = csv.writer(csvfile)
             # Write header
             writer.writerow(headers)
@@ -842,17 +985,24 @@ def save_results_to_csv(results: List[OptimizerResult], filename: str = "filter_
                 # Prepare row data, excluding final_params
                 row_data = {field: getattr(result, field) for field in headers}
                 # Convert filter_type enum to string
-                if 'filter_type' in row_data:
-                    row_data['filter_type'] = row_data['filter_type'].name
+                if "filter_type" in row_data:
+                    row_data["filter_type"] = row_data["filter_type"].name
                 # Convert JAX arrays/scalars if necessary
-                row = [float(item) if isinstance(item, (jnp.ndarray, jnp.generic)) else item for item in row_data.values()]
+                row = [
+                    float(item)
+                    if isinstance(item, (jnp.ndarray, jnp.generic))
+                    else item
+                    for item in row_data.values()
+                ]
                 writer.writerow(row)
         print(f"Results successfully saved to {filepath}")
     except IOError as e:
         print(f"Error saving results to CSV: {e}")
 
 
-def save_estimated_params(results: List[OptimizerResult], true_params: DFSVParamsDataclass):
+def save_estimated_params(
+    results: List[OptimizerResult], true_params: DFSVParamsDataclass
+):
     """Save estimated parameters to pickle files.
 
     Args:
@@ -866,25 +1016,27 @@ def save_estimated_params(results: List[OptimizerResult], true_params: DFSVParam
 
     # Save true parameters for reference
     true_params_path = os.path.join("outputs", "true_params.pkl")
-    with open(true_params_path, 'wb') as f:
+    with open(true_params_path, "wb") as f:
         cloudpickle.dump(true_params, f)
     print(f"  Saved true parameters to {true_params_path}")
 
     # Save estimated parameters for each successful run
     for res in results:
         if res.final_params is not None:
-            status_str = 'Success' if res.success else 'Failure'
+            status_str = "Success" if res.success else "Failure"
             filter_str = res.filter_type.name
-            opt_name = res.optimizer_name.replace(' ', '_')
-            transform_str = 'Transformed' if res.uses_transformations else 'Untransformed'
-            fix_mu_str = 'FixedMu' if res.fix_mu else 'FreeMu'
+            opt_name = res.optimizer_name.replace(" ", "_")
+            transform_str = (
+                "Transformed" if res.uses_transformations else "Untransformed"
+            )
+            fix_mu_str = "FixedMu" if res.fix_mu else "FreeMu"
 
             # Save final parameters
             filename = f"estimated_params_{filter_str}_{opt_name}_{transform_str}_{fix_mu_str}_{status_str}.pkl"
             filepath = os.path.join("outputs", filename)
 
             try:
-                with open(filepath, 'wb') as f:
+                with open(filepath, "wb") as f:
                     cloudpickle.dump(res.final_params, f)
                 print(f"  Saved parameters to {filepath}")
             except Exception as e:
@@ -896,11 +1048,13 @@ def save_estimated_params(results: List[OptimizerResult], true_params: DFSVParam
                 history_filepath = os.path.join("outputs", history_filename)
 
                 try:
-                    with open(history_filepath, 'wb') as f:
+                    with open(history_filepath, "wb") as f:
                         cloudpickle.dump(res.param_history, f)
                     print(f"  Saved parameter history to {history_filepath}")
                 except Exception as e:
-                    print(f"  ERROR saving parameter history to {history_filepath}: {e}")
+                    print(
+                        f"  ERROR saving parameter history to {history_filepath}: {e}"
+                    )
 
             # Save loss history if available
             if res.loss_history is not None:
@@ -908,16 +1062,21 @@ def save_estimated_params(results: List[OptimizerResult], true_params: DFSVParam
                 loss_history_filepath = os.path.join("outputs", loss_history_filename)
 
                 try:
-                    with open(loss_history_filepath, 'wb') as f:
+                    with open(loss_history_filepath, "wb") as f:
                         cloudpickle.dump(res.loss_history, f)
                     print(f"  Saved loss history to {loss_history_filepath}")
                 except Exception as e:
-                    print(f"  ERROR saving loss history to {loss_history_filepath}: {e}")
+                    print(
+                        f"  ERROR saving loss history to {loss_history_filepath}: {e}"
+                    )
         else:
-            print(f"  Skipping parameter saving for {res.filter_type.name}/{res.optimizer_name} (final_params is None)")
+            print(
+                f"  Skipping parameter saving for {res.filter_type.name}/{res.optimizer_name} (final_params is None)"
+            )
 
 
 # --- Main Function ---
+
 
 def main():
     """Main function to run the interactive filter optimization."""
@@ -951,13 +1110,17 @@ def main():
     # 4. Run optimizations
     results = []
 
-    print(f"\nRunning optimizations with max_steps={max_steps}, stability_penalty_weight={stability_penalty_weight}...")
+    print(
+        f"\nRunning optimizations with max_steps={max_steps}, stability_penalty_weight={stability_penalty_weight}..."
+    )
 
     for filter_type in filter_types:
         for optimizer_name in optimizers:
             for use_transformations in use_transformations_options:
                 for fix_mu in fix_mu_options:
-                    print(f"\n--- Running: Filter={filter_type.name} | Optimizer={optimizer_name} | Transform={'Yes' if use_transformations else 'No'} | Fix_mu={'Yes' if fix_mu else 'No'} ---")
+                    print(
+                        f"\n--- Running: Filter={filter_type.name} | Optimizer={optimizer_name} | Transform={'Yes' if use_transformations else 'No'} | Fix_mu={'Yes' if fix_mu else 'No'} ---"
+                    )
 
                     # Skip certain filter-optimizer combinations that are known to be problematic
                     # if (filter_type == FilterType.PF and optimizer_name == "BFGS") or \
@@ -970,14 +1133,16 @@ def main():
                         result = run_optimization(
                             filter_type=filter_type,
                             returns=returns,
-                            true_params=true_params if fix_mu else None,  # Only pass true_params if fix_mu is True
+                            true_params=true_params
+                            if fix_mu
+                            else None,  # Only pass true_params if fix_mu is True
                             use_transformations=use_transformations,
                             optimizer_name=optimizer_name,
                             priors=None,
                             stability_penalty_weight=stability_penalty_weight,
                             max_steps=max_steps,
                             num_particles=num_particles,
-                            prior_config_name="No Priors"
+                            prior_config_name="No Priors",
                         )
 
                         # Add result to list
@@ -992,11 +1157,11 @@ def main():
                             fix_mu=fix_mu,  # Add fix_mu parameter
                             prior_config_name="No Priors",
                             success=False,
-                            final_loss=float('inf'),
+                            final_loss=float("inf"),
                             steps=-1,
                             time_taken=0.0,
                             error_message=f"Exception: {str(e)}",
-                            final_params=None
+                            final_params=None,
                         )
                         results.append(error_result)
 
@@ -1018,4 +1183,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

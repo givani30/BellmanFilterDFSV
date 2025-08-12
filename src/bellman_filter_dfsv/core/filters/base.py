@@ -6,13 +6,14 @@ used within the DFSV framework.
 """
 
 import warnings
-from typing import Tuple, Optional, Union, Dict, Any, Callable # Added Callable
+from collections.abc import Callable  # Added Callable
+from typing import Any
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
+import jax_dataclasses as jdc  # Added import
 import numpy as np
-import equinox as eqx
-import jax_dataclasses as jdc # Added import
 
 # Assuming DFSVParamsDataclass will be importable from the models directory
 # We'll use absolute imports once the package structure is fully set up
@@ -23,10 +24,12 @@ from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 try:
     from tqdm import tqdm
 except ImportError:
+
     def tqdm(iterable, **kwargs):
         """Fallback tqdm iterator if tqdm is not installed."""
         warnings.warn("tqdm not installed. Progress bars will not be shown.")
         return iterable
+
 
 @jdc.pytree_dataclass(frozen=True)
 class SmootherResults:
@@ -41,9 +44,10 @@ class SmootherResults:
                            pass (t=T-1 down to 0). So the array contains
                            [P_{1,0|T}, P_{2,1|T}, ..., P_{T,T-1|T}].
     """
+
     smoothed_states: jnp.ndarray
     smoothed_covs: jnp.ndarray
-    smoothed_lag1_covs: jnp.ndarray # Stores P_{t+1,t|T} at index t
+    smoothed_lag1_covs: jnp.ndarray  # Stores P_{t+1,t|T} at index t
 
 
 class DFSVFilter:
@@ -83,14 +87,14 @@ class DFSVFilter:
     state_dim: int
     is_filtered: bool
     is_smoothed: bool
-    filtered_states: Optional[np.ndarray]
-    filtered_covs: Optional[np.ndarray]
-    filtered_infos: Optional[np.ndarray] # Added for BIF
-    smoothed_states: Optional[np.ndarray]
-    smoothed_covs: Optional[np.ndarray]
-    smoothed_lag1_covs: Optional[np.ndarray] # Added for RTS lag-1 covariance
-    log_likelihood: Optional[float]
-    params: Optional[DFSVParamsDataclass]
+    filtered_states: np.ndarray | None
+    filtered_covs: np.ndarray | None
+    filtered_infos: np.ndarray | None  # Added for BIF
+    smoothed_states: np.ndarray | None
+    smoothed_covs: np.ndarray | None
+    smoothed_lag1_covs: np.ndarray | None  # Added for RTS lag-1 covariance
+    log_likelihood: float | None
+    params: DFSVParamsDataclass | None
 
     def __init__(self, N: int, K: int):
         """Initializes the DFSVFilter.
@@ -115,17 +119,21 @@ class DFSVFilter:
         # Storage (initialized to None)
         self.filtered_states: np.ndarray | None = None
         self.filtered_covs: np.ndarray | None = None
-        self.filtered_infos: np.ndarray | None = None # Added for BIF
+        self.filtered_infos: np.ndarray | None = None  # Added for BIF
         self.smoothed_states: np.ndarray | None = None
         self.smoothed_covs: np.ndarray | None = None
-        self.smoothed_lag1_covs: np.ndarray | None = None # Initialize
+        self.smoothed_lag1_covs: np.ndarray | None = None  # Initialize
         self.log_likelihood: float | None = None
-        self.params: DFSVParamsDataclass | None = None # To be set by subclasses if needed
+        self.params: DFSVParamsDataclass | None = (
+            None  # To be set by subclasses if needed
+        )
 
     # --- Common Helper Methods ---
 
     def _process_params(
-        self, params: Union[Dict[str, Any], DFSVParamsDataclass],default_dtype=jnp.float64
+        self,
+        params: dict[str, Any] | DFSVParamsDataclass,
+        default_dtype=jnp.float64,
     ) -> DFSVParamsDataclass:
         """Converts/validates parameters to the internal DFSVParamsDataclass format.
 
@@ -151,28 +159,36 @@ class DFSVFilter:
         """
         if isinstance(params, dict):
             # Convert dictionary to DFSVParamsDataclass
-            N = params.get('N', self.N)
-            K = params.get('K', self.K)
+            N = params.get("N", self.N)
+            K = params.get("K", self.K)
             if N != self.N or K != self.K:
-                 raise ValueError(f"N/K in params dict ({N},{K}) don't match filter ({self.N},{self.K})")
+                raise ValueError(
+                    f"N/K in params dict ({N},{K}) don't match filter ({self.N},{self.K})"
+                )
             try:
                 # Ensure all required keys are present before creating dataclass
                 required_keys = ["lambda_r", "Phi_f", "Phi_h", "mu", "sigma2", "Q_h"]
                 missing_keys = [key for key in required_keys if key not in params]
                 if missing_keys:
-                    raise KeyError(f"Missing required parameter key(s) in dict: {missing_keys}")
+                    raise KeyError(
+                        f"Missing required parameter key(s) in dict: {missing_keys}"
+                    )
                 # Create a temporary dict with only the required keys for the dataclass
                 dataclass_params = {k: params[k] for k in required_keys}
                 params_dc = DFSVParamsDataclass(N=N, K=K, **dataclass_params)
-            except TypeError as e: # Catch potential issues during dataclass creation
-                 raise TypeError(f"Error creating DFSVParamsDataclass from dict: {e}")
+            except TypeError as e:  # Catch potential issues during dataclass creation
+                raise TypeError(f"Error creating DFSVParamsDataclass from dict: {e}")
 
         elif isinstance(params, DFSVParamsDataclass):
             if params.N != self.N or params.K != self.K:
-                 raise ValueError(f"N/K in params dataclass ({params.N},{params.K}) don't match filter ({self.N},{self.K})")
-            params_dc = params # Assume it might already have JAX arrays
+                raise ValueError(
+                    f"N/K in params dataclass ({params.N},{params.K}) don't match filter ({self.N},{self.K})"
+                )
+            params_dc = params  # Assume it might already have JAX arrays
         else:
-            raise TypeError(f"Unsupported parameter type: {type(params)}. Expected Dict or DFSVParamsDataclass.")
+            raise TypeError(
+                f"Unsupported parameter type: {type(params)}. Expected Dict or DFSVParamsDataclass."
+            )
 
         # Ensure internal arrays are JAX arrays with correct dtype and shape
         updates = {}
@@ -181,8 +197,8 @@ class DFSVFilter:
             "lambda_r": (self.N, self.K),
             "Phi_f": (self.K, self.K),
             "Phi_h": (self.K, self.K),
-            "mu": (self.K,), # Expect 1D
-            "sigma2": (self.N,), # Expect 1D
+            "mu": (self.K,),  # Expect 1D
+            "sigma2": (self.N,),  # Expect 1D
             "Q_h": (self.K, self.K),
         }
 
@@ -190,31 +206,49 @@ class DFSVFilter:
             current_value = getattr(params_dc, field_name)
             is_jax_array = isinstance(current_value, jnp.ndarray)
             # Check dtype compatibility, allowing for different float/int types initially
-            correct_dtype = is_jax_array and jnp.issubdtype(current_value.dtype, jnp.number)
+            correct_dtype = is_jax_array and jnp.issubdtype(
+                current_value.dtype, jnp.number
+            )
             correct_shape = is_jax_array and current_value.shape == expected_shape
 
             # Convert if not JAX array, wrong dtype (target float64), or wrong shape
-            if not (is_jax_array and current_value.dtype == default_dtype and correct_shape):
+            if not (
+                is_jax_array and current_value.dtype == default_dtype and correct_shape
+            ):
                 try:
                     # Convert to JAX array with default dtype first
                     val = jnp.asarray(current_value, dtype=default_dtype)
                     # Reshape if necessary, ensuring compatibility
                     if field_name in ["mu", "sigma2"]:
-                        val = val.flatten() # Ensure 1D
+                        val = val.flatten()  # Ensure 1D
                         if val.shape != expected_shape:
-                             raise ValueError(f"Shape mismatch for {field_name}: expected {expected_shape}, got {val.shape} after flatten")
+                            raise ValueError(
+                                f"Shape mismatch for {field_name}: expected {expected_shape}, got {val.shape} after flatten"
+                            )
                     elif val.shape != expected_shape:
-                         # Allow broadcasting for scalars if target is matrix, e.g. Phi_f=0.9
-                         if val.ndim == 0 and len(expected_shape) == 2 and expected_shape[0] == expected_shape[1]:
-                             print(f"Warning: Broadcasting scalar '{field_name}' to {expected_shape}")
-                             val = jnp.eye(expected_shape[0], dtype=default_dtype) * val
-                         elif val.shape != expected_shape: # Check again after potential broadcast
-                             raise ValueError(f"Shape mismatch for {field_name}: expected {expected_shape}, got {val.shape}")
+                        # Allow broadcasting for scalars if target is matrix, e.g. Phi_f=0.9
+                        if (
+                            val.ndim == 0
+                            and len(expected_shape) == 2
+                            and expected_shape[0] == expected_shape[1]
+                        ):
+                            print(
+                                f"Warning: Broadcasting scalar '{field_name}' to {expected_shape}"
+                            )
+                            val = jnp.eye(expected_shape[0], dtype=default_dtype) * val
+                        elif (
+                            val.shape != expected_shape
+                        ):  # Check again after potential broadcast
+                            raise ValueError(
+                                f"Shape mismatch for {field_name}: expected {expected_shape}, got {val.shape}"
+                            )
 
                     updates[field_name] = val
                     changed = True
                 except (TypeError, ValueError) as e:
-                    raise ValueError(f"Could not convert/validate parameter '{field_name}': {e}")
+                    raise ValueError(
+                        f"Could not convert/validate parameter '{field_name}': {e}"
+                    )
 
         if changed:
             # Create a new dataclass instance with the updated JAX arrays
@@ -243,8 +277,10 @@ class DFSVFilter:
             The solution P (K, K), representing the stationary covariance matrix.
         """
         P = Q
+
         def body_fn(i, P_carry):
             return Phi @ P_carry @ Phi.T + Q
+
         P_final = jax.lax.fori_loop(0, num_iters, body_fn, P)
         # Ensure symmetry
         return (P_final + P_final.T) / 2.0
@@ -265,17 +301,23 @@ class DFSVFilter:
         Phi_f = params.Phi_f
         Phi_h = params.Phi_h
 
-        F_t = jnp.block([
-            [Phi_f,                   jnp.zeros((K, K), dtype=jnp.float64)],
-            [jnp.zeros((K, K), dtype=jnp.float64), Phi_h]
-        ])
+        F_t = jnp.block(
+            [
+                [Phi_f, jnp.zeros((K, K), dtype=jnp.float64)],
+                [jnp.zeros((K, K), dtype=jnp.float64), Phi_h],
+            ]
+        )
         return F_t
 
     @staticmethod
     @eqx.filter_jit
     def _predict_jax(
-        params: DFSVParamsDataclass, state: jnp.ndarray, cov: jnp.ndarray, K: int, state_dim: int
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        params: DFSVParamsDataclass,
+        state: jnp.ndarray,
+        cov: jnp.ndarray,
+        K: int,
+        state_dim: int,
+    ) -> tuple[jnp.ndarray, jnp.ndarray]:
         """Predicts state and covariance using JAX operations.
 
         Args:
@@ -291,7 +333,7 @@ class DFSVFilter:
                 - predicted_cov: Predicted covariance P_{t+1|t} (state_dim, state_dim) as JAX array.
         """
         # Get transition matrix F (constant for standard DFSV)
-        F_t = DFSVFilter._get_transition_matrix(params, K) # Use static method
+        F_t = DFSVFilter._get_transition_matrix(params, K)  # Use static method
 
         # Predict state mean E[x_{t+1}|t]
         # For DFSV: x_{t+1|t} = F_t @ x_t (approximation for mean)
@@ -323,7 +365,7 @@ class DFSVFilter:
 
     def initialize_state(
         self, params: DFSVParamsDataclass
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    ) -> tuple[jnp.ndarray, jnp.ndarray]:
         """Initializes the state vector and covariance/information matrix.
 
         Calculates the initial state mean based on unconditional moments
@@ -344,7 +386,7 @@ class DFSVFilter:
                 - initial_cov_or_info: The initial state covariance matrix P_0 or
                   information matrix Omega_0 (state_dim, state_dim) as JAX array.
         """
-        params = self._process_params(params) # Ensure params are processed
+        params = self._process_params(params)  # Ensure params are processed
 
         # Initialize factors to zero
         initial_factors = jnp.zeros((self.K, 1), dtype=jnp.float64)
@@ -357,7 +399,9 @@ class DFSVFilter:
 
         # Initialize factor covariance (identity)
         # Consider making this configurable or based on data variance? For now, identity.
-        P_f = jnp.eye(self.K, dtype=jnp.float64) * 1e6 # Large initial variance for factors
+        P_f = (
+            jnp.eye(self.K, dtype=jnp.float64) * 1e6
+        )  # Large initial variance for factors
 
         # Solve discrete Lyapunov equation for log-volatility covariance
         P_h = self._solve_discrete_lyapunov_jax(params.Phi_h, params.Q_h)
@@ -375,7 +419,7 @@ class DFSVFilter:
 
     def filter(
         self, params: DFSVParamsDataclass, y: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray, float]:
+    ) -> tuple[np.ndarray, np.ndarray, float]:
         """Runs the primary filtering algorithm.
 
         This method must be implemented by subclasses to perform the specific
@@ -397,10 +441,9 @@ class DFSVFilter:
         """
         raise NotImplementedError("Filter method must be implemented by subclasses")
 
-
     def predict(
         self, params: DFSVParamsDataclass, state: jnp.ndarray, cov_or_info: jnp.ndarray
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    ) -> tuple[jnp.ndarray, jnp.ndarray]:
         """Performs the prediction step of the filter.
 
         This method must be implemented by subclasses to define how the state
@@ -428,7 +471,7 @@ class DFSVFilter:
         predicted_state: jnp.ndarray,
         predicted_cov_or_info: jnp.ndarray,
         observation: jnp.ndarray,
-    ) -> Tuple[jnp.ndarray, jnp.ndarray, float]:
+    ) -> tuple[jnp.ndarray, jnp.ndarray, float]:
         """Performs the update step of the filter.
 
         This method must be implemented by subclasses to define how the predicted
@@ -498,7 +541,9 @@ class DFSVFilter:
             "jit_log_likelihood_wrt_params method must be implemented by subclasses"
         )
 
-    def smooth(self, params: DFSVParamsDataclass) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def smooth(
+        self, params: DFSVParamsDataclass
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Runs the Rauch-Tung-Striebel (RTS) smoother using JAX.
 
         This performs a backward pass after filtering to refine state estimates
@@ -524,35 +569,40 @@ class DFSVFilter:
         """
         # Check for required filter outputs (states are essential)
         # Covariances will be fetched via getters to support info filters
-        required_attrs = ['filtered_states', 'predicted_states']
-        missing_attrs = [attr for attr in required_attrs if getattr(self, attr, None) is None]
+        required_attrs = ["filtered_states", "predicted_states"]
+        missing_attrs = [
+            attr for attr in required_attrs if getattr(self, attr, None) is None
+        ]
         if not self.is_filtered or missing_attrs:
-             raise RuntimeError(
-                 f"Filter must be run successfully and store required state attributes "
-                 f"({', '.join(required_attrs)}) before smoothing. Missing: {missing_attrs}"
-             )
+            raise RuntimeError(
+                f"Filter must be run successfully and store required state attributes "
+                f"({', '.join(required_attrs)}) before smoothing. Missing: {missing_attrs}"
+            )
         # Also check if covariance getter methods exist
-        if not hasattr(self, 'get_filtered_covariances') or not hasattr(self, 'get_predicted_covariances'):
-            raise AttributeError("Filter instance must have 'get_filtered_covariances' and 'get_predicted_covariances' methods for smoothing.")
-
+        if not hasattr(self, "get_filtered_covariances") or not hasattr(
+            self, "get_predicted_covariances"
+        ):
+            raise AttributeError(
+                "Filter instance must have 'get_filtered_covariances' and 'get_predicted_covariances' methods for smoothing."
+            )
 
         T = self.filtered_states.shape[0]
-        if T <= 0: # Handle empty case
-             warnings.warn("Cannot smooth with T=0 observations.")
-             empty_states = np.empty((0, self.state_dim))
-             empty_covs = np.empty((0, self.state_dim, self.state_dim))
-             self.smoothed_states = empty_states
-             self.smoothed_covs = empty_covs
-             self.smoothed_lag1_covs = empty_covs
-             self.is_smoothed = True
-             return empty_states, empty_covs, empty_covs
-        elif T == 1: # Cannot smooth if T == 1, return filtered
-             self.smoothed_states = self.filtered_states.copy()
-             self.smoothed_covs = self.filtered_covs.copy()
-             # Lag-1 cov doesn't exist for T=1, return zeros or similar shape
-             self.smoothed_lag1_covs = np.zeros_like(self.filtered_covs)
-             self.is_smoothed = True
-             return self.smoothed_states, self.smoothed_covs, self.smoothed_lag1_covs
+        if T <= 0:  # Handle empty case
+            warnings.warn("Cannot smooth with T=0 observations.")
+            empty_states = np.empty((0, self.state_dim))
+            empty_covs = np.empty((0, self.state_dim, self.state_dim))
+            self.smoothed_states = empty_states
+            self.smoothed_covs = empty_covs
+            self.smoothed_lag1_covs = empty_covs
+            self.is_smoothed = True
+            return empty_states, empty_covs, empty_covs
+        elif T == 1:  # Cannot smooth if T == 1, return filtered
+            self.smoothed_states = self.filtered_states.copy()
+            self.smoothed_covs = self.filtered_covs.copy()
+            # Lag-1 cov doesn't exist for T=1, return zeros or similar shape
+            self.smoothed_lag1_covs = np.zeros_like(self.filtered_covs)
+            self.is_smoothed = True
+            return self.smoothed_states, self.smoothed_covs, self.smoothed_lag1_covs
 
         # Process parameters and ensure they are JAX arrays
         try:
@@ -566,9 +616,10 @@ class DFSVFilter:
         # Fetch covariances using getter method to support info filters
         filtered_covs_np = self.get_filtered_covariances()
         if filtered_covs_np is None:
-             raise RuntimeError("get_filtered_covariances() returned None during smoothing.")
+            raise RuntimeError(
+                "get_filtered_covariances() returned None during smoothing."
+            )
         filtered_covs_jax = jnp.asarray(filtered_covs_np)
-
 
         # Get constant transition matrix
         F_t = self._get_transition_matrix(params_jax, self.K)
@@ -584,8 +635,10 @@ class DFSVFilter:
             # carry: (state_{t+1|T}, cov_{t+1|T}) from previous step (or last filtered for init)
             # xs_t: (state_{t|t}, cov_{t|t}, state_{t+1|t}, cov_{t+1|t}) from filtered/predicted results
             state_tp1_smooth, cov_tp1_smooth = carry
-            state_t_filt, cov_t_filt, state_tp1_pred, cov_tp1_pred = xs_t # Unpack predicted values
-            #flatten states
+            state_t_filt, cov_t_filt, state_tp1_pred, cov_tp1_pred = (
+                xs_t  # Unpack predicted values
+            )
+            # flatten states
             state_t_filt = state_t_filt.flatten()
             state_tp1_pred = state_tp1_pred.flatten()
             # Predicted state and covariance (state_{t+1|t}, cov_{t+1|t}) are now directly available from xs_t
@@ -593,15 +646,18 @@ class DFSVFilter:
             # Compute smoother gain J_t = P_{t|t} F_t' P_{t+1|t}^{-1}
             # Use pseudo-inverse for numerical stability
             inv_cov_tp1_pred = jnp.linalg.pinv(cov_tp1_pred)
-            smoother_gain = cov_t_filt @ F_t.T @ inv_cov_tp1_pred # J_t
+            smoother_gain = cov_t_filt @ F_t.T @ inv_cov_tp1_pred  # J_t
 
             # Update smoothed state: α_{t|T} = α_{t|t} + J_t (α_{t+1|T} - α_{t+1|t})
             state_diff = state_tp1_smooth - state_tp1_pred
             state_t_smooth = state_t_filt + smoother_gain @ state_diff
 
             # Debug assertion: state_t_smooth should be 1D vector
-            assert state_t_smooth.ndim == 1 and state_t_smooth.shape[0] == state_dim_static, \
+            assert (
+                state_t_smooth.ndim == 1 and state_t_smooth.shape[0] == state_dim_static
+            ), (
                 f"RTS smoother: state_t_smooth has unexpected shape {state_t_smooth.shape}"
+            )
 
             # Update smoothed covariance: P_{t|T} = P_{t|t} + J_t (P_{t+1|T} - P_{t+1|t}) J_t'
             cov_diff = cov_tp1_smooth - cov_tp1_pred
@@ -621,14 +677,17 @@ class DFSVFilter:
             result_t = SmootherResults(
                 smoothed_states=state_t_smooth,
                 smoothed_covs=cov_t_smooth,
-                smoothed_lag1_covs=cov_tp1_t_smooth
+                smoothed_lag1_covs=cov_tp1_t_smooth,
             )
 
             return carry_new, result_t
 
         # Prepare inputs for scan
         # Initial carry is the smoothed state/cov at time T (which is the filtered state/cov at T)
-        init_carry = (filtered_states_jax[T - 1, :].flatten(), filtered_covs_jax[T - 1, :, :])
+        init_carry = (
+            filtered_states_jax[T - 1, :].flatten(),
+            filtered_covs_jax[T - 1, :, :],
+        )
         # xs are the filtered states/covs from T-2 down to 0
         # Ensure correct shapes for scan: state (state_dim,), cov (state_dim, state_dim)
         # Convert predicted results to JAX arrays
@@ -636,20 +695,24 @@ class DFSVFilter:
         # Fetch predicted covariances using getter method
         predicted_covs_np = self.get_predicted_covariances()
         if predicted_covs_np is None:
-             raise RuntimeError("get_predicted_covariances() returned None during smoothing.")
+            raise RuntimeError(
+                "get_predicted_covariances() returned None during smoothing."
+            )
         predicted_covs_jax = jnp.asarray(predicted_covs_np)
-
 
         # xs now includes filtered and predicted values for time t (filtered) and t+1 (predicted)
         # The scan runs from t=T-2 down to 0.
         # xs_t corresponds to time t. We need filtered_{t|t} and predicted_{t+1|t}.
         xs = (
-            filtered_states_jax[:-1, :],    # state_{t|t} for t=0..T-2
-            filtered_covs_jax[:-1, :, :],   # cov_{t|t} for t=0..T-2
-            predicted_states_jax[1:, :],    # state_{t+1|t} for t=0..T-2 (index 1 is t=0 -> state_{1|0})
-            predicted_covs_jax[1:, :, :]    # cov_{t+1|t} for t=0..T-2 (index 1 is t=0 -> cov_{1|0})
+            filtered_states_jax[:-1, :],  # state_{t|t} for t=0..T-2
+            filtered_covs_jax[:-1, :, :],  # cov_{t|t} for t=0..T-2
+            predicted_states_jax[
+                1:, :
+            ],  # state_{t+1|t} for t=0..T-2 (index 1 is t=0 -> state_{1|0})
+            predicted_covs_jax[
+                1:, :, :
+            ],  # cov_{t+1|t} for t=0..T-2 (index 1 is t=0 -> cov_{1|0})
         )
-
 
         # Run the backward scan
         _, results_scan = jax.lax.scan(_rts_smoother_step, init_carry, xs, reverse=True)
@@ -661,8 +724,12 @@ class DFSVFilter:
 
         # Combine results: Smoothed values include the last time step (T-1) from init_carry
         # and the scanned results for times T-2 down to 0.
-        final_smoothed_states = jnp.vstack([smoothed_states_scan, init_carry[0][jnp.newaxis, :]])
-        final_smoothed_covs = jnp.vstack([smoothed_covs_scan, init_carry[1][jnp.newaxis, :, :]])
+        final_smoothed_states = jnp.vstack(
+            [smoothed_states_scan, init_carry[0][jnp.newaxis, :]]
+        )
+        final_smoothed_covs = jnp.vstack(
+            [smoothed_covs_scan, init_carry[1][jnp.newaxis, :, :]]
+        )
 
         # Lag-1 covs P_{t+1,t|T} are computed for t = T-2 down to 0.
         # The result `smoothed_lag1_covs_scan` has shape (T-1, state_dim, state_dim).
@@ -673,26 +740,33 @@ class DFSVFilter:
         # Let's compute P_{T,T-1|T} = P_{T|T} J_{T-1}' using the last filtered values.
 
         # Recompute J_{T-1} needed for P_{T,T-1|T}
-        state_T_minus_1_filt = filtered_states_jax[T - 2, :] # Not needed anymore
+        state_T_minus_1_filt = filtered_states_jax[T - 2, :]  # Not needed anymore
         cov_T_minus_1_filt = filtered_covs_jax[T - 2, :, :]
         # Use the pre-computed predicted covariance P_{T|T-1}
-        cov_T_pred = predicted_covs_jax[T-1, :, :] # This is P_{T|T-1}
+        cov_T_pred = predicted_covs_jax[T - 1, :, :]  # This is P_{T|T-1}
 
         # Use stable Cholesky-based inversion instead of pinv
-        jitter_smooth = 1e-6 # Use a small jitter
-        cov_T_pred_jittered = cov_T_pred + jitter_smooth * jnp.eye(state_dim_static, dtype=jnp.float64)
+        jitter_smooth = 1e-6  # Use a small jitter
+        cov_T_pred_jittered = cov_T_pred + jitter_smooth * jnp.eye(
+            state_dim_static, dtype=jnp.float64
+        )
         chol_T_pred = jax.scipy.linalg.cholesky(cov_T_pred_jittered, lower=True)
-        inv_cov_T_pred = jax.scipy.linalg.cho_solve((chol_T_pred, True), jnp.eye(state_dim_static, dtype=jnp.float64))
-        inv_cov_T_pred = (inv_cov_T_pred + inv_cov_T_pred.T) / 2.0 # Ensure symmetry
+        inv_cov_T_pred = jax.scipy.linalg.cho_solve(
+            (chol_T_pred, True), jnp.eye(state_dim_static, dtype=jnp.float64)
+        )
+        inv_cov_T_pred = (inv_cov_T_pred + inv_cov_T_pred.T) / 2.0  # Ensure symmetry
 
-        smoother_gain_T_minus_1 = cov_T_minus_1_filt @ F_t.T @ inv_cov_T_pred # J_{T-1}
+        smoother_gain_T_minus_1 = cov_T_minus_1_filt @ F_t.T @ inv_cov_T_pred  # J_{T-1}
 
         # P_{T,T-1|T} = P_{T|T} J_{T-1}'
-        cov_T_Tminus1_smooth = init_carry[1] @ smoother_gain_T_minus_1.T # P_{T|T} J_{T-1}'
+        cov_T_Tminus1_smooth = (
+            init_carry[1] @ smoother_gain_T_minus_1.T
+        )  # P_{T|T} J_{T-1}'
 
         # Combine lag-1 covs: [P_{1,0|T}, ..., P_{T-1,T-2|T}] from scan + P_{T,T-1|T}
-        final_smoothed_lag1_covs = jnp.vstack([smoothed_lag1_covs_scan, cov_T_Tminus1_smooth[jnp.newaxis, :, :]])
-
+        final_smoothed_lag1_covs = jnp.vstack(
+            [smoothed_lag1_covs_scan, cov_T_Tminus1_smooth[jnp.newaxis, :, :]]
+        )
 
         # Store results as NumPy arrays
         smoothed_states_np = np.asarray(final_smoothed_states)
@@ -701,28 +775,40 @@ class DFSVFilter:
 
         self.smoothed_states = smoothed_states_np
         self.smoothed_covs = smoothed_covs_np
-        self.smoothed_lag1_covs = smoothed_lag1_covs_np # Store the new result
+        self.smoothed_lag1_covs = smoothed_lag1_covs_np  # Store the new result
         self.is_smoothed = True
 
         return smoothed_states_np, smoothed_covs_np, smoothed_lag1_covs_np
 
     # --- Deprecated NumPy Helpers (kept for potential reference/compatibility) ---
 
-    def _get_transition_matrix_np(self, params: DFSVParamsDataclass, state: np.ndarray) -> np.ndarray:
+    def _get_transition_matrix_np(
+        self, params: DFSVParamsDataclass, state: np.ndarray
+    ) -> np.ndarray:
         """Gets the state transition matrix F_t using NumPy. (Potentially deprecated)"""
-        warnings.warn("_get_transition_matrix_np might be deprecated if smoother is fully JAX.", DeprecationWarning)
+        warnings.warn(
+            "_get_transition_matrix_np might be deprecated if smoother is fully JAX.",
+            DeprecationWarning,
+        )
         if params is None:
-             raise AttributeError("params must be provided to _get_transition_matrix_np")
+            raise AttributeError("params must be provided to _get_transition_matrix_np")
         F_t_jax = self._get_transition_matrix(params, self.K)
         return np.asarray(F_t_jax)
 
     def _predict_with_matrix(
-        self, params: DFSVParamsDataclass, state: np.ndarray, cov: np.ndarray, transition_matrix: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray]:
+        self,
+        params: DFSVParamsDataclass,
+        state: np.ndarray,
+        cov: np.ndarray,
+        transition_matrix: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Predicts state and covariance using a given transition matrix (NumPy). (Potentially deprecated)"""
-        warnings.warn("_predict_with_matrix might be deprecated if smoother is fully JAX.", DeprecationWarning)
+        warnings.warn(
+            "_predict_with_matrix might be deprecated if smoother is fully JAX.",
+            DeprecationWarning,
+        )
         if params is None:
-             raise AttributeError("params must be provided to _predict_with_matrix")
+            raise AttributeError("params must be provided to _predict_with_matrix")
 
         K = self.K
         state_col = state.reshape(-1, 1)
@@ -759,7 +845,11 @@ class DFSVFilter:
 
     def get_predicted_states(self) -> np.ndarray:
         """Returns the predicted state vectors alpha_{t|t-1} with shape (T, state_dim)."""
-        if not self.is_filtered or not hasattr(self, 'predicted_states') or self.predicted_states is None:
+        if (
+            not self.is_filtered
+            or not hasattr(self, "predicted_states")
+            or self.predicted_states is None
+        ):
             raise RuntimeError("Filter must be run before getting predicted states.")
         # Always return shape (T, state_dim)
         if self.predicted_states.ndim == 3:
@@ -780,12 +870,14 @@ class DFSVFilter:
     def get_filtered_volatilities(self) -> np.ndarray:
         """Returns the filtered log-volatilities h_{t|t}."""
         if not self.is_filtered or self.filtered_states is None:
-            raise RuntimeError("Filter must be run before getting filtered volatilities.")
+            raise RuntimeError(
+                "Filter must be run before getting filtered volatilities."
+            )
         # Handle both (T, state_dim) and (T, state_dim, 1) shapes
         if self.filtered_states.ndim == 3:
-            return self.filtered_states[:, self.K:, 0]
+            return self.filtered_states[:, self.K :, 0]
         else:
-            return self.filtered_states[:, self.K:]
+            return self.filtered_states[:, self.K :]
 
     def get_smoothed_factors(self) -> np.ndarray:
         """Returns the smoothed latent factors f_{t|T}."""
@@ -796,7 +888,9 @@ class DFSVFilter:
     def get_smoothed_volatilities(self) -> np.ndarray:
         """Returns the smoothed log-volatilities h_{t|T}."""
         if not self.is_smoothed or self.smoothed_states is None:
-            raise RuntimeError("Smoother must be run before getting smoothed volatilities.")
+            raise RuntimeError(
+                "Smoother must be run before getting smoothed volatilities."
+            )
         return self.smoothed_states[:, self.K :]
 
     def get_smoothed_lag1_covariances(self) -> np.ndarray:
@@ -806,5 +900,7 @@ class DFSVFilter:
         where the element at index `t` corresponds to P_{t+1,t|T}.
         """
         if not self.is_smoothed or self.smoothed_lag1_covs is None:
-            raise RuntimeError("Smoother must be run before getting smoothed lag-1 covariances.")
+            raise RuntimeError(
+                "Smoother must be run before getting smoothed lag-1 covariances."
+            )
         return self.smoothed_lag1_covs

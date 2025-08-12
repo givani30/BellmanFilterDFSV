@@ -22,21 +22,23 @@ def apply_publication_style() -> None:
     Returns:
         None. The function modifies the global matplotlib and seaborn settings.
     """
-    plt.style.use('seaborn-v0_8-whitegrid')
-    plt.rcParams.update({
-        'font.family': 'serif',
-        'font.size': 10,
-        'axes.labelsize': 11,
-        'axes.titlesize': 12,
-        'xtick.labelsize': 10,
-        'ytick.labelsize': 10,
-        'legend.fontsize': 10,
-        'legend.title_fontsize': 11,
-        'figure.dpi': 300,
-        'lines.markersize': 6,
-        'lines.linewidth': 1.5,
-    })
-    
+    plt.style.use("seaborn-v0_8-whitegrid")
+    plt.rcParams.update(
+        {
+            "font.family": "serif",
+            "font.size": 10,
+            "axes.labelsize": 11,
+            "axes.titlesize": 12,
+            "xtick.labelsize": 10,
+            "ytick.labelsize": 10,
+            "legend.fontsize": 10,
+            "legend.title_fontsize": 11,
+            "figure.dpi": 300,
+            "lines.markersize": 6,
+            "lines.linewidth": 1.5,
+        }
+    )
+
     # Define consistent color palette (Blue, Orange, Green)
-    colors = ['#0173B2', '#DE8F05', '#029E73']
+    colors = ["#0173B2", "#DE8F05", "#029E73"]
     sns.set_palette(colors)

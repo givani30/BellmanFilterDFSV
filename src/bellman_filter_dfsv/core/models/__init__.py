@@ -7,8 +7,8 @@ This module provides:
 """
 
 from .dfsv import DFSVParamsDataclass
-from .simulation import simulate_DFSV
 from .likelihoods import log_prior_density
+from .simulation import simulate_DFSV
 
 __all__ = [
     "DFSVParamsDataclass",

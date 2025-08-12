@@ -20,7 +20,7 @@ from bellman_filter_dfsv.models.simulation import simulate_DFSV
 from bellman_filter_dfsv.utils.optimization import (
     FilterType,
     run_optimization,
-    OptimizerResult
+    OptimizerResult,
 )
 from bellman_filter_dfsv.utils.optimization_helpers import create_stable_initial_params
 from bellman_filter_dfsv.utils.transformations import apply_identification_constraint
@@ -49,25 +49,12 @@ def create_test_data(N=3, K=2, T=300):
     true_params = DFSVParamsDataclass(
         N=N,
         K=K,
-        lambda_r=jnp.array([
-            [1.0, 0.0],
-            [0.8, 0.0],
-            [0.6, 0.0]
-        ]),
-        Phi_f=jnp.array([
-            [0.9, 0.0],
-            [0.0, 0.8]
-        ]),
-        Phi_h=jnp.array([
-            [0.95, 0.0],
-            [0.0, 0.92]
-        ]),
+        lambda_r=jnp.array([[1.0, 0.0], [0.8, 0.0], [0.6, 0.0]]),
+        Phi_f=jnp.array([[0.9, 0.0], [0.0, 0.8]]),
+        Phi_h=jnp.array([[0.95, 0.0], [0.0, 0.92]]),
         mu=jnp.zeros(K),
         sigma2=jnp.ones(N) * 0.1,
-        Q_h=jnp.array([
-            [0.2, 0.0],
-            [0.0, 0.15]
-        ])
+        Q_h=jnp.array([[0.2, 0.0], [0.0, 0.15]]),
     )
 
     # Apply identification constraint to ensure parameters are properly identified
@@ -96,7 +83,7 @@ def run_scheduler_experiment(
     max_steps=400,  # Increased max steps
     fix_mu=True,
     use_transformations=True,
-    verbose=True
+    verbose=True,
 ) -> OptimizerResult:
     """
     Run an experiment with a specific scheduler configuration.
@@ -128,8 +115,12 @@ def run_scheduler_experiment(
     initial_params = create_stable_initial_params(N, K)
 
     # Print experiment configuration
-    print(f"\n--- Running experiment with {optimizer_name} and {scheduler_type} scheduler ---")
-    print(f"Learning rate: {learning_rate}, Max LR: {max_learning_rate}, Min LR: {min_learning_rate}")
+    print(
+        f"\n--- Running experiment with {optimizer_name} and {scheduler_type} scheduler ---"
+    )
+    print(
+        f"Learning rate: {learning_rate}, Max LR: {max_learning_rate}, Min LR: {min_learning_rate}"
+    )
     print(f"Decay steps: {decay_steps}, Warmup steps: {warmup_steps}")
     if scheduler_type == "cyclic":
         print(f"Cycle period: {cycle_period}")
@@ -161,12 +152,18 @@ def run_scheduler_experiment(
         warmup_steps=warmup_steps,
         cycle_period=cycle_period,
         step_size_factor=step_size_factor,
-        step_interval=step_interval
+        step_interval=step_interval,
     )
     return result
 
 
-def compare_schedulers(true_params, returns, optimizer_name="AdamW", filter_type=FilterType.BIF, max_steps=400):  # Increased max steps
+def compare_schedulers(
+    true_params,
+    returns,
+    optimizer_name="AdamW",
+    filter_type=FilterType.BIF,
+    max_steps=400,
+):  # Increased max steps
     """
     Compare different learning rate schedulers for a specific optimizer.
 
@@ -187,22 +184,22 @@ def compare_schedulers(true_params, returns, optimizer_name="AdamW", filter_type
             "max_learning_rate": 1e-3,  # Reduced max learning rate
             "min_learning_rate": 1e-6,
             "decay_steps": max_steps,
-            "warmup_steps": 0
+            "warmup_steps": 0,
         },
         "warmup_cosine": {
             "learning_rate": 5e-4,  # Reduced learning rate for stability
             "max_learning_rate": 1e-3,  # Reduced max learning rate
             "min_learning_rate": 1e-6,
             "decay_steps": max_steps,
-            "warmup_steps": int(max_steps * 0.1)
+            "warmup_steps": int(max_steps * 0.1),
         },
         "constant": {
             "learning_rate": 5e-4,  # Reduced learning rate for stability
             "max_learning_rate": 1e-3,  # Reduced max learning rate
             "min_learning_rate": 1e-6,
             "decay_steps": max_steps,
-            "warmup_steps": 0
-        }
+            "warmup_steps": 0,
+        },
     }
 
     # Run optimization with each scheduler
@@ -217,10 +214,12 @@ def compare_schedulers(true_params, returns, optimizer_name="AdamW", filter_type
                 scheduler_type=scheduler_type,
                 filter_type=filter_type,
                 max_steps=max_steps,
-                **config
+                **config,
             )
             results[scheduler_type] = result
-            print(f"Final loss: {result.final_loss:.6f}, Success: {result.success}, Steps: {result.steps}")
+            print(
+                f"Final loss: {result.final_loss:.6f}, Success: {result.success}, Steps: {result.steps}"
+            )
         except Exception as e:
             print(f"Error with {scheduler_type} scheduler: {str(e)}")
             results[scheduler_type] = None
@@ -240,16 +239,20 @@ def plot_loss_curves(results, title, filename):
     plt.figure(figsize=(12, 8))
 
     for name, result in results.items():
-        if result is not None and hasattr(result, 'loss_history') and result.loss_history:
+        if (
+            result is not None
+            and hasattr(result, "loss_history")
+            and result.loss_history
+        ):
             # Get loss history
             loss_history = result.loss_history
 
             # Plot loss curve
             plt.plot(range(len(loss_history)), loss_history, label=f"{name}")
 
-    plt.xlabel('Optimization Step')
-    plt.ylabel('Loss')
-    plt.yscale('log')  # Use log scale for better visualization
+    plt.xlabel("Optimization Step")
+    plt.ylabel("Loss")
+    plt.yscale("log")  # Use log scale for better visualization
     plt.title(title)
     plt.legend()
     plt.grid(True, alpha=0.3)
@@ -270,9 +273,7 @@ def plot_learning_rate_schedules(max_steps=400):  # Increased max steps
     from bellman_filter_dfsv.utils.solvers import create_learning_rate_scheduler
 
     # Define scheduler types
-    scheduler_types = [
-        "cosine", "warmup_cosine", "constant"
-    ]
+    scheduler_types = ["cosine", "warmup_cosine", "constant"]
 
     # Create figure
     plt.figure(figsize=(12, 8))
@@ -290,7 +291,7 @@ def plot_learning_rate_schedules(max_steps=400):  # Increased max steps
                 min_lr=1e-6,
                 warmup_steps=int(max_steps * 0.1),
                 scheduler_type=scheduler_type,
-                peak_lr=1e-2
+                peak_lr=1e-2,
             )
         else:
             scheduler = create_learning_rate_scheduler(
@@ -298,7 +299,7 @@ def plot_learning_rate_schedules(max_steps=400):  # Increased max steps
                 decay_steps=max_steps,
                 min_lr=1e-6,
                 warmup_steps=0,
-                scheduler_type=scheduler_type
+                scheduler_type=scheduler_type,
             )
 
         # Get learning rates
@@ -307,16 +308,16 @@ def plot_learning_rate_schedules(max_steps=400):  # Increased max steps
         # Plot learning rate curve
         plt.plot(steps, learning_rates, label=scheduler_type)
 
-    plt.xlabel('Step')
-    plt.ylabel('Learning Rate')
-    plt.yscale('log')  # Use log scale for better visualization
-    plt.title('Learning Rate Schedules')
+    plt.xlabel("Step")
+    plt.ylabel("Learning Rate")
+    plt.yscale("log")  # Use log scale for better visualization
+    plt.title("Learning Rate Schedules")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
 
     # Save figure
-    plt.savefig(output_dir / 'learning_rate_schedules_simple.png')
+    plt.savefig(output_dir / "learning_rate_schedules_simple.png")
     plt.close()
 
 
@@ -335,11 +336,13 @@ def save_results_to_csv(results, filename):
     for name, result in results.items():
         if result is not None:
             row = {
-                'Name': name,
-                'Success': result.success,
-                'Final Loss': result.final_loss if jnp.isfinite(result.final_loss) else float('inf'),
-                'Steps': result.steps,
-                'Time (s)': result.time_taken
+                "Name": name,
+                "Success": result.success,
+                "Final Loss": result.final_loss
+                if jnp.isfinite(result.final_loss)
+                else float("inf"),
+                "Steps": result.steps,
+                "Time (s)": result.time_taken,
             }
             data.append(row)
 
@@ -370,20 +373,19 @@ def main():
         returns=returns,
         optimizer_name="AdamW",
         filter_type=FilterType.BIF,
-        max_steps=400  # Increased max steps
+        max_steps=400,  # Increased max steps
     )
 
     # Plot loss curves for scheduler comparison
     plot_loss_curves(
         results=scheduler_results,
-        title='Loss Curves for Different Schedulers with AdamW',
-        filename='scheduler_comparison_loss_curves_simple.png'
+        title="Loss Curves for Different Schedulers with AdamW",
+        filename="scheduler_comparison_loss_curves_simple.png",
     )
 
     # Save scheduler comparison results to CSV
     save_results_to_csv(
-        results=scheduler_results,
-        filename='scheduler_comparison_results_simple.csv'
+        results=scheduler_results, filename="scheduler_comparison_results_simple.csv"
     )
 
     print("\nSimplified scheduler comparison example completed!")

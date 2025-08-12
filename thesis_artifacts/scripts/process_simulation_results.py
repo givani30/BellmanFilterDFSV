@@ -24,7 +24,9 @@ import ast
 import re
 
 
-def find_metrics_files(base_dir: Path, study_pattern: str, metrics_filename: str) -> list[Path]:
+def find_metrics_files(
+    base_dir: Path, study_pattern: str, metrics_filename: str
+) -> list[Path]:
     """
     Finds all metrics files within study directories matching the pattern.
 
@@ -37,7 +39,9 @@ def find_metrics_files(base_dir: Path, study_pattern: str, metrics_filename: str
         A list of Path objects pointing to the found metrics files.
     """
     metrics_files = []
-    print(f"Searching for study directories matching '{study_pattern}' in '{base_dir}'...")
+    print(
+        f"Searching for study directories matching '{study_pattern}' in '{base_dir}'..."
+    )
     study_dirs = list(base_dir.glob(study_pattern))
     print(f"Found {len(study_dirs)} potential study directories.")
 
@@ -53,7 +57,9 @@ def find_metrics_files(base_dir: Path, study_pattern: str, metrics_filename: str
         # Assumes structure: base_dir/study_*/config_*/metrics.json
         found_in_study = list(study_dir.rglob(f"*/{metrics_filename}"))
         if found_in_study:
-            print(f"    Found {len(found_in_study)} '{metrics_filename}' files in {study_dir.name}.")
+            print(
+                f"    Found {len(found_in_study)} '{metrics_filename}' files in {study_dir.name}."
+            )
             metrics_files.extend(found_in_study)
         else:
             print(f"    No '{metrics_filename}' files found in {study_dir.name}.")
@@ -74,11 +80,11 @@ def load_metric(file_path: Path, study_id: str) -> dict:
         or None if an error occurs.
     """
     try:
-        with open(file_path, 'r') as f:
+        with open(file_path, "r") as f:
             data = json.load(f)
-        data['study_id'] = study_id  # Add the study identifier
+        data["study_id"] = study_id  # Add the study identifier
         # Add the specific run label as well for more granular identification
-        data['run_label'] = file_path.parent.name  # Assumes parent dir is the run label
+        data["run_label"] = file_path.parent.name  # Assumes parent dir is the run label
         return data
     except json.JSONDecodeError as e:
         print(f"Error decoding JSON from {file_path}: {e}")
@@ -88,7 +94,9 @@ def load_metric(file_path: Path, study_id: str) -> dict:
         return None
 
 
-def merge_metrics_files(input_dir: Path, study_pattern: str, metrics_filename: str) -> pd.DataFrame:
+def merge_metrics_files(
+    input_dir: Path, study_pattern: str, metrics_filename: str
+) -> pd.DataFrame:
     """
     Merge metrics files from multiple simulation studies into a single DataFrame.
 
@@ -102,7 +110,9 @@ def merge_metrics_files(input_dir: Path, study_pattern: str, metrics_filename: s
     """
     # Find metrics files
     metrics_files = find_metrics_files(input_dir, study_pattern, metrics_filename)
-    print(f"\nFound {len(metrics_files)} total '{metrics_filename}' files across all studies.")
+    print(
+        f"\nFound {len(metrics_files)} total '{metrics_filename}' files across all studies."
+    )
 
     if not metrics_files:
         print("No metrics files found. Exiting.")
@@ -132,7 +142,9 @@ def merge_metrics_files(input_dir: Path, study_pattern: str, metrics_filename: s
 
     print(f"\nSuccessfully processed {processed_count} metrics files.")
     if error_count > 0:
-        print(f"Warning: Failed to process or determine study ID for {error_count} files (check logs above).")
+        print(
+            f"Warning: Failed to process or determine study ID for {error_count} files (check logs above)."
+        )
 
     # Create DataFrame
     if not all_metrics_data:
@@ -144,7 +156,7 @@ def merge_metrics_files(input_dir: Path, study_pattern: str, metrics_filename: s
         df = pd.DataFrame(all_metrics_data)
 
         # Optional: Reorder columns for clarity - put identifiers first
-        id_cols = ['study_id', 'run_label']
+        id_cols = ["study_id", "run_label"]
         other_cols = [col for col in df.columns if col not in id_cols]
         # Handle case where 'run_label' might not exist if load_metric failed partially
         final_id_cols = [col for col in id_cols if col in df.columns]
@@ -177,7 +189,9 @@ def parse_array_column(df, column_name):
 
     try:
         # Convert string representation of arrays to actual arrays
-        df[column_name] = df[column_name].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else x)
+        df[column_name] = df[column_name].apply(
+            lambda x: ast.literal_eval(x) if isinstance(x, str) else x
+        )
     except (ValueError, SyntaxError) as e:
         print(f"Warning: Error parsing column {column_name}: {e}")
         # If there's an error, keep the column as is
@@ -197,7 +211,12 @@ def calculate_array_statistics(arrays):
         Tuple of (mean_array, se_array)
     """
     # Filter out non-array values and NaN
-    valid_arrays = [arr for arr in arrays if isinstance(arr, list) and not any(np.isnan(x) if isinstance(x, float) else False for x in arr)]
+    valid_arrays = [
+        arr
+        for arr in arrays
+        if isinstance(arr, list)
+        and not any(np.isnan(x) if isinstance(x, float) else False for x in arr)
+    ]
 
     if not valid_arrays:
         return None, None
@@ -227,11 +246,22 @@ def aggregate_metrics(df, group_cols):
         DataFrame with aggregated metrics
     """
     # Identify metric columns (time and performance metrics)
-    time_cols = [col for col in df.columns if col.endswith('_time') and col != 'param_gen_time']
+    time_cols = [
+        col for col in df.columns if col.endswith("_time") and col != "param_gen_time"
+    ]
     array_metric_cols = [
-        'bf_rmse_f', 'bf_corr_f', 'bf_rmse_h', 'bf_corr_h',
-        'pf_rmse_f', 'pf_corr_f', 'pf_rmse_h', 'pf_corr_h',
-        'bif_rmse_f', 'bif_corr_f', 'bif_rmse_h', 'bif_corr_h'
+        "bf_rmse_f",
+        "bf_corr_f",
+        "bf_rmse_h",
+        "bf_corr_h",
+        "pf_rmse_f",
+        "pf_corr_f",
+        "pf_rmse_h",
+        "pf_corr_h",
+        "bif_rmse_f",
+        "bif_corr_f",
+        "bif_rmse_h",
+        "bif_corr_h",
     ]
 
     # Filter to only include columns that exist in the DataFrame
@@ -363,7 +393,9 @@ def expand_arrays(df):
         DataFrame with expanded arrays
     """
     # Identify array columns
-    array_cols = [col for col in df.columns if df[col].apply(lambda x: isinstance(x, list)).any()]
+    array_cols = [
+        col for col in df.columns if df[col].apply(lambda x: isinstance(x, list)).any()
+    ]
 
     # Expand each array column
     expanded_df = df.copy()
@@ -387,15 +419,10 @@ def merge_filter_specific_metrics(df):
     result_df = df.copy()
 
     # Define metric types to merge
-    metric_types = [
-        'rmse_f',
-        'corr_f',
-        'rmse_h',
-        'corr_h'
-    ]
+    metric_types = ["rmse_f", "corr_f", "rmse_h", "corr_h"]
 
     # Define filter prefixes
-    filter_prefixes = ['bf', 'pf', 'bif']
+    filter_prefixes = ["bf", "pf", "bif"]
 
     # Process each metric type
     for metric_type in metric_types:
@@ -417,20 +444,20 @@ def merge_filter_specific_metrics(df):
                 continue
 
             # Fill in values for rows with matching filter type
-            filter_mask = result_df['filter_type'] == prefix.upper()
+            filter_mask = result_df["filter_type"] == prefix.upper()
             result_df.loc[filter_mask, mean_col] = df.loc[filter_mask, filter_mean_col]
             result_df.loc[filter_mask, se_col] = df.loc[filter_mask, filter_se_col]
 
     # Handle filter time columns separately
     # Create filter time columns
-    result_df['filter_time_mean'] = np.nan
-    result_df['filter_time_se'] = np.nan
+    result_df["filter_time_mean"] = np.nan
+    result_df["filter_time_se"] = np.nan
 
     # Map filter-specific time columns to the common filter time column
     time_column_mapping = {
-        'BF': ['bf_filter_time_mean', 'bf_filter_time_se'],
-        'PF': ['pf_filter_time_mean', 'pf_filter_time_se'],
-        'BIF': ['bif_filter_time_mean', 'bif_filter_time_se']
+        "BF": ["bf_filter_time_mean", "bf_filter_time_se"],
+        "PF": ["pf_filter_time_mean", "pf_filter_time_se"],
+        "BIF": ["bif_filter_time_mean", "bif_filter_time_se"],
     }
 
     # Fill in filter time values based on filter type
@@ -440,9 +467,11 @@ def merge_filter_specific_metrics(df):
             continue
 
         # Fill in values for rows with matching filter type
-        filter_mask = result_df['filter_type'] == filter_type
-        result_df.loc[filter_mask, 'filter_time_mean'] = df.loc[filter_mask, time_mean_col]
-        result_df.loc[filter_mask, 'filter_time_se'] = df.loc[filter_mask, time_se_col]
+        filter_mask = result_df["filter_type"] == filter_type
+        result_df.loc[filter_mask, "filter_time_mean"] = df.loc[
+            filter_mask, time_mean_col
+        ]
+        result_df.loc[filter_mask, "filter_time_se"] = df.loc[filter_mask, time_se_col]
 
     return result_df
 
@@ -461,15 +490,10 @@ def calculate_array_means(df):
     result_df = df.copy()
 
     # Define the metric types
-    metric_types = [
-        'rmse_f',
-        'corr_f',
-        'rmse_h',
-        'corr_h'
-    ]
+    metric_types = ["rmse_f", "corr_f", "rmse_h", "corr_h"]
 
     # Define filter prefixes
-    filter_prefixes = ['bf', 'pf', 'bif']
+    filter_prefixes = ["bf", "pf", "bif"]
 
     # Process each filter type and metric type
     for prefix in filter_prefixes:
@@ -478,21 +502,27 @@ def calculate_array_means(df):
             base_col = f"{prefix}_{metric_type}"
 
             # Find all mean columns for this metric
-            mean_cols = [col for col in df.columns if col.startswith(f"{base_col}_mean_")]
+            mean_cols = [
+                col for col in df.columns if col.startswith(f"{base_col}_mean_")
+            ]
             se_cols = [col for col in df.columns if col.startswith(f"{base_col}_se_")]
 
             if not mean_cols or not se_cols:
                 continue
 
             # Calculate the mean of the mean columns
-            result_df.loc[df['filter_type'] == prefix.upper(), f"{metric_type}_mean"] = df.loc[
-                df['filter_type'] == prefix.upper(), mean_cols
-            ].mean(axis=1, skipna=True)
+            result_df.loc[
+                df["filter_type"] == prefix.upper(), f"{metric_type}_mean"
+            ] = df.loc[df["filter_type"] == prefix.upper(), mean_cols].mean(
+                axis=1, skipna=True
+            )
 
             # Calculate the mean of the standard error columns
-            result_df.loc[df['filter_type'] == prefix.upper(), f"{metric_type}_se"] = df.loc[
-                df['filter_type'] == prefix.upper(), se_cols
-            ].mean(axis=1, skipna=True)
+            result_df.loc[df["filter_type"] == prefix.upper(), f"{metric_type}_se"] = (
+                df.loc[df["filter_type"] == prefix.upper(), se_cols].mean(
+                    axis=1, skipna=True
+                )
+            )
 
     # Drop the individual array columns and filter-specific columns
     drop_cols = []
@@ -500,8 +530,20 @@ def calculate_array_means(df):
     # Add array columns to drop
     for prefix in filter_prefixes:
         for metric_type in metric_types:
-            drop_cols.extend([col for col in df.columns if col.startswith(f"{prefix}_{metric_type}_mean_")])
-            drop_cols.extend([col for col in df.columns if col.startswith(f"{prefix}_{metric_type}_se_")])
+            drop_cols.extend(
+                [
+                    col
+                    for col in df.columns
+                    if col.startswith(f"{prefix}_{metric_type}_mean_")
+                ]
+            )
+            drop_cols.extend(
+                [
+                    col
+                    for col in df.columns
+                    if col.startswith(f"{prefix}_{metric_type}_se_")
+                ]
+            )
 
     # Add filter-specific time columns to drop
     for prefix in filter_prefixes:
@@ -523,34 +565,34 @@ def main():
     # --- Argument Parsing ---
     parser = argparse.ArgumentParser(
         description="Process simulation results from raw data to final metrics.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
         "--input-dir",
         type=Path,
         required=True,
-        help="Directory containing the study_* folders (e.g., simulation_data)."
+        help="Directory containing the study_* folders (e.g., simulation_data).",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
         required=True,
-        help="Directory to save the output files."
+        help="Directory to save the output files.",
     )
     parser.add_argument(
         "--study-pattern",
         default="batch_study_*",
-        help="Glob pattern for identifying study directories within the input directory."
+        help="Glob pattern for identifying study directories within the input directory.",
     )
     parser.add_argument(
         "--metrics-filename",
         default="metrics.json",
-        help="Name of the metrics file to search for within each run's subdirectory."
+        help="Name of the metrics file to search for within each run's subdirectory.",
     )
     parser.add_argument(
         "--save-intermediate",
         action="store_true",
-        help="Save intermediate files during processing."
+        help="Save intermediate files during processing.",
     )
     args = parser.parse_args()
 
@@ -564,7 +606,9 @@ def main():
 
     # --- Step 1: Merge Metrics Files ---
     print("\n=== Step 1: Merging Metrics Files ===")
-    merged_df = merge_metrics_files(args.input_dir, args.study_pattern, args.metrics_filename)
+    merged_df = merge_metrics_files(
+        args.input_dir, args.study_pattern, args.metrics_filename
+    )
 
     if args.save_intermediate:
         merged_file = args.output_dir / "merged_metrics.csv"
@@ -574,11 +618,11 @@ def main():
     # --- Step 2: Aggregate Metrics ---
     print("\n=== Step 2: Aggregating Metrics ===")
     # Define columns to group by (configuration)
-    group_cols = ['N', 'K', 'filter_type']
-    if 'num_particles' in merged_df.columns:
+    group_cols = ["N", "K", "filter_type"]
+    if "num_particles" in merged_df.columns:
         # Fill NaN with 0 for grouping purposes
-        merged_df['num_particles'] = merged_df['num_particles'].fillna(0)
-        group_cols.append('num_particles')
+        merged_df["num_particles"] = merged_df["num_particles"].fillna(0)
+        group_cols.append("num_particles")
 
     aggregated_df = aggregate_metrics(merged_df, group_cols)
 
@@ -614,7 +658,9 @@ def main():
     final_df.to_csv(final_file, index=False)
     print(f"Saved final metrics to {final_file}")
 
-    print(f"\nProcessed {len(merged_df)} raw metrics into {len(final_df)} aggregated configurations.")
+    print(
+        f"\nProcessed {len(merged_df)} raw metrics into {len(final_df)} aggregated configurations."
+    )
 
 
 if __name__ == "__main__":

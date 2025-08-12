@@ -34,15 +34,17 @@ from bellman_filter_dfsv.utils.transformations import apply_identification_const
 from bellman_filter_dfsv.utils.optimization import (
     run_optimization,
     FilterType,
-    OptimizerResult
+    OptimizerResult,
 )
 from bellman_filter_dfsv.utils.solvers import get_available_optimizers
 from bellman_filter_dfsv.utils.optimization_helpers import create_stable_initial_params
+
 # Enable 64-bit precision for better numerical stability
 jax.config.update("jax_enable_x64", True)
 
 
 # --- Model and Data Generation Functions ---
+
 
 def create_simple_model(N: int = 3, K: int = 2) -> DFSVParamsDataclass:
     """Create a simple DFSV model with reasonable parameters.
@@ -95,8 +97,14 @@ def create_simple_model(N: int = 3, K: int = 2) -> DFSVParamsDataclass:
 
     # Create parameter object
     params = DFSVParamsDataclass(
-        N=N, K=K, lambda_r=lambda_r, Phi_f=Phi_f, Phi_h=Phi_h,
-        mu=mu, sigma2=sigma2, Q_h=Q_h
+        N=N,
+        K=K,
+        lambda_r=lambda_r,
+        Phi_f=Phi_f,
+        Phi_h=Phi_h,
+        mu=mu,
+        sigma2=sigma2,
+        Q_h=Q_h,
     )
 
     # Ensure constraint is applied correctly
@@ -104,7 +112,9 @@ def create_simple_model(N: int = 3, K: int = 2) -> DFSVParamsDataclass:
     return params
 
 
-def create_training_data(params: DFSVParamsDataclass, T: int = 1000, seed: int = 123) -> jnp.ndarray:
+def create_training_data(
+    params: DFSVParamsDataclass, T: int = 1000, seed: int = 123
+) -> jnp.ndarray:
     """Generate simulation data for training.
 
     Args:
@@ -116,16 +126,14 @@ def create_training_data(params: DFSVParamsDataclass, T: int = 1000, seed: int =
         jnp.ndarray: Simulated returns.
     """
     # Simulate data
-    returns, factors, log_vols = simulate_DFSV(
-        params=params,
-        T=T,
-        seed=seed
-    )
+    returns, factors, log_vols = simulate_DFSV(params=params, T=T, seed=seed)
 
     return returns
 
 
-def create_uninformed_parameters(true_params: DFSVParamsDataclass, returns: jnp.ndarray) -> DFSVParamsDataclass:
+def create_uninformed_parameters(
+    true_params: DFSVParamsDataclass, returns: jnp.ndarray
+) -> DFSVParamsDataclass:
     """Create uninformed initial parameters for optimization.
 
     Args:
@@ -148,19 +156,21 @@ def create_uninformed_parameters(true_params: DFSVParamsDataclass, returns: jnp.
 
     # Create initial parameters
     initial_params = DFSVParamsDataclass(
-        N=N, K=K,
+        N=N,
+        K=K,
         lambda_r=lambda_r_init,
         Phi_f=jnp.eye(K) * 0.4,  # Lower persistence for factors
         Phi_h=jnp.eye(K) * 0.8,  # Moderate persistence
         mu=jnp.zeros(K),  # Zero mean for log volatility
         sigma2=0.1 * jnp.ones(N),  # Moderate idiosyncratic variance
-        Q_h=0.2 * jnp.eye(K)  # Moderate volatility of volatility
+        Q_h=0.2 * jnp.eye(K),  # Moderate volatility of volatility
     )
 
     return initial_params
 
 
 # --- Results Analysis Functions ---
+
 
 def print_results_table(results: List[OptimizerResult], max_steps: int):
     """Print a formatted table of optimization results.
@@ -171,13 +181,17 @@ def print_results_table(results: List[OptimizerResult], max_steps: int):
     """
     print("\n\n--- Optimization Results ---")
     # Header
-    print(f"{'Optimizer':<20} | {'Transform':<10} | {'Fix_mu':<7} | {'Status':<20} | {'Final Loss':<15} | {'Steps':<8} | {'Time (s)':<10} | {'Error'}")
+    print(
+        f"{'Optimizer':<20} | {'Transform':<10} | {'Fix_mu':<7} | {'Status':<20} | {'Final Loss':<15} | {'Steps':<8} | {'Time (s)':<10} | {'Error'}"
+    )
     print("-" * 120)
 
     # Rows
-    for res in sorted(results, key=lambda x: (x.optimizer_name, x.uses_transformations, x.fix_mu)):
+    for res in sorted(
+        results, key=lambda x: (x.optimizer_name, x.uses_transformations, x.fix_mu)
+    ):
         # Determine status message based on result code
-        if hasattr(res, 'result_code') and res.result_code is not None:
+        if hasattr(res, "result_code") and res.result_code is not None:
             # Use the result code to determine status
             # Get the result code as an enum value
 
@@ -210,7 +224,9 @@ def print_results_table(results: List[OptimizerResult], max_steps: int):
                     status_str = "Failed"
 
         fix_mu_str = "Yes" if res.fix_mu else "No"
-        loss_str = f"{res.final_loss:.4e}" if jnp.isfinite(res.final_loss) else "Inf/NaN"
+        loss_str = (
+            f"{res.final_loss:.4e}" if jnp.isfinite(res.final_loss) else "Inf/NaN"
+        )
         steps_str = str(res.steps) if res.steps >= 0 else "N/A"
         time_str = f"{res.time_taken:.2f}"
         # Truncate error message if it's too long
@@ -220,12 +236,16 @@ def print_results_table(results: List[OptimizerResult], max_steps: int):
             if len(error_str) > 30:
                 error_str = error_str[:27] + "..."
 
-        print(f"{res.optimizer_name:<20} | {'Yes' if res.uses_transformations else 'No':<10} | {fix_mu_str:<7} | {status_str:<20} | {loss_str:<15} | {steps_str:<8} | {time_str:<10} | {error_str}")
+        print(
+            f"{res.optimizer_name:<20} | {'Yes' if res.uses_transformations else 'No':<10} | {fix_mu_str:<7} | {status_str:<20} | {loss_str:<15} | {steps_str:<8} | {time_str:<10} | {error_str}"
+        )
 
     print("-" * 120)
 
 
-def print_parameter_comparison(results: List[OptimizerResult], true_params: DFSVParamsDataclass):
+def print_parameter_comparison(
+    results: List[OptimizerResult], true_params: DFSVParamsDataclass
+):
     """Print a comparison of estimated parameters to true values.
 
     Args:
@@ -236,9 +256,13 @@ def print_parameter_comparison(results: List[OptimizerResult], true_params: DFSV
 
     # We'll compare the parameters directly as matrices
 
-    for res in sorted(results, key=lambda x: (x.optimizer_name, x.uses_transformations, x.fix_mu)):
+    for res in sorted(
+        results, key=lambda x: (x.optimizer_name, x.uses_transformations, x.fix_mu)
+    ):
         if res.final_params is not None:
-            print(f"\n-- Run: Optimizer='{res.optimizer_name}' | Fix_mu='{'Yes' if res.fix_mu else 'No'}' | Success='{'Yes' if res.success else 'No'}' --")
+            print(
+                f"\n-- Run: Optimizer='{res.optimizer_name}' | Fix_mu='{'Yes' if res.fix_mu else 'No'}' | Success='{'Yes' if res.success else 'No'}' --"
+            )
             print("-" * 80)
             print("Parameter Comparison:")
             print("-" * 80)
@@ -249,7 +273,11 @@ def print_parameter_comparison(results: List[OptimizerResult], true_params: DFSV
             # If the optimization failed and we're using transformations, try to untransform the parameters
             if not res.success and res.uses_transformations:
                 try:
-                    from bellman_filter_dfsv.utils.transformations import untransform_params, apply_identification_constraint
+                    from bellman_filter_dfsv.utils.transformations import (
+                        untransform_params,
+                        apply_identification_constraint,
+                    )
+
                     final_params = untransform_params(final_params)
                     final_params = apply_identification_constraint(final_params)
                 except Exception:
@@ -259,13 +287,20 @@ def print_parameter_comparison(results: List[OptimizerResult], true_params: DFSV
             # Function to format matrix parameters nicely
             def format_matrix(matrix, precision=4):
                 if matrix.ndim == 1:  # Vector
-                    return np.array2string(matrix, precision=precision, separator=', ', suppress_small=True)
+                    return np.array2string(
+                        matrix, precision=precision, separator=", ", suppress_small=True
+                    )
                 else:  # Matrix
                     rows = []
                     for i in range(matrix.shape[0]):
-                        row = np.array2string(matrix[i], precision=precision, separator=', ', suppress_small=True)
+                        row = np.array2string(
+                            matrix[i],
+                            precision=precision,
+                            separator=", ",
+                            suppress_small=True,
+                        )
                         rows.append(row)
-                    return '\n'.join(rows)
+                    return "\n".join(rows)
 
             # Print comparison for each parameter
             for param_name in ["lambda_r", "Phi_f", "Phi_h", "mu", "sigma2", "Q_h"]:
@@ -280,7 +315,7 @@ def print_parameter_comparison(results: List[OptimizerResult], true_params: DFSV
                     "Phi_h": "Log-Volatility Transition Matrix (Phi_h)",
                     "mu": "Log-Volatility Mean (mu)",
                     "sigma2": "Observation Noise Variance (sigma2)",
-                    "Q_h": "Log-Volatility Noise Covariance (Q_h)"
+                    "Q_h": "Log-Volatility Noise Covariance (Q_h)",
                 }
 
                 print(f"\n{param_descriptions.get(param_name, param_name)}:")
@@ -309,32 +344,44 @@ def save_results_to_csv(results: List[OptimizerResult]):
 
     # Create CSV file
     csv_path = os.path.join(output_dir, "optimizer_comparison_results.csv")
-    with open(csv_path, 'w', newline='') as csvfile:
+    with open(csv_path, "w", newline="") as csvfile:
         writer = csv.writer(csvfile)
 
         # Write header
-        writer.writerow([
-            "Optimizer", "Transformations", "Fix_mu", "Success",
-            "Final Loss", "Steps", "Time (s)", "Error Message"
-        ])
+        writer.writerow(
+            [
+                "Optimizer",
+                "Transformations",
+                "Fix_mu",
+                "Success",
+                "Final Loss",
+                "Steps",
+                "Time (s)",
+                "Error Message",
+            ]
+        )
 
         # Write rows
         for res in results:
-            writer.writerow([
-                res.optimizer_name,
-                "Yes" if res.uses_transformations else "No",
-                "Yes" if res.fix_mu else "No",
-                "Yes" if res.success else "No",
-                res.final_loss if jnp.isfinite(res.final_loss) else "Inf/NaN",
-                res.steps if res.steps >= 0 else "N/A",
-                f"{res.time_taken:.2f}",
-                res.error_message if not res.success else "N/A"
-            ])
+            writer.writerow(
+                [
+                    res.optimizer_name,
+                    "Yes" if res.uses_transformations else "No",
+                    "Yes" if res.fix_mu else "No",
+                    "Yes" if res.success else "No",
+                    res.final_loss if jnp.isfinite(res.final_loss) else "Inf/NaN",
+                    res.steps if res.steps >= 0 else "N/A",
+                    f"{res.time_taken:.2f}",
+                    res.error_message if not res.success else "N/A",
+                ]
+            )
 
     print(f"  Results saved to {csv_path}")
 
 
-def save_parameter_errors_to_csv(results: List[OptimizerResult], true_params: DFSVParamsDataclass):
+def save_parameter_errors_to_csv(
+    results: List[OptimizerResult], true_params: DFSVParamsDataclass
+):
     """Save parameter estimation errors to a CSV file.
 
     Args:
@@ -354,12 +401,12 @@ def save_parameter_errors_to_csv(results: List[OptimizerResult], true_params: DF
         "Phi_h": true_params.Phi_h.flatten(),
         "mu": true_params.mu.flatten(),
         "sigma2": true_params.sigma2.flatten(),
-        "Q_h": true_params.Q_h.flatten()
+        "Q_h": true_params.Q_h.flatten(),
     }
 
     # Create CSV file
     csv_path = os.path.join(output_dir, "parameter_estimation_errors.csv")
-    with open(csv_path, 'w', newline='') as csvfile:
+    with open(csv_path, "w", newline="") as csvfile:
         writer = csv.writer(csvfile)
 
         # Write header
@@ -378,7 +425,7 @@ def save_parameter_errors_to_csv(results: List[OptimizerResult], true_params: DF
                     "Yes" if res.uses_transformations else "No",
                     "Yes" if res.fix_mu else "No",
                     "Yes" if res.success else "No",
-                    res.final_loss if jnp.isfinite(res.final_loss) else "Inf/NaN"
+                    res.final_loss if jnp.isfinite(res.final_loss) else "Inf/NaN",
                 ]
 
                 # Calculate errors for each parameter
@@ -421,11 +468,11 @@ def plot_loss_history(results: List[OptimizerResult]):
             plt.plot(res.loss_history, label=label)
 
     # Add labels and legend
-    plt.xlabel('Step')
-    plt.ylabel('Loss')
-    plt.title('Loss History by Optimizer')
+    plt.xlabel("Step")
+    plt.ylabel("Loss")
+    plt.title("Loss History by Optimizer")
     plt.legend()
-    plt.yscale('log')  # Log scale for better visualization
+    plt.yscale("log")  # Log scale for better visualization
     plt.grid(True)
 
     # Save figure
@@ -465,7 +512,7 @@ def main():
     verbose = True  # Enable verbose output for detailed information
     log_params = False  # Disable parameter logging to avoid potential issues
 
-    #4,5 generate initial parameter guess
+    # 4,5 generate initial parameter guess
     initial_params = create_stable_initial_params(N, K)
     num_particles = 5000
     # 5. Run optimizations
@@ -476,21 +523,27 @@ def main():
     print(f"Results will be saved to: {output_dir}")
 
     # Use only AdamW as gradient-based optimizer and BFGS variants for Particle Filter
-    print(f"\nRunning optimizations with max_steps={max_steps}, stability_penalty_weight={stability_penalty_weight}...")
+    print(
+        f"\nRunning optimizations with max_steps={max_steps}, stability_penalty_weight={stability_penalty_weight}..."
+    )
     # Run selected optimizers with both fixed and unfixed mu
-    optimizer_test=["SGD"]
+    optimizer_test = ["SGD"]
     for optimizer_name in optimizer_test:
         for fix_mu in [True, False]:  # Run with both fixed and unfixed mu
-            print(f"\n--- Running: Optimizer={optimizer_name} | Transform={'Yes' if use_transformations else 'No'} | Fix_mu={'Yes' if fix_mu else 'No'} ---")
+            print(
+                f"\n--- Running: Optimizer={optimizer_name} | Transform={'Yes' if use_transformations else 'No'} | Fix_mu={'Yes' if fix_mu else 'No'} ---"
+            )
 
             try:
                 # Run optimization with error handling
                 result = run_optimization(
                     filter_type=filter_type,
                     returns=returns,
-                    initial_params=initial_params, # Added
+                    initial_params=initial_params,  # Added
                     num_particles=num_particles,
-                    true_params=true_params if fix_mu else None,  # Only pass true_params if fix_mu is True
+                    true_params=true_params
+                    if fix_mu
+                    else None,  # Only pass true_params if fix_mu is True
                     use_transformations=use_transformations,
                     optimizer_name=optimizer_name,
                     priors=None,
@@ -501,13 +554,13 @@ def main():
                     log_interval=1,  # Log at every step
                     rtol=1e-5,
                     atol=1e-5,
-                    fix_mu=fix_mu
+                    fix_mu=fix_mu,
                 )
 
                 results.append(result)
 
                 # Print immediate result based on result code
-                if hasattr(result, 'result_code') and result.result_code is not None:
+                if hasattr(result, "result_code") and result.result_code is not None:
                     # Use the result code to determine status
                     # Get the result code as an enum value
 
@@ -548,12 +601,18 @@ def main():
 
                 # Print a more detailed summary of the optimization result
                 if result.success:
-                    print(f"Optimization {success_str} with final loss: {result.final_loss:.4e}")
+                    print(
+                        f"Optimization {success_str} with final loss: {result.final_loss:.4e}"
+                    )
                 else:
                     if jnp.isfinite(result.final_loss):
-                        print(f"Optimization {success_str} with final loss: {result.final_loss:.4e} (not converged)")
+                        print(
+                            f"Optimization {success_str} with final loss: {result.final_loss:.4e} (not converged)"
+                        )
                     else:
-                        print(f"Optimization {success_str} with final loss: {result.final_loss} (not converged)")
+                        print(
+                            f"Optimization {success_str} with final loss: {result.final_loss} (not converged)"
+                        )
                 print(f"Steps: {result.steps}, Time: {result.time_taken:.2f}s")
 
             except Exception as e:
@@ -572,17 +631,19 @@ def main():
                     prior_config_name="No Priors",
                     success=False,
                     result_code=None,
-                    final_loss=float('nan'),  # Set to NaN initially
+                    final_loss=float("nan"),  # Set to NaN initially
                     steps=0,
                     time_taken=0.0,
                     error_message=error_message,
                     final_params=None,
                     param_history=None,
-                    loss_history=None
+                    loss_history=None,
                 )
 
                 results.append(dummy_result)
-                print(f"Error running optimization with {optimizer_name}: {error_message}")
+                print(
+                    f"Error running optimization with {optimizer_name}: {error_message}"
+                )
 
     # 6. Print results table
     if results:

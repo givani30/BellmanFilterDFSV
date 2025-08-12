@@ -67,11 +67,7 @@ def create_simple_model():
 def create_training_data(params, T=500, seed=None):
     """Generate training data from the model."""
     # Simulate data
-    returns, factors, log_vols = simulate_DFSV(
-        params=params,
-        T=T,
-        seed=seed
-    )
+    returns, factors, log_vols = simulate_DFSV(params=params, T=T, seed=seed)
 
     return returns, factors, log_vols
 
@@ -79,7 +75,7 @@ def create_training_data(params, T=500, seed=None):
 def create_initial_params(true_params, data_variance):
     """Create initial parameters for optimization."""
     N, K = true_params.N, true_params.K
-    
+
     # Create initial parameters with some perturbation from true values
     initial_params = DFSVParamsDataclass(
         N=N,
@@ -89,9 +85,9 @@ def create_initial_params(true_params, data_variance):
         Phi_h=0.8 * jnp.eye(K),  # Moderate persistence
         mu=jnp.zeros(K),  # Zero mean for log volatility
         sigma2=0.5 * data_variance,  # Provide as 1D array (variances)
-        Q_h=0.2 * jnp.eye(K)  # Moderate volatility of volatility
+        Q_h=0.2 * jnp.eye(K),  # Moderate volatility of volatility
     )
-    
+
     return initial_params
 
 
@@ -100,48 +96,48 @@ def test_all_optimizers():
     # Create output directory
     output_dir = Path("outputs/test_all_optimizers_with_logging")
     os.makedirs(output_dir, exist_ok=True)
-    
+
     # Create a simple model
     true_params = create_simple_model()
-    
+
     # Generate training data (very small dataset for quick testing)
     T = 100  # Use a very short time series for testing
     returns, _, _ = create_training_data(true_params, T=T, seed=42)
-    
+
     # Create a BIF filter
     filter_instance = DFSVBellmanInformationFilter(true_params.N, true_params.K)
-    
+
     # Create initial parameters
     data_variance = jnp.var(returns, axis=0)
     initial_params = create_initial_params(true_params, data_variance)
-    
+
     # Define objective function
     def objective_fn(params, observations):
         return bellman_objective(params, observations, filter_instance), None
-    
+
     # Get all available optimizers
     optimizer_names = list(get_available_optimizers().keys())
-    
+
     # Results storage
     results = []
-    
+
     # Test each optimizer
     for optimizer_name in optimizer_names:
         print(f"\nTesting optimizer: {optimizer_name}")
-        
+
         try:
             # Create optimizer with very small step size and loose tolerances
             optimizer = create_optimizer(
                 optimizer_name=optimizer_name,
                 learning_rate=1e-5,  # Very small learning rate
-                rtol=1e-2,           # Loose tolerance
-                atol=1e-2,           # Loose tolerance
-                verbose=True
+                rtol=1e-2,  # Loose tolerance
+                atol=1e-2,  # Loose tolerance
+                verbose=True,
             )
-            
+
             # Run optimization with logging for just a few steps
             start_time = time.time()
-            
+
             sol, param_history = minimize_with_logging(
                 objective_fn=objective_fn,
                 initial_params=initial_params,
@@ -150,49 +146,53 @@ def test_all_optimizers():
                 max_steps=3,  # Just a few steps to test functionality
                 log_interval=1,
                 options={},
-                throw=False  # Don't throw exceptions
+                throw=False,  # Don't throw exceptions
             )
-            
+
             end_time = time.time()
-            
+
             # Record results
-            results.append({
-                'optimizer': optimizer_name,
-                'success': True,
-                'error': None,
-                'time': end_time - start_time,
-                'steps': len(param_history) - 1,
-                'result': str(sol.result)
-            })
-            
+            results.append(
+                {
+                    "optimizer": optimizer_name,
+                    "success": True,
+                    "error": None,
+                    "time": end_time - start_time,
+                    "steps": len(param_history) - 1,
+                    "result": str(sol.result),
+                }
+            )
+
             print(f"  Success: {True}")
             print(f"  Time: {end_time - start_time:.2f} seconds")
             print(f"  Steps: {len(param_history) - 1}")
             print(f"  Result: {sol.result}")
-            
+
         except Exception as e:
             print(f"  Error: {str(e)}")
-            results.append({
-                'optimizer': optimizer_name,
-                'success': False,
-                'error': str(e),
-                'time': None,
-                'steps': None,
-                'result': None
-            })
-    
+            results.append(
+                {
+                    "optimizer": optimizer_name,
+                    "success": False,
+                    "error": str(e),
+                    "time": None,
+                    "steps": None,
+                    "result": None,
+                }
+            )
+
     # Create a DataFrame with results
     results_df = pd.DataFrame(results)
-    
+
     # Save results to CSV
     results_df.to_csv(output_dir / "optimizer_results.csv", index=False)
-    
+
     # Print summary
     print("\nSummary:")
     print(f"Total optimizers tested: {len(optimizer_names)}")
     print(f"Successful: {results_df['success'].sum()}")
     print(f"Failed: {len(optimizer_names) - results_df['success'].sum()}")
-    
+
     return results_df
 
 

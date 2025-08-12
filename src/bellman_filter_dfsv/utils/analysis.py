@@ -3,8 +3,9 @@
 Provides accuracy metrics for comparing true and estimated values.
 """
 
-import numpy as np
 import jax.numpy as jnp
+import numpy as np
+
 
 def calculate_accuracy(true_values, estimated_values):
     """Calculate RMSE and correlation between true and estimated values.
@@ -23,7 +24,10 @@ def calculate_accuracy(true_values, estimated_values):
 
     if true_values.shape != estimated_values.shape:
         min_T = min(true_values.shape[0], estimated_values.shape[0])
-        if abs(true_values.shape[0] - estimated_values.shape[0]) <= 1 and true_values.shape[1:] == estimated_values.shape[1:]:
+        if (
+            abs(true_values.shape[0] - estimated_values.shape[0]) <= 1
+            and true_values.shape[1:] == estimated_values.shape[1:]
+        ):
             true_values = true_values[:min_T]
             estimated_values = estimated_values[:min_T]
         else:
@@ -41,11 +45,16 @@ def calculate_accuracy(true_values, estimated_values):
         if np.sum(valid_mask) < 2:
             corr = np.nan
         else:
-            if np.std(true_values[valid_mask, k]) < 1e-10 or np.std(estimated_values[valid_mask, k]) < 1e-10:
+            if (
+                np.std(true_values[valid_mask, k]) < 1e-10
+                or np.std(estimated_values[valid_mask, k]) < 1e-10
+            ):
                 corr = np.nan
             else:
                 try:
-                    corr_matrix = np.corrcoef(true_values[valid_mask, k], estimated_values[valid_mask, k])
+                    corr_matrix = np.corrcoef(
+                        true_values[valid_mask, k], estimated_values[valid_mask, k]
+                    )
                     if corr_matrix.shape == (2, 2):
                         corr = corr_matrix[0, 1]
                     else:

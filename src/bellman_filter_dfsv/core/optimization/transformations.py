@@ -4,14 +4,17 @@ Parameter transformation functions for DFSV models.
 Maps constrained parameters (e.g., variances > 0, correlations in [-1, 1])
 to unconstrained space for optimization, and back.
 """
+
 import copy
-import jax
+
 import jax.numpy as jnp
 from jax.nn import softplus
+
 from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 
 # Epsilon for numerical stability near boundaries (e.g., 0 or 1)
 EPS = 1e-6
+
 
 def inverse_softplus(x):
     """
@@ -32,9 +35,12 @@ def inverse_softplus(x):
     x_safe = jnp.maximum(x, EPS)
     # For very small x, softplus(y) ≈ exp(y), so inverse_softplus(x) ≈ log(x)
     # For larger x, use the standard formula log(exp(x) - 1)
-    return jnp.where(x_safe < 1e-3,
-                     jnp.log(x_safe),  # Approximation for small values
-                     jnp.log(jnp.exp(x_safe) - 1.0))
+    return jnp.where(
+        x_safe < 1e-3,
+        jnp.log(x_safe),  # Approximation for small values
+        jnp.log(jnp.exp(x_safe) - 1.0),
+    )
+
 
 def safe_arctanh(x):
     """
@@ -52,6 +58,7 @@ def safe_arctanh(x):
     """
     x_clipped = jnp.clip(x, -1.0 + EPS, 1.0 - EPS)
     return jnp.arctanh(x_clipped)
+
 
 # """ REMOVED based on plan 'full_phi_hybrid_plan_07-04-2025.md'
 # def stabilize_matrix(matrix_unc: jnp.ndarray) -> jnp.ndarray:
@@ -177,14 +184,14 @@ def transform_params(params: DFSVParamsDataclass) -> DFSVParamsDataclass:
         transformed_sigma2 = transformed_sigma2.at[diag_indices_sigma].set(
             inverse_softplus(jnp.diag(params.sigma2))
         )
-    else: # Should not happen if validation runs, but handle just in case
+    else:  # Should not happen if validation runs, but handle just in case
         transformed_sigma2 = inverse_softplus(params.sigma2)
 
     # Transform Q_h (log-volatility noise covariance) - Assuming diagonal
     # Using inverse softplus
     diag_q_h = jnp.diag(params.Q_h)
     transformed_diag_q_h = inverse_softplus(diag_q_h)
-    transformed_q_h = jnp.diag(transformed_diag_q_h) # Keep diagonal structure
+    transformed_q_h = jnp.diag(transformed_diag_q_h)  # Keep diagonal structure
 
     # Note: mu is typically unconstrained.
     # lambda_r diagonal is fixed to 1, off-diagonals are unconstrained.
@@ -196,9 +203,10 @@ def transform_params(params: DFSVParamsDataclass) -> DFSVParamsDataclass:
         Phi_f=transformed_phi_f,
         Phi_h=transformed_phi_h,
         sigma2=transformed_sigma2,
-        Q_h=transformed_q_h
+        Q_h=transformed_q_h,
         # lambda_r is intentionally omitted from replace()
     )
+
 
 def untransform_params(transformed_params: DFSVParamsDataclass) -> DFSVParamsDataclass:
     """
@@ -241,7 +249,7 @@ def untransform_params(transformed_params: DFSVParamsDataclass) -> DFSVParamsDat
         sigma2_original = sigma2_original.at[diag_indices_sigma].set(
             softplus(transformed_params.sigma2[diag_indices_sigma])
         )
-    else: # Should not happen
+    else:  # Should not happen
         sigma2_original = softplus(transformed_params.sigma2)
 
     # Untransform Q_h (diagonal) using softplus
@@ -258,9 +266,11 @@ def untransform_params(transformed_params: DFSVParamsDataclass) -> DFSVParamsDat
         Phi_f=phi_f_original,
         Phi_h=phi_h_original,
         sigma2=sigma2_original,
-        Q_h=q_h_original
+        Q_h=q_h_original,
         # lambda_r is intentionally omitted from replace()
     )
+
+
 def apply_identification_constraint(params: DFSVParamsDataclass) -> DFSVParamsDataclass:
     """Applies lower-triangular constraint with diagonal fixed to 1 to lambda_r.
 
@@ -269,7 +279,7 @@ def apply_identification_constraint(params: DFSVParamsDataclass) -> DFSVParamsDa
     2. Sets the first K diagonal elements to 1.0
     3. For N > K, only the first K columns have the constraint applied
     """
-    N, K = params.N, params.K # N and K should be static attributes
+    N, K = params.N, params.K  # N and K should be static attributes
     lambda_r = params.lambda_r
 
     # 1. Zero out elements above the diagonal for the whole matrix
@@ -279,7 +289,7 @@ def apply_identification_constraint(params: DFSVParamsDataclass) -> DFSVParamsDa
     #    Create indices for the diagonal elements up to K.
     #    .at[] handles out-of-bounds indices gracefully (ignores them),
     #    so we don't need explicit clipping by N if K is static.
-    diag_indices_k = jnp.arange(K) # K must be static for this to work under JIT
+    diag_indices_k = jnp.arange(K)  # K must be static for this to work under JIT
     constrained_lambda_r = tril_lambda.at[diag_indices_k, diag_indices_k].set(1.0)
 
     return params.replace(lambda_r=constrained_lambda_r)

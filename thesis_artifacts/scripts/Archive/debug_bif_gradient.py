@@ -14,44 +14,57 @@ from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformati
 from bellman_filter_dfsv.models.simulation_helpers import create_stable_dfsv_params
 from bellman_filter_dfsv.utils.optimization_helpers import create_stable_initial_params
 from bellman_filter_dfsv.models.simulation import simulate_DFSV
-from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params, apply_identification_constraint
-from bellman_filter_dfsv.utils.optimization import run_optimization, FilterType, create_filter
+from bellman_filter_dfsv.utils.transformations import (
+    transform_params,
+    untransform_params,
+    apply_identification_constraint,
+)
+from bellman_filter_dfsv.utils.optimization import (
+    run_optimization,
+    FilterType,
+    create_filter,
+)
 from bellman_filter_dfsv.utils.analysis import calculate_accuracy
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
+
 
 def _calculate_param_errors(true_params, est_params):
     """Calculate RMSE and Mean Error for each parameter field."""
+
     def safe_rmse(a, b):
         a = np.asarray(a)
         b = np.asarray(b)
         if a.shape != b.shape:
-            return float('nan')
+            return float("nan")
         return float(np.sqrt(np.nanmean((a - b) ** 2)))
 
     def safe_mean_error(a, b):
         a = np.asarray(a)
         b = np.asarray(b)
         if a.shape != b.shape:
-            return float('nan')
-        return float(np.nanmean(b - a)) # estimated - true
+            return float("nan")
+        return float(np.nanmean(b - a))  # estimated - true
 
     errors = {}
     for field in DFSVParamsDataclass.__dataclass_fields__:
-        if field == 'mu' and not hasattr(est_params, 'mu'): # Handle fixed mu case
+        if field == "mu" and not hasattr(est_params, "mu"):  # Handle fixed mu case
             continue
         try:
             true_val = getattr(true_params, field)
             est_val = getattr(est_params, field)
-            errors[field + '_rmse'] = safe_rmse(true_val, est_val)
-            errors[field + '_mean_error'] = safe_mean_error(true_val, est_val)
+            errors[field + "_rmse"] = safe_rmse(true_val, est_val)
+            errors[field + "_mean_error"] = safe_mean_error(true_val, est_val)
         except Exception as e:
             logger.warning(f"Could not calculate error for field {field}: {e}")
-            errors[field + '_rmse'] = float('nan')
-            errors[field + '_mean_error'] = float('nan')
+            errors[field + "_rmse"] = float("nan")
+            errors[field + "_mean_error"] = float("nan")
     return errors
+
 
 def main():
     # --- Configuration ---
@@ -60,20 +73,22 @@ def main():
     T = 1000
     replicate_seed = 4114928869
     fix_mu = False
-    use_transformations = True # Match the setting in run_optimization
-    optimizer_name = "DampedTrustRegionBFGS" # Default optimizer for BIF
+    use_transformations = True  # Match the setting in run_optimization
+    optimizer_name = "DampedTrustRegionBFGS"  # Default optimizer for BIF
     max_steps = 5000
 
-    logger.info(f"Configuration: N={N}, K={K}, T={T}, seed={replicate_seed}, fix_mu={fix_mu}, use_transformations={use_transformations}, optimizer={optimizer_name}, max_steps={max_steps}")
+    logger.info(
+        f"Configuration: N={N}, K={K}, T={T}, seed={replicate_seed}, fix_mu={fix_mu}, use_transformations={use_transformations}, optimizer={optimizer_name}, max_steps={max_steps}"
+    )
 
     # --- JAX Setup ---
     jax.config.update("jax_enable_x64", True)
-    jax.config.update("jax_debug_nans", True) # Enable NaN checks
+    jax.config.update("jax_debug_nans", True)  # Enable NaN checks
     # Consider setting EQX_ON_ERROR=breakpoint environment variable for interactive debugging
     logger.info("JAX configured for x64 precision and NaN debugging.")
 
     # --- Parameter Generation ---
-    np.random.seed(replicate_seed) # Seed NumPy for parameter generation
+    np.random.seed(replicate_seed)  # Seed NumPy for parameter generation
     logger.info("Generating true parameters...")
     true_params = create_stable_dfsv_params(N=N, K=K)
     logger.info("Generating initial parameters...")
@@ -83,7 +98,7 @@ def main():
     logger.info("Generating simulation data...")
     # Use a different seed for data simulation for reproducibility consistency
     returns, _, _ = simulate_DFSV(true_params, T=T, seed=replicate_seed + 1)
-    returns = jnp.asarray(returns) # Convert to JAX array
+    returns = jnp.asarray(returns)  # Convert to JAX array
     logger.info(f"Simulation data generated (T={T}).")
 
     # --- Filter Setup ---
@@ -94,35 +109,45 @@ def main():
     # This mirrors the 'likelihood_objective_for_grad' from optimization.py debug block
     def neg_log_likelihood_objective(params_opt, obs):
         # 1. Untransform parameters if they are passed in transformed space
-        params_constrained = untransform_params(params_opt) if use_transformations else params_opt
+        params_constrained = (
+            untransform_params(params_opt) if use_transformations else params_opt
+        )
 
         # 2. Fix mu if requested
         if fix_mu:
-             # Ensure true_params.mu is available and correctly shaped
-             true_mu_val = true_params.mu
-             params_constrained = eqx.tree_at(lambda p: p.mu, params_constrained, true_mu_val)
+            # Ensure true_params.mu is available and correctly shaped
+            true_mu_val = true_params.mu
+            params_constrained = eqx.tree_at(
+                lambda p: p.mu, params_constrained, true_mu_val
+            )
 
         # 3. Apply identification constraint
         params_fixed_constrained = apply_identification_constraint(params_constrained)
 
         # 4. Calculate log likelihood using the filter instance
         # Use the public method which calls the JITted internal implementation
-        log_lik = filter_instance.log_likelihood_wrt_params(params_fixed_constrained, obs)
+        log_lik = filter_instance.log_likelihood_wrt_params(
+            params_fixed_constrained, obs
+        )
 
         # Return negative log likelihood, handle NaNs robustly
-        safe_neg_ll = jnp.nan_to_num(-log_lik, nan=jnp.inf, posinf=jnp.inf, neginf=-jnp.inf)
+        safe_neg_ll = jnp.nan_to_num(
+            -log_lik, nan=jnp.inf, posinf=jnp.inf, neginf=-jnp.inf
+        )
         # Add error check specifically for the output likelihood value
         safe_neg_ll = eqx.error_if(
             safe_neg_ll,
             jnp.isnan(safe_neg_ll) | jnp.isinf(safe_neg_ll),
-            "NaN/Inf detected in calculated negative log-likelihood value"
+            "NaN/Inf detected in calculated negative log-likelihood value",
         )
         return safe_neg_ll
 
     # --- Gradient Calculation ---
     logger.info("Preparing value and gradient function...")
     # Use Equinox's version for better error messages potentially
-    value_and_grad_fn = eqx.filter_value_and_grad(neg_log_likelihood_objective, has_aux=False)
+    value_and_grad_fn = eqx.filter_value_and_grad(
+        neg_log_likelihood_objective, has_aux=False
+    )
 
     # Prepare initial parameters for the gradient function
     initial_params_for_grad = initial_params_guess
@@ -132,8 +157,12 @@ def main():
         # Add check after transformation
         initial_params_for_grad = eqx.error_if(
             initial_params_for_grad,
-            jax.tree_util.tree_reduce(lambda x, y: x or jnp.any(jnp.isnan(y) | jnp.isinf(y)), initial_params_for_grad, initializer=False),
-            "NaN/Inf detected in initial_params_for_grad *after* transformation"
+            jax.tree_util.tree_reduce(
+                lambda x, y: x or jnp.any(jnp.isnan(y) | jnp.isinf(y)),
+                initial_params_for_grad,
+                initializer=False,
+            ),
+            "NaN/Inf detected in initial_params_for_grad *after* transformation",
         )
 
     logger.info("Attempting to calculate initial value only....")
@@ -196,11 +225,11 @@ def main():
             use_transformations=use_transformations,
             optimizer_name=optimizer_name,
             priors=None,
-            stability_penalty_weight=1e3, 
+            stability_penalty_weight=1e3,
             max_steps=max_steps,
             verbose=True,
             rtol=1e-5,
-            atol=1e-5
+            atol=1e-5,
         )
 
         opt_duration = time.time() - start_opt_time
@@ -224,9 +253,11 @@ def main():
                 # Print parameter errors
                 logger.info("Parameter estimation errors:")
                 for param, error in param_errors.items():
-                    if param.endswith('_rmse'):
-                        param_name = param.replace('_rmse', '')
-                        logger.info(f"  {param_name}: RMSE = {error:.4f}, Mean Error = {param_errors.get(param_name + '_mean_error', float('nan')):.4f}")
+                    if param.endswith("_rmse"):
+                        param_name = param.replace("_rmse", "")
+                        logger.info(
+                            f"  {param_name}: RMSE = {error:.4f}, Mean Error = {param_errors.get(param_name + '_mean_error', float('nan')):.4f}"
+                        )
 
                 # Print final parameter estimates
                 logger.info("\n=== Final Parameter Estimates ===\n")
@@ -236,13 +267,23 @@ def main():
                 def format_matrix(matrix, precision=4):
                     matrix_np = np.asarray(matrix)
                     if matrix_np.ndim == 1:  # Vector
-                        return np.array2string(matrix_np, precision=precision, separator=', ', suppress_small=True)
+                        return np.array2string(
+                            matrix_np,
+                            precision=precision,
+                            separator=", ",
+                            suppress_small=True,
+                        )
                     else:  # Matrix
                         rows = []
                         for i in range(matrix_np.shape[0]):
-                            row = np.array2string(matrix_np[i], precision=precision, separator=', ', suppress_small=True)
+                            row = np.array2string(
+                                matrix_np[i],
+                                precision=precision,
+                                separator=", ",
+                                suppress_small=True,
+                            )
                             rows.append(row)
-                        return '\n'.join(rows)
+                        return "\n".join(rows)
 
                 # Print comparison for each parameter
                 param_descriptions = {
@@ -251,7 +292,7 @@ def main():
                     "Phi_h": "Log-Volatility Transition Matrix (Phi_h)",
                     "mu": "Log-Volatility Mean (mu)",
                     "sigma2": "Observation Noise Variance (sigma2)",
-                    "Q_h": "Log-Volatility Noise Covariance (Q_h)"
+                    "Q_h": "Log-Volatility Noise Covariance (Q_h)",
                 }
 
                 for param_name in ["lambda_r", "Phi_f", "Phi_h", "mu", "sigma2", "Q_h"]:
@@ -275,7 +316,9 @@ def main():
                 logger.info("\n=== State Estimation Analysis ===\n")
                 try:
                     filter_instance = create_filter(filter_type, N, K)
-                    filtered_states, _, _ = filter_instance.filter(result.final_params, returns)
+                    filtered_states, _, _ = filter_instance.filter(
+                        result.final_params, returns
+                    )
                     filtered_factors = filtered_states[:, :K]
                     filtered_log_vols = filtered_states[:, K:]
 
@@ -285,19 +328,30 @@ def main():
                     )
 
                     # Calculate accuracy metrics
-                    factor_rmse, factor_corr = calculate_accuracy(true_factors, filtered_factors)
-                    vol_rmse, vol_corr = calculate_accuracy(true_log_vols, filtered_log_vols)
+                    factor_rmse, factor_corr = calculate_accuracy(
+                        true_factors, filtered_factors
+                    )
+                    vol_rmse, vol_corr = calculate_accuracy(
+                        true_log_vols, filtered_log_vols
+                    )
 
                     logger.info("State estimation accuracy:")
-                    logger.info(f"  Factor RMSE: {np.nanmean(factor_rmse):.4f}, Correlation: {np.nanmean(factor_corr):.4f}")
-                    logger.info(f"  Volatility RMSE: {np.nanmean(vol_rmse):.4f}, Correlation: {np.nanmean(vol_corr):.4f}")
+                    logger.info(
+                        f"  Factor RMSE: {np.nanmean(factor_rmse):.4f}, Correlation: {np.nanmean(factor_corr):.4f}"
+                    )
+                    logger.info(
+                        f"  Volatility RMSE: {np.nanmean(vol_rmse):.4f}, Correlation: {np.nanmean(vol_corr):.4f}"
+                    )
                 except Exception as e:
-                    logger.error(f"Error during state estimation analysis: {e}", exc_info=True)
+                    logger.error(
+                        f"Error during state estimation analysis: {e}", exc_info=True
+                    )
         else:
             logger.error("Optimization failed to produce a result.")
 
     except Exception as e:
         logger.error(f"Error during optimization: {e}", exc_info=True)
+
 
 if __name__ == "__main__":
     main()

@@ -26,7 +26,7 @@ def analyze_identification_difficulty(df: pl.DataFrame) -> None:
         "param_Phi_f_frob_rel_diff",
         "param_Phi_h_frob_rel_diff",
         "param_Q_h_frob_rel_diff",
-        "param_lambda_r_rmse"  # Already relative as lambda_r is dimensionless
+        "param_lambda_r_rmse",  # Already relative as lambda_r is dimensionless
     ]
 
     # Define bias metrics
@@ -34,7 +34,7 @@ def analyze_identification_difficulty(df: pl.DataFrame) -> None:
         "param_Phi_f_bias",
         "param_Phi_h_bias",
         "param_Q_h_bias",
-        "param_lambda_r_bias"
+        "param_lambda_r_bias",
     ]
 
     # Group by filter_config and config_fix_mu
@@ -44,16 +44,20 @@ def analyze_identification_difficulty(df: pl.DataFrame) -> None:
     agg_exprs = []
     for metric in relative_metrics + bias_metrics:
         if metric in df.columns:
-            agg_exprs.extend([
-                pl.col(metric).mean().alias(f"{metric}_mean"),
-                pl.col(metric).std().alias(f"{metric}_std"),
-                pl.col(metric).median().alias(f"{metric}_median")
-            ])
+            agg_exprs.extend(
+                [
+                    pl.col(metric).mean().alias(f"{metric}_mean"),
+                    pl.col(metric).std().alias(f"{metric}_std"),
+                    pl.col(metric).median().alias(f"{metric}_median"),
+                ]
+            )
 
     df_grouped = df.group_by(group_cols).agg(agg_exprs)
 
     # Get unique filter configurations and sort them
-    filter_configs = df_grouped.select("filter_config").unique().sort("filter_config").to_series()
+    filter_configs = (
+        df_grouped.select("filter_config").unique().sort("filter_config").to_series()
+    )
 
     # Log findings
     logging.info("\n=== Parameter Identification Difficulty Analysis ===")
@@ -61,8 +65,8 @@ def analyze_identification_difficulty(df: pl.DataFrame) -> None:
     for filter_cfg in filter_configs:
         for fix_mu in [True, False]:
             group_data = df_grouped.filter(
-                (pl.col("filter_config") == filter_cfg) &
-                (pl.col("config_fix_mu") == fix_mu)
+                (pl.col("filter_config") == filter_cfg)
+                & (pl.col("config_fix_mu") == fix_mu)
             )
 
             if group_data.height > 0:
@@ -77,9 +81,7 @@ def analyze_identification_difficulty(df: pl.DataFrame) -> None:
 
                 # Sort parameters by relative error magnitude
                 sorted_params = sorted(
-                    rel_errors.items(),
-                    key=lambda x: abs(x[1]),
-                    reverse=True
+                    rel_errors.items(), key=lambda x: abs(x[1]), reverse=True
                 )
 
                 logging.info("Parameters ranked by relative error magnitude:")
@@ -94,7 +96,9 @@ def analyze_identification_difficulty(df: pl.DataFrame) -> None:
                         std = group_data.select(pl.col(f"{metric}_std"))[0, 0]
                         if abs(bias) > 2 * std:  # Check if bias is significant
                             param_name = metric.split("_")[1]
-                            logging.info(f"  Note: {param_name} shows significant bias: {bias:.6f} (std: {std:.6f})")
+                            logging.info(
+                                f"  Note: {param_name} shows significant bias: {bias:.6f} (std: {std:.6f})"
+                            )
 
 
 def analyze_fix_mu_effect(df_success: pl.DataFrame) -> Dict[str, Any]:
@@ -114,35 +118,46 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame) -> Dict[str, Any]:
     logging.info("Analyzing effect of fixing mu parameter")
 
     # Cast columns and create config label
-    df = df_success.filter(pl.col("config_fix_mu").is_not_null()).with_columns([
-        pl.col("filter_config").cast(pl.Categorical),
-        pl.col("config_fix_mu").cast(pl.Boolean),
-        pl.col("N").cast(pl.Int64),
-        pl.col("K").cast(pl.Int64),
-        pl.col("config_T").cast(pl.Int64),
-        pl.concat_str([
-            pl.lit("N"), pl.col("N").cast(pl.Utf8),
-            pl.lit("-K"), pl.col("K").cast(pl.Utf8),
-            pl.lit("-T"), pl.col("config_T").cast(pl.Utf8)
-        ]).alias("config_label").cast(pl.Categorical)
-    ])
+    df = df_success.filter(pl.col("config_fix_mu").is_not_null()).with_columns(
+        [
+            pl.col("filter_config").cast(pl.Categorical),
+            pl.col("config_fix_mu").cast(pl.Boolean),
+            pl.col("N").cast(pl.Int64),
+            pl.col("K").cast(pl.Int64),
+            pl.col("config_T").cast(pl.Int64),
+            pl.concat_str(
+                [
+                    pl.lit("N"),
+                    pl.col("N").cast(pl.Utf8),
+                    pl.lit("-K"),
+                    pl.col("K").cast(pl.Utf8),
+                    pl.lit("-T"),
+                    pl.col("config_T").cast(pl.Utf8),
+                ]
+            )
+            .alias("config_label")
+            .cast(pl.Categorical),
+        ]
+    )
 
     # Define analysis metrics
     params_to_analyze = {
         "lambda_r": "Risk Premium",
         "Phi_f": "State Transition",
         "Phi_h": "Volatility Transition",
-        "Q_h": "Volatility Covariance"
+        "Q_h": "Volatility Covariance",
     }
 
     scalar_metrics = [
         "timing_total_script_duration_s",
         "accuracy_state_estimation_factor_correlation_mean",
-        "accuracy_state_estimation_volatility_correlation_mean"
+        "accuracy_state_estimation_volatility_correlation_mean",
     ]
 
     # Set up color palettes and styles
-    filter_configs = df.select("filter_config").unique().sort("filter_config").to_series()
+    filter_configs = (
+        df.select("filter_config").unique().sort("filter_config").to_series()
+    )
     color_palette = sns.color_palette("husl", n_colors=len(filter_configs))
     color_dict = dict(zip(filter_configs, color_palette))
 
@@ -150,18 +165,24 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame) -> Dict[str, Any]:
     fig_param_errors, axes = plt.subplots(2, 2, figsize=(16, 12))
     axes = axes.ravel()
 
-    plt.suptitle("Parameter Error Analysis by Filter Configuration and Fix μ Setting",
-                 y=1.02, fontsize=14, weight='bold')
+    plt.suptitle(
+        "Parameter Error Analysis by Filter Configuration and Fix μ Setting",
+        y=1.02,
+        fontsize=14,
+        weight="bold",
+    )
 
     for idx, (param, title) in enumerate(params_to_analyze.items()):
         if idx < len(axes):
             error_col = f"param_{param}_rmse"
 
             if error_col in df.columns:
-                plot_data = df.with_columns([
-                    pl.col(error_col).cast(pl.Float64),
-                    pl.col("config_label").cast(pl.Categorical)
-                ]).to_pandas()
+                plot_data = df.with_columns(
+                    [
+                        pl.col(error_col).cast(pl.Float64),
+                        pl.col("config_label").cast(pl.Categorical),
+                    ]
+                ).to_pandas()
 
                 sns.violinplot(
                     data=plot_data,
@@ -173,7 +194,7 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame) -> Dict[str, Any]:
                     inner="box",
                     density_norm="width",
                     cut=0,
-                    ax=axes[idx]
+                    ax=axes[idx],
                 )
 
                 axes[idx].set_title(f"{title} RMSE Distribution", pad=10, fontsize=12)
@@ -182,10 +203,10 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame) -> Dict[str, Any]:
                 labels = axes[idx].get_xticklabels()
                 # Set ticks first, then labels
                 axes[idx].set_xticks(ticks)
-                axes[idx].set_xticklabels(labels, rotation=45, ha='right')
+                axes[idx].set_xticklabels(labels, rotation=45, ha="right")
                 legend = axes[idx].legend(title="Fix μ", labels=["False", "True"])
                 legend.get_frame().set_alpha(0.9)
-                axes[idx].grid(True, axis='y', linestyle='--', alpha=0.7)
+                axes[idx].grid(True, axis="y", linestyle="--", alpha=0.7)
 
                 if plot_data[error_col].min() >= 0:
                     axes[idx].set_ylim(bottom=0)
@@ -196,7 +217,7 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame) -> Dict[str, Any]:
     agg_metrics = [
         *[f"param_{p}_rmse" for p in params_to_analyze],
         *[f"param_{p}_bias" for p in params_to_analyze],
-        *scalar_metrics
+        *scalar_metrics,
     ]
 
     # Cast all metrics to float for aggregation
@@ -204,17 +225,26 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame) -> Dict[str, Any]:
     df_analysis = df.with_columns(cast_exprs)
 
     # Group by refined configuration
-    group_cols = ["filter_config", "N", "K", "config_T", "config_fix_mu", "config_label"]
+    group_cols = [
+        "filter_config",
+        "N",
+        "K",
+        "config_T",
+        "config_fix_mu",
+        "config_label",
+    ]
 
     # Create aggregation expressions
     agg_expressions = []
     for metric in agg_metrics:
         if metric in df_analysis.columns:
-            agg_expressions.extend([
-                pl.col(metric).mean().alias(f"{metric}_mean"),
-                pl.col(metric).std().alias(f"{metric}_std"),
-                pl.col(metric).median().alias(f"{metric}_median")
-            ])
+            agg_expressions.extend(
+                [
+                    pl.col(metric).mean().alias(f"{metric}_mean"),
+                    pl.col(metric).std().alias(f"{metric}_std"),
+                    pl.col(metric).median().alias(f"{metric}_median"),
+                ]
+            )
 
     df_agg = df_analysis.group_by(group_cols).agg(agg_expressions)
 
@@ -226,17 +256,21 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame) -> Dict[str, Any]:
         logging.info(f"\n{filter_cfg} Results:")
         df_filter = df_agg.filter(pl.col("filter_config") == filter_cfg)
 
-        for config in df_filter.select("config_label").unique().sort("config_label").to_series():
+        for config in (
+            df_filter.select("config_label").unique().sort("config_label").to_series()
+        ):
             df_config = df_filter.filter(pl.col("config_label") == config)
             logging.info(f"\nConfiguration: {config}")
 
             for metric in [m for m in agg_metrics if f"{m}_mean" in df_config.columns]:
-                metric_stats = df_config.select([
-                    pl.col(f"{metric}_mean"),
-                    pl.col(f"{metric}_std"),
-                    pl.col(f"{metric}_median"),
-                    pl.col("config_fix_mu")
-                ])
+                metric_stats = df_config.select(
+                    [
+                        pl.col(f"{metric}_mean"),
+                        pl.col(f"{metric}_std"),
+                        pl.col(f"{metric}_median"),
+                        pl.col("config_fix_mu"),
+                    ]
+                )
 
                 fix_true = metric_stats.filter(pl.col("config_fix_mu") == "1")
                 fix_false = metric_stats.filter(pl.col("config_fix_mu") == "0")
@@ -244,7 +278,11 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame) -> Dict[str, Any]:
                 if fix_true.height > 0 and fix_false.height > 0:
                     t_mean, t_std = fix_true.row(0)[:2]
                     f_mean, f_std = fix_false.row(0)[:2]
-                    diff_pct = ((t_mean - f_mean) / f_mean) * 100 if f_mean != 0 else float('inf')
+                    diff_pct = (
+                        ((t_mean - f_mean) / f_mean) * 100
+                        if f_mean != 0
+                        else float("inf")
+                    )
 
                     logging.info(
                         f"{metric}:\n"
@@ -256,8 +294,10 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame) -> Dict[str, Any]:
     # Create time series plots for different metric groups
     metric_groups = {
         "Parameter Errors": [m for m in agg_metrics if "param_" in m and "_rmse" in m],
-        "State Estimation": [m for m in scalar_metrics if "accuracy_state_estimation" in m],
-        "Timing": [m for m in scalar_metrics if "timing_" in m]
+        "State Estimation": [
+            m for m in scalar_metrics if "accuracy_state_estimation" in m
+        ],
+        "Timing": [m for m in scalar_metrics if "timing_" in m],
     }
 
     time_series_figures = {}
@@ -267,18 +307,25 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame) -> Dict[str, Any]:
             continue
 
         fig = plt.figure(figsize=(15, 5 * len(metrics)))
-        plt.suptitle(f"{group_name} Analysis by Time Series Length", y=1.02, fontsize=14, weight='bold')
+        plt.suptitle(
+            f"{group_name} Analysis by Time Series Length",
+            y=1.02,
+            fontsize=14,
+            weight="bold",
+        )
 
         for idx, metric in enumerate(metrics, 1):
             if metric in df.columns:
                 ax = plt.subplot(len(metrics), 1, idx)
 
-                plot_data = df.with_columns([
-                    pl.col(metric).cast(pl.Float64),
-                    pl.col("config_T").cast(pl.Int64),
-                    pl.col("filter_config").cast(pl.Categorical),
-                    pl.col("config_fix_mu").cast(pl.Boolean)
-                ]).to_pandas()
+                plot_data = df.with_columns(
+                    [
+                        pl.col(metric).cast(pl.Float64),
+                        pl.col("config_T").cast(pl.Int64),
+                        pl.col("filter_config").cast(pl.Categorical),
+                        pl.col("config_fix_mu").cast(pl.Boolean),
+                    ]
+                ).to_pandas()
 
                 g = sns.lineplot(
                     data=plot_data,
@@ -289,43 +336,47 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame) -> Dict[str, Any]:
                     markers=True,
                     dashes=True,
                     err_style="band",
-                    errorbar=('ci', 95),
+                    errorbar=("ci", 95),
                     palette=color_dict,
-                    ax=ax
+                    ax=ax,
                 )
 
-                title = metric.replace('_', ' ').title()
+                title = metric.replace("_", " ").title()
                 if "correlation" in metric:
                     title = title.replace("Mean", "")
                     ax.set_ylim(-1, 1)
                 elif "timing" in metric:
-                    ax.set_yscale('log')
+                    ax.set_yscale("log")
                     ax.set_ylabel("Time (seconds, log scale)")
 
                 ax.set_title(title, pad=10, fontsize=12)
                 ax.set_xlabel("Time Series Length (T)")
-                ax.grid(True, linestyle='--', alpha=0.7)
+                ax.grid(True, linestyle="--", alpha=0.7)
 
                 legend = ax.legend(
                     title="Filter Configuration / Fix μ",
                     bbox_to_anchor=(1.05, 1),
-                    loc='upper left',
+                    loc="upper left",
                     frameon=True,
-                    framealpha=0.95
+                    framealpha=0.95,
                 )
                 legend.get_frame().set_alpha(0.9)
 
         plt.tight_layout()
-        time_series_figures[f"fix_mu_time_series_{group_name.lower().replace(' ', '_')}_plot"] = fig
+        time_series_figures[
+            f"fix_mu_time_series_{group_name.lower().replace(' ', '_')}_plot"
+        ] = fig
 
         # Log analysis results
         logging.info(f"\n{group_name} Analysis Results:")
         for metric in metrics:
             if metric in df.columns:
-                stats = df.group_by(["filter_config", "config_fix_mu"]).agg([
-                    pl.col(metric).cast(pl.Float64).mean().alias("mean"),
-                    pl.col(metric).cast(pl.Float64).std().alias("std")
-                ])
+                stats = df.group_by(["filter_config", "config_fix_mu"]).agg(
+                    [
+                        pl.col(metric).cast(pl.Float64).mean().alias("mean"),
+                        pl.col(metric).cast(pl.Float64).std().alias("std"),
+                    ]
+                )
 
                 logging.info(f"\nMetric: {metric}")
                 for row in stats.iter_rows(named=True):
@@ -336,7 +387,7 @@ def analyze_fix_mu_effect(df_success: pl.DataFrame) -> Dict[str, Any]:
                     )
 
     return {
-        'fix_mu_param_errors_plot': fig_param_errors,
+        "fix_mu_param_errors_plot": fig_param_errors,
         **time_series_figures,
-        'fix_mu_analysis_dataframe': df_agg
+        "fix_mu_analysis_dataframe": df_agg,
     }

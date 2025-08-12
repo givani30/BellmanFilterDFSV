@@ -5,24 +5,30 @@ This module provides standardized utilities for optimizing DFSV model parameters
 using various filters and optimizers.
 """
 
+import time
+from collections import namedtuple
+from collections.abc import Callable
 from enum import Enum, auto
+from typing import Any
+
+import equinox as eqx
 import jax
 import jax.numpy as jnp
-import equinox as eqx
 import optimistix as optx
-from typing import Dict, Any, Optional, List, Callable, Tuple
-from collections import namedtuple
-import time
-from jax import lax
+
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.core.filters.bellman_information import (
+    DFSVBellmanInformationFilter,
+)
+from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 
 from .solvers import create_optimizer
-
-from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.core.filters.bellman_information import DFSVBellmanInformationFilter
-from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
-from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
-from .transformations import transform_params, untransform_params, apply_identification_constraint
-from .optimization_helpers import create_stable_initial_params
+from .transformations import (
+    apply_identification_constraint,
+    transform_params,
+    untransform_params,
+)
 
 
 # Filter type enumeration
@@ -34,28 +40,32 @@ class FilterType(Enum):
         BF: Bellman Filter
         PF: Particle Filter
     """
+
     BIF = auto()  # Bellman Information Filter
-    BF = auto()   # Bellman Filter
-    PF = auto()   # Particle Filter
+    BF = auto()  # Bellman Filter
+    PF = auto()  # Particle Filter
 
 
 # Result data structure for optimization runs
-OptimizerResult = namedtuple("OptimizerResult", [
-    "filter_type",           # Type of filter used
-    "optimizer_name",        # Name of the optimizer
-    "uses_transformations",  # Whether parameter transformations were used
-    "fix_mu",                # Whether mu parameter was fixed
-    "prior_config_name",     # Description of prior configuration
-    "success",               # Whether optimization succeeded
-    "result_code",           # The specific result code from the optimizer
-    "final_loss",            # Final loss value
-    "steps",                 # Number of steps taken
-    "time_taken",            # Time taken in seconds
-    "error_message",         # Error message if any
-    "final_params",          # Final estimated parameters
-    "param_history",         # History of parameter estimates during optimization
-    "loss_history"           # History of loss values during optimization
-])
+OptimizerResult = namedtuple(
+    "OptimizerResult",
+    [
+        "filter_type",  # Type of filter used
+        "optimizer_name",  # Name of the optimizer
+        "uses_transformations",  # Whether parameter transformations were used
+        "fix_mu",  # Whether mu parameter was fixed
+        "prior_config_name",  # Description of prior configuration
+        "success",  # Whether optimization succeeded
+        "result_code",  # The specific result code from the optimizer
+        "final_loss",  # Final loss value
+        "steps",  # Number of steps taken
+        "time_taken",  # Time taken in seconds
+        "error_message",  # Error message if any
+        "final_params",  # Final estimated parameters
+        "param_history",  # History of parameter estimates during optimization
+        "loss_history",  # History of loss values during optimization
+    ],
+)
 
 
 def create_filter(filter_type: FilterType, N: int, K: int, num_particles: int = 5000):
@@ -83,13 +93,18 @@ def create_filter(filter_type: FilterType, N: int, K: int, num_particles: int = 
         raise ValueError(f"Unknown filter type: {filter_type}")
 
 
-
-
-#TODO: Need to save all parameters instead of interpolation, this is wrong.
-def generate_parameter_history(initial_params, final_params, num_points,
-                              untransform_fn=None, fix_mu=False, true_mu=None,
-                              apply_constraint_fn=None, objective_fn=None,
-                              objective_args=None):
+# TODO: Need to save all parameters instead of interpolation, this is wrong.
+def generate_parameter_history(
+    initial_params,
+    final_params,
+    num_points,
+    untransform_fn=None,
+    fix_mu=False,
+    true_mu=None,
+    apply_constraint_fn=None,
+    objective_fn=None,
+    objective_args=None,
+):
     """Generate parameter history by interpolating between initial and final parameters.
 
     Args:
@@ -115,8 +130,7 @@ def generate_parameter_history(initial_params, final_params, num_points,
     for alpha in alphas:
         # Interpolate between initial and final parameters
         current_params = jax.tree_util.tree_map(
-            lambda i, f: i + alpha * (f - i),
-            initial_params, final_params
+            lambda i, f: i + alpha * (f - i), initial_params, final_params
         )
 
         # Apply transformations if needed
@@ -137,7 +151,7 @@ def generate_parameter_history(initial_params, final_params, num_points,
                 current_loss = objective_fn(current_params, *objective_args)
                 loss_history.append(float(current_loss))
             except Exception:
-                loss_history.append(float('inf'))
+                loss_history.append(float("inf"))
 
         # Add to parameter history
         param_history.append(current_params)
@@ -145,12 +159,15 @@ def generate_parameter_history(initial_params, final_params, num_points,
     return param_history, loss_history
 
 
-def get_objective_function(filter_type: FilterType, filter_instance,
-                          stability_penalty_weight: float = 1000.0,
-                          priors: Optional[Dict[str, Any]] = None,
-                          is_transformed: bool = False,
-                          fix_mu: bool = False,
-                          true_mu: Optional[jnp.ndarray] = None):
+def get_objective_function(
+    filter_type: FilterType,
+    filter_instance,
+    stability_penalty_weight: float = 1000.0,
+    priors: dict[str, Any] | None = None,
+    is_transformed: bool = False,
+    fix_mu: bool = False,
+    true_mu: jnp.ndarray | None = None,
+):
     """Get the appropriate objective function wrapper for a filter type.
 
     This function returns a wrapper around the appropriate objective function.
@@ -175,14 +192,17 @@ def get_objective_function(filter_type: FilterType, filter_instance,
     if fix_mu and true_mu is None:
         raise ValueError("fix_mu is True, but true_mu was not provided.")
 
-    from bellman_filter_dfsv.core.optimization.objectives import bellman_objective, pf_objective
+    from bellman_filter_dfsv.core.optimization.objectives import (
+        bellman_objective,
+        pf_objective,
+    )
 
     # Map filter types to their underlying objective functions
     # Note: We select the *untransformed* objective here, as the wrapper handles transformations.
     objective_map = {
         FilterType.BIF: bellman_objective,
         FilterType.BF: bellman_objective,
-        FilterType.PF: pf_objective
+        FilterType.PF: pf_objective,
     }
 
     # Check if filter type is supported
@@ -196,8 +216,10 @@ def get_objective_function(filter_type: FilterType, filter_instance,
     # This wrapper handles untransformation, fixing mu, and constraints
     # IMPORTANT: We use a separate JIT-compiled function for the actual computation
     # to ensure the JIT compilation is effective
-    @eqx.filter_jit # JIT compile the computation for performance
-    def _compute_objective(params, observations, is_transformed_flag, fix_mu_flag, true_mu_val):
+    @eqx.filter_jit  # JIT compile the computation for performance
+    def _compute_objective(
+        params, observations, is_transformed_flag, fix_mu_flag, true_mu_val
+    ):
         # 1. Untransform parameters if they are passed in transformed space
         params_iter = untransform_params(params) if is_transformed_flag else params
 
@@ -211,8 +233,11 @@ def get_objective_function(filter_type: FilterType, filter_instance,
 
         # 4. Calculate loss using the underlying objective function
         loss = underlying_objective(
-            params_fixed_constrained, observations, filter_instance,
-            priors=priors, stability_penalty_weight=stability_penalty_weight
+            params_fixed_constrained,
+            observations,
+            filter_instance,
+            priors=priors,
+            stability_penalty_weight=stability_penalty_weight,
         )
         return loss
 
@@ -225,10 +250,17 @@ def get_objective_function(filter_type: FilterType, filter_instance,
     return objective_wrapper
 
 
-def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: optx.AbstractMinimiser,
-                         static_args: Any = None, max_steps: int = 100,
-                         log_interval: int = 1, throw: bool = False,
-                         options: Dict[str, Any] = None, verbose: bool = False) -> Tuple[optx.Solution, List]:
+def minimize_with_logging(
+    objective_fn: Callable,
+    initial_params: Any,
+    solver: optx.AbstractMinimiser,
+    static_args: Any = None,
+    max_steps: int = 100,
+    log_interval: int = 1,
+    throw: bool = False,
+    options: dict[str, Any] = None,
+    verbose: bool = False,
+) -> tuple[optx.Solution, list]:
     """Minimize an objective function with parameter logging.
 
     This function iteratively steps through a solver and returns both the optimization
@@ -257,13 +289,17 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
     # Prepare options
     if options is None:
         options = {}
-    #prepare tags
+    # prepare tags
     tags = frozenset()
     # Get the shape and dtype of the output
     try:
         test_output, test_aux = objective_fn(y, static_args)
         f_struct = jax.ShapeDtypeStruct(test_output.shape, test_output.dtype)
-        aux_struct = None if test_aux is None else jax.ShapeDtypeStruct(test_aux.shape, test_aux.dtype)
+        aux_struct = (
+            None
+            if test_aux is None
+            else jax.ShapeDtypeStruct(test_aux.shape, test_aux.dtype)
+        )
     except Exception as e:
         if throw:
             raise e
@@ -274,22 +310,38 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
                 result=optx.RESULTS.nonlinear_divergence,  # Use a valid result value
                 aux=None,  # Add the aux parameter
                 stats={"num_steps": 0, "error": str(e)},
-                state=None
+                state=None,
             )
             return sol, [initial_params]
 
     # Initialize solver state
-    #also initialize termination
-    #jit compile solver steps
-    step=eqx.filter_jit(eqx.Partial(solver.step,fn=objective_fn,args=static_args,options=options,tags=tags))
-    terminate=eqx.filter_jit(eqx.Partial(solver.terminate,fn=objective_fn,args=static_args,options=options,tags=tags))
+    # also initialize termination
+    # jit compile solver steps
+    step = eqx.filter_jit(
+        eqx.Partial(
+            solver.step, fn=objective_fn, args=static_args, options=options, tags=tags
+        )
+    )
+    terminate = eqx.filter_jit(
+        eqx.Partial(
+            solver.terminate,
+            fn=objective_fn,
+            args=static_args,
+            options=options,
+            tags=tags,
+        )
+    )
 
     # Run optimization with logging
     step_count = 0
 
     # Initialize state and termination
-    state = solver.init(objective_fn, y, static_args, options, f_struct, aux_struct, tags)
-    converged,result=solver.terminate(objective_fn, y, static_args, options, state, tags)
+    state = solver.init(
+        objective_fn, y, static_args, options, f_struct, aux_struct, tags
+    )
+    converged, result = solver.terminate(
+        objective_fn, y, static_args, options, state, tags
+    )
 
     # Calculate initial loss for verbose output
     if verbose:
@@ -346,15 +398,13 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
         )
         # Create the solution object
         sol = optx.Solution(
-            value=final_y,
-            result=result,
-            stats=stats,
-            aux=final_aux,
-            state=state
+            value=final_y, result=result, stats=stats, aux=final_aux, state=state
         )
 
         # Make sure the final parameters are in the history
-        if final_y is not None and (not param_history or param_history[-1] is not final_y):
+        if final_y is not None and (
+            not param_history or param_history[-1] is not final_y
+        ):
             param_history.append(final_y)
 
         # Make sure the final loss is in the loss history
@@ -372,19 +422,20 @@ def minimize_with_logging(objective_fn: Callable, initial_params: Any, solver: o
                 result=optx.RESULTS.nonlinear_divergence,
                 stats={"error": str(e)},
                 aux=None,
-                state=state
+                state=state,
             )
-    return sol, param_history,loss_history
+    return sol, param_history, loss_history
+
 
 def run_optimization(
     filter_type: FilterType,
     returns: jnp.ndarray,
     initial_params: DFSVParamsDataclass,
-    fix_mu: bool=True,
-    true_params: Optional[DFSVParamsDataclass] = None,
+    fix_mu: bool = True,
+    true_params: DFSVParamsDataclass | None = None,
     use_transformations: bool = True,
     optimizer_name: str = "BFGS",
-    priors: Optional[Dict[str, Any]] = None,
+    priors: dict[str, Any] | None = None,
     stability_penalty_weight: float = 1000.0,
     max_steps: int = 500,
     num_particles: int = 5000,
@@ -402,7 +453,7 @@ def run_optimization(
     warmup_steps: int = None,  # Will be set to max_steps*0.1 if None
     cycle_period: int = 100,  # For cyclic schedulers
     step_size_factor: float = 0.5,  # For step decay
-    step_interval: int = 100  # For step decay
+    step_interval: int = 100,  # For step decay
 ) -> OptimizerResult:
     """Run optimization for a specific filter type and configuration.
 
@@ -454,25 +505,11 @@ def run_optimization(
         step_interval: Number of steps between learning rate reductions for step decay.
 
     Returns:
-        OptimizerResult: A namedtuple containing optimization results and metadata,
-        including:
-            - filter_type: The filter type used
-            - optimizer_name: The optimizer used
-            - uses_transformations: Whether parameter transformations were used
-            - fix_mu: Whether mu parameter was fixed
-            - prior_config_name: Description of prior configuration
-            - success: Whether optimization succeeded
-            - final_loss: Final loss value
-            - steps: Number of steps taken
-            - time_taken: Time taken in seconds
-            - error_message: Error message if any
-            - final_params: Final estimated parameters
-            - param_history: History of parameter estimates during optimization
-            - loss_history: History of loss values during optimization
+        OptimizerResult: A namedtuple containing optimization results and metadata.
     """
     # Start timing
     start_time = time.time()
-    #TODO: add a warning that verbose=True will ignore use_lax_while and thus be slower
+    # TODO: add a warning that verbose=True will ignore use_lax_while and thus be slower
 
     # If true_params is provided and we want to fix mu, use the true mu value
     if true_params is not None and fix_mu:
@@ -491,7 +528,7 @@ def run_optimization(
     filter_instance = create_filter(filter_type, N, K, num_particles)
 
     # Transform initial parameters if needed (before passing to objective)
-    initial_params_opt = initial_params # Keep original for reference if needed
+    initial_params_opt = initial_params  # Keep original for reference if needed
     if use_transformations:
         initial_params_opt = transform_params(initial_params_opt)
 
@@ -503,7 +540,7 @@ def run_optimization(
         priors=priors,
         is_transformed=use_transformations,
         fix_mu=fix_mu,  # Pass the explicit flag
-        true_mu=true_params.mu if (fix_mu and true_params is not None) else None
+        true_mu=true_params.mu if (fix_mu and true_params is not None) else None,
     )
 
     # Set default warmup_steps if None
@@ -527,18 +564,22 @@ def run_optimization(
         scheduler_type=scheduler_type,
         cycle_period=cycle_period,
         step_size_factor=step_size_factor,
-        step_interval=step_interval
+        step_interval=step_interval,
     )
-    #Wrap optimizer with best so far to keep best loss value
+    # Wrap optimizer with best so far to keep best loss value
     optimizer = optx.BestSoFarMinimiser(optimizer)
-    #Initialize loss history:
+    # Initialize loss history:
     loss_history = []
     # Print initial loss if verbose
     if verbose:
         try:
             # If true_params is provided, print loss at true parameters
             if true_params is not None:
-                true_params_transformed = transform_params(true_params) if use_transformations else true_params
+                true_params_transformed = (
+                    transform_params(true_params)
+                    if use_transformations
+                    else true_params
+                )
                 true_loss, _ = objective_fn(true_params_transformed, returns)
                 print(f"Loss at true parameters: {true_loss:.4f}")
         except Exception as e:
@@ -554,12 +595,12 @@ def run_optimization(
             sol = optx.minimise(
                 fn=objective_fn,
                 solver=optimizer,
-                y0=initial_params_opt, # Use potentially transformed initial params
+                y0=initial_params_opt,  # Use potentially transformed initial params
                 args=returns,
                 has_aux=True,  # Specify that the objective function returns an auxiliary value (empty tuple in this case)
                 options={},  # Use empty options dictionary
                 max_steps=max_steps,
-                throw=False, # Don't raise errors, check sol.result
+                throw=False,  # Don't raise errors, check sol.result
             )
             # Create a minimal parameter history with just the final parameters
             param_history = [sol.value]
@@ -584,23 +625,23 @@ def run_optimization(
         else:
             # Use implementation with parameter logging
             print("Starting optimization with parameter logging...")
-            sol, param_history,loss_history = minimize_with_logging(
+            sol, param_history, loss_history = minimize_with_logging(
                 objective_fn=objective_fn,
-                initial_params=initial_params_opt, # Use potentially transformed initial params
+                initial_params=initial_params_opt,  # Use potentially transformed initial params
                 solver=optimizer,
                 static_args=returns,
                 max_steps=max_steps,
                 log_interval=log_interval,
                 options={},
                 throw=False,
-                verbose=verbose
+                verbose=verbose,
             )
 
         # Calculate final loss
         try:
             final_loss, _ = objective_fn(sol.value, returns)
         except Exception:
-            final_loss = float('inf')
+            final_loss = float("inf")
 
         # Untransform parameters if needed
         final_params = sol.value
@@ -626,7 +667,9 @@ def run_optimization(
             try:
                 param_history = [untransform_params(p) for p in param_history]
                 # Apply identification constraint to each parameter in history
-                param_history = [apply_identification_constraint(p) for p in param_history]
+                param_history = [
+                    apply_identification_constraint(p) for p in param_history
+                ]
                 # Note: Fixing mu in history is not done here, as history should reflect
                 # the parameters *during* optimization. The objective function handles
                 # fixing mu for the loss calculation.
@@ -654,14 +697,14 @@ def run_optimization(
             # If we reached max steps but the loss is still very high, it didn't really converge
             success = False
             error_message = "Max steps reached without convergence"
-        steps = sol.stats.get('num_steps', len(param_history) - 1)
+        steps = sol.stats.get("num_steps", len(param_history) - 1)
 
         # Ensure loss_history is always populated
         if not loss_history:
             try:
                 loss_history = [float(final_loss)]
             except Exception:
-                loss_history = [float('inf')]
+                loss_history = [float("inf")]
 
         # Ensure error_message is set for failed optimization
         if not success and error_message is None:
@@ -674,13 +717,13 @@ def run_optimization(
         try:
             final_loss, _ = objective_fn(sol.value, returns)
         except Exception:
-            final_loss = float('inf')
+            final_loss = float("inf")
 
         # Try to use the last parameters from the solver if available
         # Otherwise fall back to initial parameters
-        if 'sol' in locals() and hasattr(sol, 'value') and sol.value is not None:
+        if "sol" in locals() and hasattr(sol, "value") and sol.value is not None:
             final_params = sol.value
-            steps = sol.stats.get('num_steps', 0)
+            steps = sol.stats.get("num_steps", 0)
         else:
             final_params = initial_params
             steps = 0
@@ -688,7 +731,7 @@ def run_optimization(
         # Create a minimal parameter history
         param_history = [final_params]
         if not loss_history:
-            loss_history = [float('inf')]
+            loss_history = [float("inf")]
 
     # Calculate time taken
     time_taken = time.time() - start_time
@@ -701,14 +744,14 @@ def run_optimization(
         fix_mu=fix_mu,
         prior_config_name=prior_config_name,
         success=success,
-        result_code=sol.result if 'sol' in locals() else None,
+        result_code=sol.result if "sol" in locals() else None,
         final_loss=final_loss,
         steps=steps,
         time_taken=time_taken,
         error_message=error_message,
         final_params=final_params,
         param_history=param_history,
-        loss_history=loss_history
+        loss_history=loss_history,
     )
 
     return result

@@ -37,9 +37,7 @@ try:
     # Optional: Filter for specific configurations if needed
     # Example: Filter for N=10, K=3, T=2000
     df_filtered = df_selected.filter(
-        (pl.col("N") == 10) &
-        (pl.col("K") == 3) &
-        (pl.col("config_T") == 2000)
+        (pl.col("N") == 10) & (pl.col("K") == 3) & (pl.col("config_T") == 2000)
     )
     print("Filtered Results (N=10, K=3, T=2000):")
     # print(df_filtered)
@@ -47,9 +45,9 @@ try:
     # Print the full selected dataframe for verification
     print(f"Extracted Metrics from: {file_path}")
     # Configure polars display options for better readability
-    pl.Config.set_tbl_rows(100) # Show more rows
-    pl.Config.set_tbl_cols(20) # Show more columns
-    pl.Config.set_float_precision(5) # Set float precision
+    pl.Config.set_tbl_rows(100)  # Show more rows
+    pl.Config.set_tbl_cols(20)  # Show more columns
+    pl.Config.set_float_precision(5)  # Set float precision
 
     print(df_filtered)
 

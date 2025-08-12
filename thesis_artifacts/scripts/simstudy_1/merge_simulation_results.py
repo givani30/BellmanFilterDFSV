@@ -13,7 +13,10 @@ import pandas as pd
 import sys
 from typing import List, Dict, Optional
 
-def find_metrics_files(base_dir: Path, study_pattern: str, metrics_filename: str) -> List[Path]:
+
+def find_metrics_files(
+    base_dir: Path, study_pattern: str, metrics_filename: str
+) -> List[Path]:
     """
     Finds all metrics files within study directories matching the pattern.
 
@@ -26,7 +29,9 @@ def find_metrics_files(base_dir: Path, study_pattern: str, metrics_filename: str
         A list of Path objects pointing to the found metrics files.
     """
     metrics_files = []
-    print(f"Searching for study directories matching '{study_pattern}' in '{base_dir}'...")
+    print(
+        f"Searching for study directories matching '{study_pattern}' in '{base_dir}'..."
+    )
     study_dirs = list(base_dir.glob(study_pattern))
     print(f"Found {len(study_dirs)} potential study directories.")
 
@@ -42,13 +47,15 @@ def find_metrics_files(base_dir: Path, study_pattern: str, metrics_filename: str
         # Assumes structure: base_dir/study_*/config_*/metrics.json
         found_in_study = list(study_dir.rglob(f"*/{metrics_filename}"))
         if found_in_study:
-            print(f"    Found {len(found_in_study)} '{metrics_filename}' files in {study_dir.name}.")
+            print(
+                f"    Found {len(found_in_study)} '{metrics_filename}' files in {study_dir.name}."
+            )
             metrics_files.extend(found_in_study)
         else:
-             print(f"    No '{metrics_filename}' files found in {study_dir.name}.")
-
+            print(f"    No '{metrics_filename}' files found in {study_dir.name}.")
 
     return metrics_files
+
 
 def load_metric(file_path: Path, study_id: str) -> Optional[Dict]:
     """
@@ -63,11 +70,11 @@ def load_metric(file_path: Path, study_id: str) -> Optional[Dict]:
         or None if an error occurs.
     """
     try:
-        with open(file_path, 'r') as f:
+        with open(file_path, "r") as f:
             data = json.load(f)
-        data['study_id'] = study_id # Add the study identifier
+        data["study_id"] = study_id  # Add the study identifier
         # Add the specific run label as well for more granular identification
-        data['run_label'] = file_path.parent.name # Assumes parent dir is the run label
+        data["run_label"] = file_path.parent.name  # Assumes parent dir is the run label
         return data
     except json.JSONDecodeError as e:
         print(f"Error decoding JSON from {file_path}: {e}")
@@ -76,33 +83,34 @@ def load_metric(file_path: Path, study_id: str) -> Optional[Dict]:
         print(f"Error reading file {file_path}: {e}")
         return None
 
+
 def main():
     # --- Argument Parsing ---
     parser = argparse.ArgumentParser(
         description="Merge metrics.json files from multiple simulation study directories.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
         "--input-dir",
         type=Path,
         required=True,
-        help="Directory containing the study_* folders (e.g., simulation_results_raw)."
+        help="Directory containing the study_* folders (e.g., simulation_results_raw).",
     )
     parser.add_argument(
         "--output-file",
         type=Path,
         required=True,
-        help="Path to save the merged metrics (e.g., merged_metrics.csv or merged_metrics.parquet)."
+        help="Path to save the merged metrics (e.g., merged_metrics.csv or merged_metrics.parquet).",
     )
     parser.add_argument(
         "--study-pattern",
         default="study_*",
-        help="Glob pattern for identifying study directories within the input directory."
+        help="Glob pattern for identifying study directories within the input directory.",
     )
     parser.add_argument(
         "--metrics-filename",
         default="metrics.json",
-        help="Name of the metrics file to search for within each run's subdirectory."
+        help="Name of the metrics file to search for within each run's subdirectory.",
     )
     args = parser.parse_args()
 
@@ -113,21 +121,28 @@ def main():
 
     output_suffix = args.output_file.suffix.lower()
     if output_suffix not in [".csv", ".parquet"]:
-        print(f"Error: Output file must have a .csv or .parquet extension. Found: {output_suffix}")
+        print(
+            f"Error: Output file must have a .csv or .parquet extension. Found: {output_suffix}"
+        )
         sys.exit(1)
 
     if output_suffix == ".parquet":
         try:
             import pyarrow
-            print(f"PyArrow version: {pyarrow.__version__}") # Verify import
+
+            print(f"PyArrow version: {pyarrow.__version__}")  # Verify import
         except ImportError:
             print("Error: 'pyarrow' package is required to save in Parquet format.")
             print("Install it using: pip install pyarrow or uv pip install pyarrow")
             sys.exit(1)
 
     # --- Find and Load Metrics ---
-    metrics_files = find_metrics_files(args.input_dir, args.study_pattern, args.metrics_filename)
-    print(f"\nFound {len(metrics_files)} total '{args.metrics_filename}' files across all studies.")
+    metrics_files = find_metrics_files(
+        args.input_dir, args.study_pattern, args.metrics_filename
+    )
+    print(
+        f"\nFound {len(metrics_files)} total '{args.metrics_filename}' files across all studies."
+    )
 
     all_metrics_data = []
     processed_count = 0
@@ -139,9 +154,9 @@ def main():
             # The first part of the relative path should be the study directory
             study_id = relative_path.parts[0]
         except ValueError:
-             print(f"Warning: Could not determine study_id for {file_path}. Skipping.")
-             error_count += 1
-             continue
+            print(f"Warning: Could not determine study_id for {file_path}. Skipping.")
+            error_count += 1
+            continue
 
         metric_data = load_metric(file_path, study_id)
         if metric_data:
@@ -152,7 +167,9 @@ def main():
 
     print(f"\nSuccessfully processed {processed_count} metrics files.")
     if error_count > 0:
-        print(f"Warning: Failed to process or determine study ID for {error_count} files (check logs above).")
+        print(
+            f"Warning: Failed to process or determine study ID for {error_count} files (check logs above)."
+        )
 
     # --- Create and Save DataFrame ---
     if not all_metrics_data:
@@ -164,7 +181,7 @@ def main():
         df = pd.DataFrame(all_metrics_data)
 
         # Optional: Reorder columns for clarity - put identifiers first
-        id_cols = ['study_id', 'run_label']
+        id_cols = ["study_id", "run_label"]
         other_cols = [col for col in df.columns if col not in id_cols]
         # Handle case where 'run_label' might not exist if load_metric failed partially
         final_id_cols = [col for col in id_cols if col in df.columns]
@@ -176,7 +193,6 @@ def main():
         # print("Sample data causing issues:", all_metrics_data[:5])
         sys.exit(1)
 
-
     print(f"Saving merged data ({len(df)} rows) to '{args.output_file}'...")
     try:
         # Ensure output directory exists
@@ -186,11 +202,12 @@ def main():
             df.to_csv(args.output_file, index=False)
         elif output_suffix == ".parquet":
             # Consider compression options if needed: compression='snappy' or 'gzip'
-            df.to_parquet(args.output_file, index=False, engine='pyarrow')
+            df.to_parquet(args.output_file, index=False, engine="pyarrow")
         print("Save complete.")
     except Exception as e:
         print(f"Error saving output file '{args.output_file}': {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

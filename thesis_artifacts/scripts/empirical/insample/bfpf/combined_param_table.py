@@ -8,7 +8,9 @@ from rich import print
 
 # Load the BIF model results
 print("Loading BIF model results...")
-with open('scripts/empirical/insample/bfpf/bif_full_result_20250425_144625.pkl', 'rb') as f:
+with open(
+    "scripts/empirical/insample/bfpf/bif_full_result_20250425_144625.pkl", "rb"
+) as f:
     result_bif = cloudpickle.load(f)
 
 # Extract BIF parameters
@@ -17,7 +19,9 @@ print("BIF parameters loaded successfully.")
 
 # Load the PF model results
 print("Loading PF model results...")
-with open('scripts/empirical/insample/bfpf/pf_full_result_20250425_194312.pkl', 'rb') as f:
+with open(
+    "scripts/empirical/insample/bfpf/pf_full_result_20250425_194312.pkl", "rb"
+) as f:
     result_pf = cloudpickle.load(f)
 
 # Extract PF parameters
@@ -66,11 +70,17 @@ Q_h_mean_pf = np.mean(Q_h_diag_pf)
 print("\n=== Key Parameter Estimates Comparison ===")
 print(f"Parameter                   | BIF Value      | PF Value")
 print(f"------------------------------|----------------|----------------")
-print(f"Max Eigenvalue(Phi_f)        | {phi_f_max_eig_bif:.4f}         | {phi_f_max_eig_pf:.4f}")
-print(f"Max Eigenvalue(Phi_h)        | {phi_h_max_eig_bif:.4f}         | {phi_h_max_eig_pf:.4f}")
+print(
+    f"Max Eigenvalue(Phi_f)        | {phi_f_max_eig_bif:.4f}         | {phi_f_max_eig_pf:.4f}"
+)
+print(
+    f"Max Eigenvalue(Phi_h)        | {phi_h_max_eig_bif:.4f}         | {phi_h_max_eig_pf:.4f}"
+)
 print(f"Mean(mu)                     | {mu_mean_bif:.4f}         | {mu_mean_pf:.4f}")
 print(f"Range(diag(Sigma_epsilon))   | {sigma_eps_range_bif} | {sigma_eps_range_pf}")
-print(f"Mean(diag(Sigma_epsilon))    | {sigma_eps_mean_bif:.4f}         | {sigma_eps_mean_pf:.4f}")
+print(
+    f"Mean(diag(Sigma_epsilon))    | {sigma_eps_mean_bif:.4f}         | {sigma_eps_mean_pf:.4f}"
+)
 print(f"Mean(diag(Q_h))              | {Q_h_mean_bif:.4f}         | {Q_h_mean_pf:.4f}")
 
 # Print in LaTeX format
@@ -84,13 +94,25 @@ print(r"  \begin{tabular}{lcc}")
 print(r"    \toprule")
 print(r"    Parameter Description & BIF Value & PF Value \\")
 print(r"    \midrule")
-print(f"    Max Eigenvalue($\\hat{{\\mPhi}}_f$) & {phi_f_max_eig_bif:.4f} & {phi_f_max_eig_pf:.4f} \\\\")
-print(f"    Max Eigenvalue($\\hat{{\\mPhi}}_h$) & {phi_h_max_eig_bif:.4f} & {phi_h_max_eig_pf:.4f} \\\\")
+print(
+    f"    Max Eigenvalue($\\hat{{\\mPhi}}_f$) & {phi_f_max_eig_bif:.4f} & {phi_f_max_eig_pf:.4f} \\\\"
+)
+print(
+    f"    Max Eigenvalue($\\hat{{\\mPhi}}_h$) & {phi_h_max_eig_bif:.4f} & {phi_h_max_eig_pf:.4f} \\\\"
+)
 print(f"    Mean($\\hat{{\\vmu}}$) & {mu_mean_bif:.4f} & {mu_mean_pf:.4f} \\\\")
-print(f"    Range(diag($\\hat{{\\mSigma}}_\\epsilon$)) & {sigma_eps_range_bif} & {sigma_eps_range_pf} \\\\")
-print(f"    Mean(diag($\\hat{{\\mSigma}}_\\epsilon$)) & {sigma_eps_mean_bif:.4f} & {sigma_eps_mean_pf:.4f} \\\\")
-print(f"    Mean(diag($\\hat{{\\mQ}}_h$)) & {Q_h_mean_bif:.4f} & {Q_h_mean_pf:.4f} \\\\")
+print(
+    f"    Range(diag($\\hat{{\\mSigma}}_\\epsilon$)) & {sigma_eps_range_bif} & {sigma_eps_range_pf} \\\\"
+)
+print(
+    f"    Mean(diag($\\hat{{\\mSigma}}_\\epsilon$)) & {sigma_eps_mean_bif:.4f} & {sigma_eps_mean_pf:.4f} \\\\"
+)
+print(
+    f"    Mean(diag($\\hat{{\\mQ}}_h$)) & {Q_h_mean_bif:.4f} & {Q_h_mean_pf:.4f} \\\\"
+)
 print(r"    \bottomrule")
 print(r"  \end{tabular}")
-print(r"  \par\medskip \footnotesize Note: Comparison of key parameter estimates between DFSV-BIF and DFSV-PF models. Eigenvalues indicate stationarity. $\hat{\vmu}$ represents the unconditional mean of log-volatilities. $\hat{\mSigma}_\epsilon$ captures idiosyncratic variances, and $\hat{\mQ}_h$ captures the volatility of volatilities.")
+print(
+    r"  \par\medskip \footnotesize Note: Comparison of key parameter estimates between DFSV-BIF and DFSV-PF models. Eigenvalues indicate stationarity. $\hat{\vmu}$ represents the unconditional mean of log-volatilities. $\hat{\mSigma}_\epsilon$ captures idiosyncratic variances, and $\hat{\mQ}_h$ captures the volatility of volatilities."
+)
 print(r"\end{table}")

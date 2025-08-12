@@ -14,12 +14,15 @@ import matplotlib.pyplot as plt
 # Project specific imports
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.models.simulation import simulate_DFSV
-from bellman_filter_dfsv.utils.transformations import apply_identification_constraint, transform_params
+from bellman_filter_dfsv.utils.transformations import (
+    apply_identification_constraint,
+    transform_params,
+)
 from bellman_filter_dfsv.utils.optimization import (
     FilterType,
     minimize_with_lax_while,
     minimize_with_logging,
-    get_objective_function
+    get_objective_function,
 )
 from bellman_filter_dfsv.utils.solvers import create_optimizer
 from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformationFilter
@@ -71,8 +74,14 @@ def create_simple_model(N: int = 3, K: int = 2) -> DFSVParamsDataclass:
 
     # Create parameter object
     params = DFSVParamsDataclass(
-        N=N, K=K, lambda_r=lambda_r, Phi_f=Phi_f, Phi_h=Phi_h,
-        mu=mu, sigma2=sigma2, Q_h=Q_h
+        N=N,
+        K=K,
+        lambda_r=lambda_r,
+        Phi_f=Phi_f,
+        Phi_h=Phi_h,
+        mu=mu,
+        sigma2=sigma2,
+        Q_h=Q_h,
     )
 
     # Ensure constraint is applied correctly
@@ -80,18 +89,18 @@ def create_simple_model(N: int = 3, K: int = 2) -> DFSVParamsDataclass:
     return params
 
 
-def create_training_data(params: DFSVParamsDataclass, T: int = 500, seed: int = 123) -> jnp.ndarray:
+def create_training_data(
+    params: DFSVParamsDataclass, T: int = 500, seed: int = 123
+) -> jnp.ndarray:
     """Generate simulation data for training."""
     # Simulate data
-    returns, _, _ = simulate_DFSV(
-        params=params,
-        T=T,
-        seed=seed
-    )
+    returns, _, _ = simulate_DFSV(params=params, T=T, seed=seed)
     return returns
 
 
-def run_speed_test(optimizer_name: str, max_steps: int, use_lax_while: bool, verbose: bool):
+def run_speed_test(
+    optimizer_name: str, max_steps: int, use_lax_while: bool, verbose: bool
+):
     """Run a speed test for the specified minimizer."""
     # Create model and data
     true_params = create_simple_model(N=3, K=2)
@@ -114,7 +123,7 @@ def run_speed_test(optimizer_name: str, max_steps: int, use_lax_while: bool, ver
         priors=None,
         is_transformed=True,
         fix_mu=True,
-        true_mu=true_params.mu
+        true_mu=true_params.mu,
     )
 
     # Create optimizer
@@ -123,11 +132,13 @@ def run_speed_test(optimizer_name: str, max_steps: int, use_lax_while: bool, ver
         learning_rate=1e-3,
         rtol=1e-5,
         atol=1e-5,
-        verbose=verbose
+        verbose=verbose,
     )
 
     # Run optimization with specified minimizer
-    print(f"Starting optimization with {optimizer_name}, max_steps={max_steps}, use_lax_while={use_lax_while}, verbose={verbose}")
+    print(
+        f"Starting optimization with {optimizer_name}, max_steps={max_steps}, use_lax_while={use_lax_while}, verbose={verbose}"
+    )
     start_time = time.time()
     try:
         if use_lax_while:
@@ -141,7 +152,7 @@ def run_speed_test(optimizer_name: str, max_steps: int, use_lax_while: bool, ver
                 log_interval=1,
                 throw=False,
                 options={},
-                verbose=verbose
+                verbose=verbose,
             )
         else:
             print("Using minimize_with_logging")
@@ -154,7 +165,7 @@ def run_speed_test(optimizer_name: str, max_steps: int, use_lax_while: bool, ver
                 log_interval=1,
                 throw=False,
                 options={},
-                verbose=verbose
+                verbose=verbose,
             )
 
         end_time = time.time()
@@ -164,12 +175,20 @@ def run_speed_test(optimizer_name: str, max_steps: int, use_lax_while: bool, ver
         print(f"Final value shape: {jax.tree_map(lambda x: x.shape, sol.value)}")
 
         # Create a result object similar to what run_optimization returns
-        result = type('OptimizerResult', (), {
-            'final_loss': float(objective_fn(sol.value, returns)[0]),
-            'steps': sol.stats.get('num_steps', 0),
-            'result_code': sol.result,
-            'loss_history': [float(objective_fn(p, returns)[0]) for p in param_history] if param_history else None
-        })
+        result = type(
+            "OptimizerResult",
+            (),
+            {
+                "final_loss": float(objective_fn(sol.value, returns)[0]),
+                "steps": sol.stats.get("num_steps", 0),
+                "result_code": sol.result,
+                "loss_history": [
+                    float(objective_fn(p, returns)[0]) for p in param_history
+                ]
+                if param_history
+                else None,
+            },
+        )
 
     except Exception as e:
         end_time = time.time()
@@ -185,7 +204,9 @@ def main():
     print("Starting minimizer speed comparison...")
 
     # Define test parameters
-    optimizer_name = "DampedTrustRegionBFGS"  # Use BFGS as it worked well in previous tests
+    optimizer_name = (
+        "DampedTrustRegionBFGS"  # Use BFGS as it worked well in previous tests
+    )
 
     # Create dictionaries to store results for each step count
     results = {}
@@ -203,7 +224,7 @@ def main():
             optimizer_name=optimizer_name,
             max_steps=max_steps,
             use_lax_while=True,
-            verbose=False
+            verbose=False,
         )
         results[max_steps]["lax_while"] = result_lax
         times[max_steps]["lax_while"] = time_lax
@@ -218,7 +239,7 @@ def main():
             optimizer_name=optimizer_name,
             max_steps=max_steps,
             use_lax_while=False,
-            verbose=False
+            verbose=False,
         )
         results[max_steps]["logging"] = result_std
         times[max_steps]["logging"] = time_std
@@ -233,12 +254,22 @@ def main():
 
     # Plot loss history for each step count
     for max_steps in [50]:
-        if max_steps in results and "lax_while" in results[max_steps] and "logging" in results[max_steps]:
+        if (
+            max_steps in results
+            and "lax_while" in results[max_steps]
+            and "logging" in results[max_steps]
+        ):
             plt.figure(figsize=(10, 6))
             if results[max_steps]["lax_while"].loss_history is not None:
-                plt.plot(results[max_steps]["lax_while"].loss_history, label="minimize_with_lax_while")
+                plt.plot(
+                    results[max_steps]["lax_while"].loss_history,
+                    label="minimize_with_lax_while",
+                )
             if results[max_steps]["logging"].loss_history is not None:
-                plt.plot(results[max_steps]["logging"].loss_history, label="minimize_with_logging")
+                plt.plot(
+                    results[max_steps]["logging"].loss_history,
+                    label="minimize_with_logging",
+                )
 
             plt.xlabel("Step")
             plt.ylabel("Loss")
@@ -249,21 +280,31 @@ def main():
 
             # Save plot
             plt.savefig(f"outputs/minimizer_comparison_{max_steps}_steps.png")
-            print(f"\nLoss history plot saved to outputs/minimizer_comparison_{max_steps}_steps.png")
+            print(
+                f"\nLoss history plot saved to outputs/minimizer_comparison_{max_steps}_steps.png"
+            )
 
     # Print summary
     print("\n=== Summary ===")
     print("Time taken (seconds):")
-    print(f"{'Steps':<10} | {'Lax While':<15} | {'Logging':<15} | {'Speedup':<10} | {'Lax While Result':<30} | {'Logging Result':<30}")
+    print(
+        f"{'Steps':<10} | {'Lax While':<15} | {'Logging':<15} | {'Speedup':<10} | {'Lax While Result':<30} | {'Logging Result':<30}"
+    )
     print("-" * 120)
     for max_steps in [50]:
-        if max_steps in times and "lax_while" in times[max_steps] and "logging" in times[max_steps]:
+        if (
+            max_steps in times
+            and "lax_while" in times[max_steps]
+            and "logging" in times[max_steps]
+        ):
             time_lax = times[max_steps]["lax_while"]
             time_std = times[max_steps]["logging"]
             speedup = time_std / time_lax
             result_lax = results[max_steps]["lax_while"].result_code
             result_std = results[max_steps]["logging"].result_code
-            print(f"{max_steps:<10} | {time_lax:<15.2f} | {time_std:<15.2f} | {speedup:<10.2f} | {str(result_lax):<30} | {str(result_std):<30}")
+            print(
+                f"{max_steps:<10} | {time_lax:<15.2f} | {time_std:<15.2f} | {speedup:<10.2f} | {str(result_lax):<30} | {str(result_std):<30}"
+            )
 
 
 if __name__ == "__main__":

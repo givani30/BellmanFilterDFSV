@@ -20,8 +20,13 @@ import time
 import optimistix as optx
 from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
-from bellman_filter_dfsv.core.filters.bellman_information import DFSVBellmanInformationFilter
-from bellman_filter_dfsv.core.optimization.transformations import transform_params, untransform_params
+from bellman_filter_dfsv.core.filters.bellman_information import (
+    DFSVBellmanInformationFilter,
+)
+from bellman_filter_dfsv.core.optimization.transformations import (
+    transform_params,
+    untransform_params,
+)
 from bellman_filter_dfsv.core.optimization.objectives import bellman_objective
 from bellman_filter_dfsv.core.optimization.solvers import DampedTrustRegionBFGS
 
@@ -67,7 +72,7 @@ def create_simple_dfsv_model(N=3, K=1):
         Phi_h=jnp.array(Phi_h),
         mu=jnp.array(mu),
         sigma2=jnp.array(sigma2),
-        Q_h=jnp.array(Q_h)
+        Q_h=jnp.array(Q_h),
     )
 
     return params
@@ -97,7 +102,7 @@ def create_uninformed_parameters(params):
         Phi_h=jnp.eye(K) * 0.8,  # Moderate persistence
         mu=jnp.zeros(K),  # Zero mean for log volatility
         sigma2=data_variance,  # Moderate idiosyncratic variance
-        Q_h=jnp.eye(K) * 0.2  # Moderate volatility of volatility
+        Q_h=jnp.eye(K) * 0.2,  # Moderate volatility of volatility
     )
 
     return uninformed_params
@@ -147,12 +152,24 @@ def demonstrate_parameter_transformations(params):
     # Check round-trip accuracy
     print("\nRound-Trip Accuracy:")
     # Compare original params with untransformed params
-    print(f"lambda_r Mean Absolute Error: {np.mean(np.abs(np.array(params.lambda_r) - np.array(untransformed_params.lambda_r))):.6f}")
-    print(f"Phi_f Mean Absolute Error: {np.mean(np.abs(np.array(params.Phi_f) - np.array(untransformed_params.Phi_f))):.6f}")
-    print(f"Phi_h Mean Absolute Error: {np.mean(np.abs(np.array(params.Phi_h) - np.array(untransformed_params.Phi_h))):.6f}")
-    print(f"mu Mean Absolute Error: {np.mean(np.abs(np.array(params.mu) - np.array(untransformed_params.mu))):.6f}")
-    print(f"sigma2 Mean Absolute Error: {np.mean(np.abs(np.array(params.sigma2) - np.array(untransformed_params.sigma2))):.6f}")
-    print(f"Q_h Mean Absolute Error: {np.mean(np.abs(np.array(params.Q_h) - np.array(untransformed_params.Q_h))):.6f}")
+    print(
+        f"lambda_r Mean Absolute Error: {np.mean(np.abs(np.array(params.lambda_r) - np.array(untransformed_params.lambda_r))):.6f}"
+    )
+    print(
+        f"Phi_f Mean Absolute Error: {np.mean(np.abs(np.array(params.Phi_f) - np.array(untransformed_params.Phi_f))):.6f}"
+    )
+    print(
+        f"Phi_h Mean Absolute Error: {np.mean(np.abs(np.array(params.Phi_h) - np.array(untransformed_params.Phi_h))):.6f}"
+    )
+    print(
+        f"mu Mean Absolute Error: {np.mean(np.abs(np.array(params.mu) - np.array(untransformed_params.mu))):.6f}"
+    )
+    print(
+        f"sigma2 Mean Absolute Error: {np.mean(np.abs(np.array(params.sigma2) - np.array(untransformed_params.sigma2))):.6f}"
+    )
+    print(
+        f"Q_h Mean Absolute Error: {np.mean(np.abs(np.array(params.Q_h) - np.array(untransformed_params.Q_h))):.6f}"
+    )
 
 
 def optimize_with_and_without_transformations(params, returns, max_steps=100):
@@ -201,10 +218,7 @@ def optimize_with_and_without_transformations(params, returns, max_steps=100):
 
     # Create optimizer
     solver = DampedTrustRegionBFGS(
-        rtol=1e-5,
-        atol=1e-5,
-        norm=optx.rms_norm,
-        verbose=frozenset({"step", "loss"})
+        rtol=1e-5, atol=1e-5, norm=optx.rms_norm, verbose=frozenset({"step", "loss"})
     )
 
     # Run standard optimization
@@ -216,7 +230,7 @@ def optimize_with_and_without_transformations(params, returns, max_steps=100):
             solver=solver,
             y0=uninformed_params,
             max_steps=max_steps,
-            throw=False
+            throw=False,
         )
         standard_success = True
     except Exception as e:
@@ -235,7 +249,7 @@ def optimize_with_and_without_transformations(params, returns, max_steps=100):
             solver=solver,
             y0=transformed_params,
             max_steps=max_steps,
-            throw=False
+            throw=False,
         )
         transformed_success = True
     except Exception as e:
@@ -252,7 +266,9 @@ def optimize_with_and_without_transformations(params, returns, max_steps=100):
         standard_final_loss = standard_objective(result_standard.value)
         # Untransform the parameters for the transformed result
         untransformed_params = untransform_params(result_transformed.value)
-        transformed_final_loss = bellman_objective(untransformed_params, jax_returns, filter_instance)
+        transformed_final_loss = bellman_objective(
+            untransformed_params, jax_returns, filter_instance
+        )
         print(f"Standard final loss: {standard_final_loss}")
         print(f"Transformed final loss: {transformed_final_loss}")
 
@@ -273,26 +289,29 @@ def optimize_with_and_without_transformations(params, returns, max_steps=100):
         # We already have untransformed_params from above
 
         # Compare each parameter
-        param_names = ['lambda_r', 'Phi_f', 'Phi_h', 'mu', 'sigma2', 'Q_h']
+        param_names = ["lambda_r", "Phi_f", "Phi_h", "mu", "sigma2", "Q_h"]
         for param_name in param_names:
             print(f"\n{param_name}:")
             print(f"  True:        {format_param(getattr(params, param_name))}")
-            print(f"  Standard:    {format_param(getattr(result_standard.value, param_name))}")
-            print(f"  Transformed: {format_param(getattr(untransformed_params, param_name))}")
-
+            print(
+                f"  Standard:    {format_param(getattr(result_standard.value, param_name))}"
+            )
+            print(
+                f"  Transformed: {format_param(getattr(untransformed_params, param_name))}"
+            )
 
     # Return results
     return {
-        'standard': {
-            'result': result_standard,
-            'time': standard_time,
-            'success': standard_success
+        "standard": {
+            "result": result_standard,
+            "time": standard_time,
+            "success": standard_success,
         },
-        'transformed': {
-            'result': result_transformed,
-            'time': transformed_time,
-            'success': transformed_success
-        }
+        "transformed": {
+            "result": result_transformed,
+            "time": transformed_time,
+            "success": transformed_success,
+        },
     }
 
 
@@ -304,30 +323,31 @@ def plot_optimization_comparison(optimization_results):
         optimization_results (dict): Dictionary containing optimization results
     """
     # Check if both optimizations were successful
-    standard_success = optimization_results['standard']['success']
-    transformed_success = optimization_results['transformed']['success']
+    standard_success = optimization_results["standard"]["success"]
+    transformed_success = optimization_results["transformed"]["success"]
 
     if not (standard_success and transformed_success):
         print("Cannot plot comparison because one or both optimizations failed.")
         return
 
-
     # Plot computation time
     plt.figure(figsize=(8, 5))
-    method_names = ['Standard', 'Transformed']
+    method_names = ["Standard", "Transformed"]
     times = [
-        optimization_results['standard']['time'],
-        optimization_results['transformed']['time']
+        optimization_results["standard"]["time"],
+        optimization_results["transformed"]["time"],
     ]
-    plt.bar(method_names, times, color=['blue', 'green'])
-    plt.title('Optimization Time')
-    plt.ylabel('Time (seconds)')
-    plt.grid(True, axis='y')
+    plt.bar(method_names, times, color=["blue", "green"])
+    plt.title("Optimization Time")
+    plt.ylabel("Time (seconds)")
+    plt.grid(True, axis="y")
     plt.tight_layout()
     plt.show()
 
 
-def run_filters_and_plot_states(params, result_standard, result_transformed, returns, factors, log_vols):
+def run_filters_and_plot_states(
+    params, result_standard, result_transformed, returns, factors, log_vols
+):
     """Run filters with optimized parameters and plot state estimates vs true values.
 
     Args:
@@ -383,26 +403,28 @@ def run_filters_and_plot_states(params, result_standard, result_transformed, ret
     # Plot factors
     for k in range(K):
         ax = axes[0, k]
-        ax.plot(time_index, factors[:, k], 'k-', label='True')
-        ax.plot(time_index, true_filtered_states[:, k], 'g--', label='True Params')
-        ax.plot(time_index, std_filtered_states[:, k], 'b-.', label='Standard Opt')
-        ax.plot(time_index, trans_filtered_states[:, k], 'r:', label='Transformed Opt')
-        ax.set_title(f'Factor {k+1}')
-        ax.set_xlabel('Time')
-        ax.set_ylabel('Value')
+        ax.plot(time_index, factors[:, k], "k-", label="True")
+        ax.plot(time_index, true_filtered_states[:, k], "g--", label="True Params")
+        ax.plot(time_index, std_filtered_states[:, k], "b-.", label="Standard Opt")
+        ax.plot(time_index, trans_filtered_states[:, k], "r:", label="Transformed Opt")
+        ax.set_title(f"Factor {k + 1}")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Value")
         ax.legend()
         ax.grid(True)
 
     # Plot log-volatilities
     for k in range(K):
         ax = axes[1, k]
-        ax.plot(time_index, log_vols[:, k], 'k-', label='True')
-        ax.plot(time_index, true_filtered_states[:, k+K], 'g--', label='True Params')
-        ax.plot(time_index, std_filtered_states[:, k+K], 'b-.', label='Standard Opt')
-        ax.plot(time_index, trans_filtered_states[:, k+K], 'r:', label='Transformed Opt')
-        ax.set_title(f'Log-Volatility {k+1}')
-        ax.set_xlabel('Time')
-        ax.set_ylabel('Value')
+        ax.plot(time_index, log_vols[:, k], "k-", label="True")
+        ax.plot(time_index, true_filtered_states[:, k + K], "g--", label="True Params")
+        ax.plot(time_index, std_filtered_states[:, k + K], "b-.", label="Standard Opt")
+        ax.plot(
+            time_index, trans_filtered_states[:, k + K], "r:", label="Transformed Opt"
+        )
+        ax.set_title(f"Log-Volatility {k + 1}")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Value")
         ax.legend()
         ax.grid(True)
 
@@ -415,34 +437,42 @@ def run_filters_and_plot_states(params, result_standard, result_transformed, ret
     # Factor estimation errors
     factor_errors_true = np.mean(np.abs(true_filtered_states[:, :K] - factors), axis=0)
     factor_errors_std = np.mean(np.abs(std_filtered_states[:, :K] - factors), axis=0)
-    factor_errors_trans = np.mean(np.abs(trans_filtered_states[:, :K] - factors), axis=0)
+    factor_errors_trans = np.mean(
+        np.abs(trans_filtered_states[:, :K] - factors), axis=0
+    )
 
     # Log-vol estimation errors
-    logvol_errors_true = np.mean(np.abs(true_filtered_states[:, K:2*K] - log_vols), axis=0)
-    logvol_errors_std = np.mean(np.abs(std_filtered_states[:, K:2*K] - log_vols), axis=0)
-    logvol_errors_trans = np.mean(np.abs(trans_filtered_states[:, K:2*K] - log_vols), axis=0)
+    logvol_errors_true = np.mean(
+        np.abs(true_filtered_states[:, K : 2 * K] - log_vols), axis=0
+    )
+    logvol_errors_std = np.mean(
+        np.abs(std_filtered_states[:, K : 2 * K] - log_vols), axis=0
+    )
+    logvol_errors_trans = np.mean(
+        np.abs(trans_filtered_states[:, K : 2 * K] - log_vols), axis=0
+    )
 
     # Plot factor errors
     x = np.arange(K)
     width = 0.25
-    axes[0].bar(x - width, factor_errors_true, width, label='True Params')
-    axes[0].bar(x, factor_errors_std, width, label='Standard Opt')
-    axes[0].bar(x + width, factor_errors_trans, width, label='Transformed Opt')
-    axes[0].set_title('Mean Absolute Error in Factor Estimation')
+    axes[0].bar(x - width, factor_errors_true, width, label="True Params")
+    axes[0].bar(x, factor_errors_std, width, label="Standard Opt")
+    axes[0].bar(x + width, factor_errors_trans, width, label="Transformed Opt")
+    axes[0].set_title("Mean Absolute Error in Factor Estimation")
     axes[0].set_xticks(x)
-    axes[0].set_xticklabels([f'Factor {k+1}' for k in range(K)])
+    axes[0].set_xticklabels([f"Factor {k + 1}" for k in range(K)])
     axes[0].legend()
-    axes[0].grid(True, axis='y')
+    axes[0].grid(True, axis="y")
 
     # Plot log-vol errors
-    axes[1].bar(x - width, logvol_errors_true, width, label='True Params')
-    axes[1].bar(x, logvol_errors_std, width, label='Standard Opt')
-    axes[1].bar(x + width, logvol_errors_trans, width, label='Transformed Opt')
-    axes[1].set_title('Mean Absolute Error in Log-Volatility Estimation')
+    axes[1].bar(x - width, logvol_errors_true, width, label="True Params")
+    axes[1].bar(x, logvol_errors_std, width, label="Standard Opt")
+    axes[1].bar(x + width, logvol_errors_trans, width, label="Transformed Opt")
+    axes[1].set_title("Mean Absolute Error in Log-Volatility Estimation")
     axes[1].set_xticks(x)
-    axes[1].set_xticklabels([f'Log-Vol {k+1}' for k in range(K)])
+    axes[1].set_xticklabels([f"Log-Vol {k + 1}" for k in range(K)])
     axes[1].legend()
-    axes[1].grid(True, axis='y')
+    axes[1].grid(True, axis="y")
 
     plt.tight_layout()
     plt.show()
@@ -467,11 +497,7 @@ def main():
 
     # Run simulation
     print(f"\nSimulating DFSV model for T={T} time periods...")
-    returns, factors, log_vols = simulate_DFSV(
-        params=params,
-        T=T,
-        seed=seed
-    )
+    returns, factors, log_vols = simulate_DFSV(params=params, T=T, seed=seed)
     print("Simulation complete!")
 
     # Compare optimization with and without transformations
@@ -483,10 +509,15 @@ def main():
     plot_optimization_comparison(optimization_results)
 
     # If both optimizations were successful, run filters and plot state estimates
-    if optimization_results['standard']['success'] and optimization_results['transformed']['success']:
-        result_standard = optimization_results['standard']['result']
-        result_transformed = optimization_results['transformed']['result']
-        run_filters_and_plot_states(params, result_standard, result_transformed, returns, factors, log_vols)
+    if (
+        optimization_results["standard"]["success"]
+        and optimization_results["transformed"]["success"]
+    ):
+        result_standard = optimization_results["standard"]["result"]
+        result_transformed = optimization_results["transformed"]["result"]
+        run_filters_and_plot_states(
+            params, result_standard, result_transformed, returns, factors, log_vols
+        )
 
     return params, returns, factors, log_vols, optimization_results
 

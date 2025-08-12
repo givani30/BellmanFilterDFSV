@@ -12,14 +12,14 @@ from statsmodels.stats.stattools import jarque_bera
 print("Starting Dynamic Factor Model (statsmodels) Metrics Calculation...")
 
 # --- Load Results ---
-output_path = 'outputs/empirical/insample/factorcv_results.pkl'
+output_path = "outputs/empirical/insample/factorcv_results.pkl"
 
 if not os.path.exists(output_path):
     print(f"Error: Results file not found at {output_path}")
     print("Please run 02_factor_cv_fit.py first to generate the results.")
 else:
     try:
-        with open(output_path, 'rb') as f:
+        with open(output_path, "rb") as f:
             results = pickle.load(f)
         print(f"Successfully loaded results from {output_path}")
 
@@ -31,7 +31,9 @@ else:
         estimation_time = results.get("estimation_time")
         convergence_success = results.get("convergence_success")
         convergence_message = results.get("convergence_message")
-        standardized_residuals_post_burn = results.get("standardized_residuals_post_burn")
+        standardized_residuals_post_burn = results.get(
+            "standardized_residuals_post_burn"
+        )
         aic = results.get("aic")
         bic = results.get("bic")
         final_phi_f_max_eig = results.get("final_phi_f_max_eig")
@@ -40,7 +42,9 @@ else:
             print("Error: Standardized residuals (post-burn) not found in results.")
         else:
             print(f"\nAnalyzing standardized residuals ({model_name})...")
-            print(f"Residuals shape (post-burn): {standardized_residuals_post_burn.shape}")
+            print(
+                f"Residuals shape (post-burn): {standardized_residuals_post_burn.shape}"
+            )
 
             # --- Residual Diagnostics ---
             # TODO: Implement Ljung-Box, Jarque-Bera, ARCH-LM tests
@@ -54,7 +58,11 @@ else:
                 print("\nLjung-Box test on squared residuals (first series):")
                 try:
                     # Test for autocorrelation in squared residuals
-                    lb_test_sq = acorr_ljungbox(standardized_residuals_post_burn.iloc[:, 0]**2, lags=[10, 20], return_df=True)
+                    lb_test_sq = acorr_ljungbox(
+                        standardized_residuals_post_burn.iloc[:, 0] ** 2,
+                        lags=[10, 20],
+                        return_df=True,
+                    )
                     print(lb_test_sq)
                 except Exception as e:
                     print(f"Error during Ljung-Box test: {e}")
@@ -65,8 +73,12 @@ else:
                 print("\nJarque-Bera test for normality (first 5 series):")
                 try:
                     for i in range(min(5, standardized_residuals_post_burn.shape[1])):
-                        jb_test = jarque_bera(standardized_residuals_post_burn.iloc[:, i])
-                        print(f"Series {i+1}: JB Stat={jb_test[0]:.4f}, p-value={jb_test[1]:.4f}")
+                        jb_test = jarque_bera(
+                            standardized_residuals_post_burn.iloc[:, i]
+                        )
+                        print(
+                            f"Series {i + 1}: JB Stat={jb_test[0]:.4f}, p-value={jb_test[1]:.4f}"
+                        )
                 except Exception as e:
                     print(f"Error during Jarque-Bera test: {e}")
 
@@ -74,11 +86,14 @@ else:
                 print("\nARCH-LM test for heteroskedasticity (first 5 series):")
                 try:
                     for i in range(min(5, standardized_residuals_post_burn.shape[1])):
-                        arch_test = het_arch(standardized_residuals_post_burn.iloc[:, i], nlags=10)
-                        print(f"Series {i+1}: LM Stat={arch_test[0]:.4f}, p-value={arch_test[1]:.4f}")
+                        arch_test = het_arch(
+                            standardized_residuals_post_burn.iloc[:, i], nlags=10
+                        )
+                        print(
+                            f"Series {i + 1}: LM Stat={arch_test[0]:.4f}, p-value={arch_test[1]:.4f}"
+                        )
                 except Exception as e:
                     print(f"Error during ARCH-LM test: {e}")
-
 
             # --- Reporting and Summary ---
             print("\n--- Model Summary ---")
@@ -107,12 +122,18 @@ else:
                     for lag in [5, 10, 15, 20]:
                         lb_results[f"lag_{lag}"] = {}
                         lb_results[f"lag_{lag}"]["pass_rate"] = 0
-                        lb_results[f"lag_{lag}"]["total"] = standardized_residuals_post_burn.shape[1]
+                        lb_results[f"lag_{lag}"]["total"] = (
+                            standardized_residuals_post_burn.shape[1]
+                        )
 
                         pass_count = 0
                         for i in range(standardized_residuals_post_burn.shape[1]):
                             try:
-                                lb_test = acorr_ljungbox(standardized_residuals_post_burn.iloc[:, i]**2, lags=[lag], return_df=True)
+                                lb_test = acorr_ljungbox(
+                                    standardized_residuals_post_burn.iloc[:, i] ** 2,
+                                    lags=[lag],
+                                    return_df=True,
+                                )
                                 # Consider test passed if p-value > 0.05 (no autocorrelation)
                                 if lb_test.iloc[0, 1] > 0.05:
                                     pass_count += 1
@@ -120,7 +141,9 @@ else:
                                 pass
 
                         lb_results[f"lag_{lag}"]["pass_count"] = pass_count
-                        lb_results[f"lag_{lag}"]["pass_rate"] = pass_count / standardized_residuals_post_burn.shape[1]
+                        lb_results[f"lag_{lag}"]["pass_rate"] = (
+                            pass_count / standardized_residuals_post_burn.shape[1]
+                        )
 
                     diagnostic_results["ljung_box_squared"] = lb_results
 
@@ -129,12 +152,17 @@ else:
                     for lag in [5, 10]:
                         arch_results[f"lag_{lag}"] = {}
                         arch_results[f"lag_{lag}"]["pass_rate"] = 0
-                        arch_results[f"lag_{lag}"]["total"] = standardized_residuals_post_burn.shape[1]
+                        arch_results[f"lag_{lag}"]["total"] = (
+                            standardized_residuals_post_burn.shape[1]
+                        )
 
                         pass_count = 0
                         for i in range(standardized_residuals_post_burn.shape[1]):
                             try:
-                                arch_test = het_arch(standardized_residuals_post_burn.iloc[:, i], nlags=lag)
+                                arch_test = het_arch(
+                                    standardized_residuals_post_burn.iloc[:, i],
+                                    nlags=lag,
+                                )
                                 # Consider test passed if p-value > 0.05 (no ARCH effects)
                                 if arch_test[1] > 0.05:
                                     pass_count += 1
@@ -142,7 +170,9 @@ else:
                                 pass
 
                         arch_results[f"lag_{lag}"]["pass_count"] = pass_count
-                        arch_results[f"lag_{lag}"]["pass_rate"] = pass_count / standardized_residuals_post_burn.shape[1]
+                        arch_results[f"lag_{lag}"]["pass_rate"] = (
+                            pass_count / standardized_residuals_post_burn.shape[1]
+                        )
 
                     diagnostic_results["arch_lm"] = arch_results
 
@@ -154,7 +184,9 @@ else:
                     pass_count = 0
                     for i in range(standardized_residuals_post_burn.shape[1]):
                         try:
-                            jb_test = jarque_bera(standardized_residuals_post_burn.iloc[:, i])
+                            jb_test = jarque_bera(
+                                standardized_residuals_post_burn.iloc[:, i]
+                            )
                             # Consider test passed if p-value > 0.05 (normality)
                             if jb_test[1] > 0.05:
                                 pass_count += 1
@@ -162,7 +194,9 @@ else:
                             pass
 
                     jb_results["pass_count"] = pass_count
-                    jb_results["pass_rate"] = pass_count / standardized_residuals_post_burn.shape[1]
+                    jb_results["pass_rate"] = (
+                        pass_count / standardized_residuals_post_burn.shape[1]
+                    )
 
                     diagnostic_results["jarque_bera"] = jb_results
 
@@ -173,21 +207,27 @@ else:
                     "convergence_message": str(convergence_message),
                     "estimation_time": float(estimation_time),
                     "num_params": int(num_params) if not np.isnan(num_params) else None,
-                    "log_likelihood_penalized": float(log_likelihood_penalized) if np.isfinite(log_likelihood_penalized) else None,
-                    "log_likelihood_base": float(log_likelihood_base) if np.isfinite(log_likelihood_base) else None,
+                    "log_likelihood_penalized": float(log_likelihood_penalized)
+                    if np.isfinite(log_likelihood_penalized)
+                    else None,
+                    "log_likelihood_base": float(log_likelihood_base)
+                    if np.isfinite(log_likelihood_base)
+                    else None,
                     "aic": float(aic) if np.isfinite(aic) else None,
                     "bic": float(bic) if np.isfinite(bic) else None,
-                    "final_phi_f_max_eig": float(final_phi_f_max_eig) if np.isfinite(final_phi_f_max_eig) else None,
-                    "diagnostic_tests": diagnostic_results
+                    "final_phi_f_max_eig": float(final_phi_f_max_eig)
+                    if np.isfinite(final_phi_f_max_eig)
+                    else None,
+                    "diagnostic_tests": diagnostic_results,
                 }
 
                 # Ensure output directory exists
-                output_dir = 'outputs/empirical/insample/factorcv'
+                output_dir = "outputs/empirical/insample/factorcv"
                 os.makedirs(output_dir, exist_ok=True)
 
                 # Save metrics summary
-                metrics_path = os.path.join(output_dir, 'metrics_summary.json')
-                with open(metrics_path, 'w') as f:
+                metrics_path = os.path.join(output_dir, "metrics_summary.json")
+                with open(metrics_path, "w") as f:
                     json.dump(metrics_summary, f, indent=2)
 
                 print(f"\nMetrics summary saved to {metrics_path}")
@@ -195,6 +235,7 @@ else:
             except Exception as e:
                 print(f"Error saving metrics summary: {e}")
                 import traceback
+
                 traceback.print_exc()
 
             # TODO: Generate summary tables (e.g., LaTeX tables) and plots (e.g., ACF plots)
@@ -203,6 +244,7 @@ else:
     except Exception as e:
         print(f"Error loading or processing results: {e}")
         import traceback
+
         traceback.print_exc()
 
 

@@ -32,7 +32,7 @@ try:
     returns = df.values
 
     # Save date index for later use
-    with open(DATE_INDEX_FILE, 'w') as f:
+    with open(DATE_INDEX_FILE, "w") as f:
         for date in df.index:
             f.write(f"{date.strftime('%Y-%m-%d')}\n")
 
@@ -51,7 +51,7 @@ try:
     start_time = time.time()
 
     # Initialize model
-    dcc = mgarch.mgarch(dist='t')  # Student-t innovations
+    dcc = mgarch.mgarch(dist="t")  # Student-t innovations
 
     # Fit model with original returns
     result = dcc.fit(returns)
@@ -60,7 +60,7 @@ try:
     estimation_time = time.time() - start_time
 
     # Determine convergence status
-    if hasattr(dcc, 'a') and hasattr(dcc, 'b') and hasattr(dcc, 'dof'):
+    if hasattr(dcc, "a") and hasattr(dcc, "b") and hasattr(dcc, "dof"):
         convergence_status = "Converged"
     else:
         convergence_status = "Failed"
@@ -73,17 +73,19 @@ try:
 
     # Check if the model stores the log-likelihood
     log_likelihood = None
-    if hasattr(dcc, 'loglikelihood'):
+    if hasattr(dcc, "loglikelihood"):
         log_likelihood = float(dcc.loglikelihood)
         print(f"Found log-likelihood in model: {log_likelihood}")
-    elif hasattr(dcc, 'llik_'):
+    elif hasattr(dcc, "llik_"):
         log_likelihood = float(dcc.llik_)
         print(f"Found log-likelihood in model: {log_likelihood}")
-    elif hasattr(dcc, 'llf'):
+    elif hasattr(dcc, "llf"):
         log_likelihood = float(dcc.llf)
         print(f"Found log-likelihood in model: {log_likelihood}")
     else:
-        print("Log-likelihood not found in model. Will calculate manually in script 03.")
+        print(
+            "Log-likelihood not found in model. Will calculate manually in script 03."
+        )
 
     metadata = {
         "model_type": "DCC-GARCH",
@@ -93,11 +95,7 @@ try:
         "convergence_status": convergence_status,
         "sample_size": T,
         "num_series": N,
-        "parameters": {
-            "a": float(dcc.a),
-            "b": float(dcc.b),
-            "dof": float(dcc.dof)
-        }
+        "parameters": {"a": float(dcc.a), "b": float(dcc.b), "dof": float(dcc.dof)},
     }
 
     # Add log-likelihood to metadata if found
@@ -167,7 +165,11 @@ try:
     # Calculate dynamic conditional correlations and covariances
     for t in range(1, T):
         # The DCC recursion for Q_t
-        Q[t] = (1 - a - b) * Q_bar + a * np.outer(eps_tilde[t-1, :], eps_tilde[t-1, :]) + b * Q[t-1]
+        Q[t] = (
+            (1 - a - b) * Q_bar
+            + a * np.outer(eps_tilde[t - 1, :], eps_tilde[t - 1, :])
+            + b * Q[t - 1]
+        )
 
         # Calculate R[t] from Q[t]
         Q_diag_inv = np.diag(1 / np.sqrt(np.diag(Q[t])))
@@ -193,7 +195,7 @@ try:
     print(f"Conditional covariances saved to {OUTPUT_COV_FILE}")
 
     # Save metadata
-    with open(OUTPUT_METADATA_FILE, 'w') as f:
+    with open(OUTPUT_METADATA_FILE, "w") as f:
         json.dump(metadata, f, indent=4)
     print(f"Model metadata saved to {OUTPUT_METADATA_FILE}")
 
@@ -201,5 +203,6 @@ except Exception as e:
     print(f"Error saving model outputs: {e}")
     print(f"Error details: {str(e)}")
     import traceback
+
     traceback.print_exc()
     exit()

@@ -41,8 +41,11 @@ except Exception as e:
 
 T, N = returns.shape
 
+
 # Helper function to forecast univariate GARCH conditional variance
-def forecast_garch_variance(omega, alpha, beta, last_variance, last_squared_residual, steps=1):
+def forecast_garch_variance(
+    omega, alpha, beta, last_variance, last_squared_residual, steps=1
+):
     """
     Forecasts the univariate GARCH conditional variance for a given number of steps.
 
@@ -85,13 +88,19 @@ try:
 
     # Calculate Q matrices using the DCC recursion
     for t in range(1, T):
-        Q[t] = (1 - a - b) * Q_bar + a * np.outer(eps_tilde[t-1, :], eps_tilde[t-1, :]) + b * Q[t-1]
+        Q[t] = (
+            (1 - a - b) * Q_bar
+            + a * np.outer(eps_tilde[t - 1, :], eps_tilde[t - 1, :])
+            + b * Q[t - 1]
+        )
 
     # Get the last Q matrix
     Q_last = Q[-1]
 
     # Forecast Qt+1 using the DCC recursion
-    Qt1 = (1 - a - b) * Q_bar + a * np.outer(eps_tilde_last, eps_tilde_last) + b * Q_last
+    Qt1 = (
+        (1 - a - b) * Q_bar + a * np.outer(eps_tilde_last, eps_tilde_last) + b * Q_last
+    )
 
     # Ensure Qt1 is a valid correlation matrix
     Q_diag_inv = np.diag(1 / np.sqrt(np.diag(Qt1)))
@@ -115,7 +124,9 @@ try:
     try:
         w_gmv = np.linalg.solve(Sigma_next, np.ones(N))
     except np.linalg.LinAlgError:
-        print("Covariance matrix is singular, adding a small ridge for GMV calculation.")
+        print(
+            "Covariance matrix is singular, adding a small ridge for GMV calculation."
+        )
         ridge = 1e-6 * np.eye(N)
         w_gmv = np.linalg.solve(Sigma_next + ridge, np.ones(N))
 

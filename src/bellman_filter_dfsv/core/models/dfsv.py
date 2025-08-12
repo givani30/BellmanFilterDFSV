@@ -5,11 +5,8 @@ This module provides a JAX-compatible pytree dataclass for DFSV model parameters
 suitable for use with JAX-based computations like automatic differentiation.
 """
 
-from dataclasses import dataclass, field
-import numpy as np
 import jax.numpy as jnp
 import jax_dataclasses as jdc
-
 
 # Removed the old NumPy-based DFSV_params class.
 # The DFSVParamsDataclass below is now the standard.
@@ -72,32 +69,36 @@ class DFSVParamsDataclass:
     def to_dict(self) -> tuple:
         """
         Convert the parameter object to a dictionary.
-        
+
         Returns:
             tuple: (Dictionary representation of parameters, N, K)
         """
-        return {
-            "lambda_r": self.lambda_r,
-            "Phi_f": self.Phi_f, 
-            "Phi_h": self.Phi_h,
-            "mu": self.mu,
-            "sigma2": self.sigma2,
-            "Q_h": self.Q_h
-        }, self.N, self.K
-        
+        return (
+            {
+                "lambda_r": self.lambda_r,
+                "Phi_f": self.Phi_f,
+                "Phi_h": self.Phi_h,
+                "mu": self.mu,
+                "sigma2": self.sigma2,
+                "Q_h": self.Q_h,
+            },
+            self.N,
+            self.K,
+        )
+
     @classmethod
     def from_dict(cls, param_dict: dict, N: int, K: int) -> "DFSVParamsDataclass":
         """
         Create a DFSVParamsDataclass from a dictionary.
-        
+
         Args:
             param_dict (dict): Dictionary containing parameter values
             N (int): Number of observations
             K (int): Number of factors
-            
+
         Returns:
             DFSVParamsDataclass: New parameters object
-            
+
         Raises:
             KeyError: If required keys are missing from the dictionary
         """
@@ -109,20 +110,20 @@ class DFSVParamsDataclass:
         missing_keys = [key for key in required_keys if key not in param_dict]
         if missing_keys:
             raise KeyError(f"Missing required parameters: {missing_keys}")
-            
+
         return cls(**param_dict)
 
 
 def dfsv_params_to_dict(params) -> tuple:
     """
     Convert DFSVParamsDataclass to a dictionary.
-    
+
     A convenience function that handles both DFSVParamsDataclass instances
     and regular dictionaries.
-    
+
     Args:
         params: Parameter object or dictionary
-        
+
     Returns:
         tuple: (Dictionary of parameters, N, K)
     """

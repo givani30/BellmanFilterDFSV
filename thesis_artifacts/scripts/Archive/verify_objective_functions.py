@@ -1,6 +1,7 @@
 """
 Script to verify that the consolidated objective functions work correctly.
 """
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -9,11 +10,14 @@ from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
 from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
 from bellman_filter_dfsv.filters.objectives import (
-    bellman_objective, transformed_bellman_objective,
-    pf_objective, transformed_pf_objective
+    bellman_objective,
+    transformed_bellman_objective,
+    pf_objective,
+    transformed_pf_objective,
 )
 from bellman_filter_dfsv.utils.transformations import transform_params
 from bellman_filter_dfsv.models.simulation import simulate_DFSV
+
 
 def main():
     # Set up parameters
@@ -25,25 +29,33 @@ def main():
     params = DFSVParamsDataclass(
         N=N,
         K=K,
-        lambda_r=jnp.array([
-            [0.8, 0.2],
-            [0.6, 0.4],
-            [0.4, 0.6],
-        ]),
-        Phi_f=jnp.array([
-            [0.9, 0.0],
-            [0.0, 0.8],
-        ]),
-        Phi_h=jnp.array([
-            [0.95, 0.0],
-            [0.0, 0.92],
-        ]),
+        lambda_r=jnp.array(
+            [
+                [0.8, 0.2],
+                [0.6, 0.4],
+                [0.4, 0.6],
+            ]
+        ),
+        Phi_f=jnp.array(
+            [
+                [0.9, 0.0],
+                [0.0, 0.8],
+            ]
+        ),
+        Phi_h=jnp.array(
+            [
+                [0.95, 0.0],
+                [0.0, 0.92],
+            ]
+        ),
         mu=jnp.zeros(K),
         sigma2=jnp.array([0.1, 0.1, 0.1]),
-        Q_h=jnp.array([
-            [0.2, 0.0],
-            [0.0, 0.2],
-        ]),
+        Q_h=jnp.array(
+            [
+                [0.2, 0.0],
+                [0.0, 0.2],
+            ]
+        ),
     )
 
     # Transform parameters
@@ -65,9 +77,13 @@ def main():
     print(f"Bellman objective: {bellman_obj:.4f} (time: {bellman_time:.4f}s)")
 
     start_time = time.time()
-    transformed_bellman_obj = transformed_bellman_objective(transformed_params, observations, bf)
+    transformed_bellman_obj = transformed_bellman_objective(
+        transformed_params, observations, bf
+    )
     transformed_bellman_time = time.time() - start_time
-    print(f"Transformed Bellman objective: {transformed_bellman_obj:.4f} (time: {transformed_bellman_time:.4f}s)")
+    print(
+        f"Transformed Bellman objective: {transformed_bellman_obj:.4f} (time: {transformed_bellman_time:.4f}s)"
+    )
 
     # Test Particle Filter objective functions
     print("\n--- Testing Particle Filter Objective Functions ---")
@@ -79,7 +95,9 @@ def main():
     start_time = time.time()
     transformed_pf_obj = transformed_pf_objective(transformed_params, observations, pf)
     transformed_pf_time = time.time() - start_time
-    print(f"Transformed Particle Filter objective: {transformed_pf_obj:.4f} (time: {transformed_pf_time:.4f}s)")
+    print(
+        f"Transformed Particle Filter objective: {transformed_pf_obj:.4f} (time: {transformed_pf_time:.4f}s)"
+    )
 
     # Test with priors and stability penalty
     print("\n--- Testing with Priors and Stability Penalty ---")
@@ -94,35 +112,55 @@ def main():
     stability_penalty_weight = 10.0
 
     bellman_obj_with_priors = bellman_objective(
-        params, observations, bf, priors=priors, stability_penalty_weight=stability_penalty_weight
+        params,
+        observations,
+        bf,
+        priors=priors,
+        stability_penalty_weight=stability_penalty_weight,
     )
     print(f"Bellman objective with priors and penalty: {bellman_obj_with_priors:.4f}")
 
     pf_obj_with_priors = pf_objective(
-        params, observations, pf, priors=priors, stability_penalty_weight=stability_penalty_weight
+        params,
+        observations,
+        pf,
+        priors=priors,
+        stability_penalty_weight=stability_penalty_weight,
     )
-    print(f"Particle Filter objective with priors and penalty: {pf_obj_with_priors:.4f}")
+    print(
+        f"Particle Filter objective with priors and penalty: {pf_obj_with_priors:.4f}"
+    )
 
     # Test with unstable parameters (eigenvalues > 1)
     print("\n--- Testing with Unstable Parameters ---")
     unstable_params = params.replace(
-        Phi_f=jnp.array([
-            [1.1, 0.0],
-            [0.0, 1.2],
-        ]),
-        Phi_h=jnp.array([
-            [1.05, 0.0],
-            [0.0, 1.1],
-        ]),
+        Phi_f=jnp.array(
+            [
+                [1.1, 0.0],
+                [0.0, 1.2],
+            ]
+        ),
+        Phi_h=jnp.array(
+            [
+                [1.05, 0.0],
+                [0.0, 1.1],
+            ]
+        ),
     )
 
     bellman_obj_unstable = bellman_objective(
-        unstable_params, observations, bf, stability_penalty_weight=stability_penalty_weight
+        unstable_params,
+        observations,
+        bf,
+        stability_penalty_weight=stability_penalty_weight,
     )
     print(f"Bellman objective with unstable params: {bellman_obj_unstable:.4f}")
 
     pf_obj_unstable = pf_objective(
-        unstable_params, observations, pf, stability_penalty_weight=stability_penalty_weight
+        unstable_params,
+        observations,
+        pf,
+        stability_penalty_weight=stability_penalty_weight,
     )
     print(f"Particle Filter objective with unstable params: {pf_obj_unstable:.4f}")
 
@@ -130,14 +168,23 @@ def main():
     bellman_obj_unstable_no_penalty = bellman_objective(
         unstable_params, observations, bf, stability_penalty_weight=0.0
     )
-    print(f"Bellman objective with unstable params (no penalty): {bellman_obj_unstable_no_penalty:.4f}")
-    print(f"Penalty contribution: {bellman_obj_unstable - bellman_obj_unstable_no_penalty:.4f}")
+    print(
+        f"Bellman objective with unstable params (no penalty): {bellman_obj_unstable_no_penalty:.4f}"
+    )
+    print(
+        f"Penalty contribution: {bellman_obj_unstable - bellman_obj_unstable_no_penalty:.4f}"
+    )
 
     # Print summary
     print("\n--- Summary ---")
-    print("All objective functions are now fully JAX compatible and use the same core implementation.")
+    print(
+        "All objective functions are now fully JAX compatible and use the same core implementation."
+    )
     print("The stability penalty correctly penalizes eigenvalues > 1.")
-    print("The identification constraint is consistently applied in all objective functions.")
+    print(
+        "The identification constraint is consistently applied in all objective functions."
+    )
+
 
 if __name__ == "__main__":
     main()

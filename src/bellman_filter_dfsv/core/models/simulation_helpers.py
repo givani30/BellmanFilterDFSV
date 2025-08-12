@@ -5,8 +5,13 @@ This module provides functions for generating stable DFSV model parameters for s
 
 import jax
 import jax.numpy as jnp
+
+from bellman_filter_dfsv.core.optimization.transformations import (
+    apply_identification_constraint,
+)
+
 from .dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.core.optimization.transformations import apply_identification_constraint
+
 
 def create_stable_dfsv_params(N: int = 3, K: int = 2) -> DFSVParamsDataclass:
     """Create a stable DFSV model parameter set.
@@ -35,7 +40,7 @@ def create_stable_dfsv_params(N: int = 3, K: int = 2) -> DFSVParamsDataclass:
     key, subkey1 = jax.random.split(key)
     diag_values = jax.random.uniform(subkey1, (K,), minval=0.15, maxval=0.35)
     Phi_f = Phi_f.at[jnp.diag_indices(K)].set(diag_values)
-    # # Normalize to ensure spectral norm < 1 # 
+    # # Normalize to ensure spectral norm < 1 #
     # Phi_f = Phi_f / jnp.linalg.norm(Phi_f, ord=2) * 0.97
 
     # Log-volatility persistence (diagonal-dominant, stable)
@@ -59,8 +64,14 @@ def create_stable_dfsv_params(N: int = 3, K: int = 2) -> DFSVParamsDataclass:
     Q_h = jnp.diag(Q_h_diag)
 
     params = DFSVParamsDataclass(
-        N=N, K=K, lambda_r=lambda_r, Phi_f=Phi_f, Phi_h=Phi_h,
-        mu=mu, sigma2=sigma2, Q_h=Q_h
+        N=N,
+        K=K,
+        lambda_r=lambda_r,
+        Phi_f=Phi_f,
+        Phi_h=Phi_h,
+        mu=mu,
+        sigma2=sigma2,
+        Q_h=Q_h,
     )
     params = apply_identification_constraint(params)
     return params

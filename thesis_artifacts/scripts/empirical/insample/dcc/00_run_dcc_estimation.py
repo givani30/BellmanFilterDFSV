@@ -3,6 +3,7 @@
 Wrapper script to run the complete DCC-GARCH estimation process.
 This script runs both stages of the DCC-GARCH estimation and tracks the total time.
 """
+
 import os
 import time
 import json
@@ -17,13 +18,14 @@ METADATA_FILE = os.path.join(DATA_DIR, "model_metadata.json")
 # Ensure data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
 
+
 def run_script(script_command):
     """Run a Python script and return its exit code.
 
     Args:
         script_command: Either a path to a script or a command with arguments
     """
-    if ' ' in script_command:
+    if " " in script_command:
         # Command with arguments
         cmd = ["python"] + script_command.split()
     else:
@@ -35,6 +37,7 @@ def run_script(script_command):
     if result.stderr:
         print(f"Error output: {result.stderr}")
     return result.returncode
+
 
 # Start timing the entire estimation process
 start_time = time.time()
@@ -76,17 +79,17 @@ print(f"Total estimation time: {total_time:.2f} seconds")
 
 # Update metadata with total estimation time
 try:
-    with open(METADATA_FILE, 'r') as f:
+    with open(METADATA_FILE, "r") as f:
         metadata = json.load(f)
 
     # Update with stage times
     metadata["estimation_time"] = {
         "stage1_time": stage1_time,
         "stage2_time": stage2_time,
-        "total_time": total_time
+        "total_time": total_time,
     }
 
-    with open(METADATA_FILE, 'w') as f:
+    with open(METADATA_FILE, "w") as f:
         json.dump(metadata, f, indent=4)
 
     print("Updated metadata with total estimation time")

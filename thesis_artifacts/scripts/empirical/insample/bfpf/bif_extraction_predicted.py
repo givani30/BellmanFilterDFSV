@@ -29,63 +29,71 @@ from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformati
 
 # Enable double precision
 jax.config.update("jax_enable_x64", True)
-plt.style.use('seaborn-v0_8-whitegrid')
-plt.rcParams.update({
-    'font.family': 'serif',
-    'font.size': 10,
-    'axes.labelsize': 11,
-    'axes.titlesize': 12,
-    'xtick.labelsize': 10,
-    'ytick.labelsize': 10,
-    'legend.fontsize': 10,
-    'legend.title_fontsize': 11,
-    'figure.dpi': 300,
-    'lines.markersize': 6,
-    'lines.linewidth': 1.5,
-})
-df =pl.read_csv("scripts/empirical/vw_returns_final.csv")
+plt.style.use("seaborn-v0_8-whitegrid")
+plt.rcParams.update(
+    {
+        "font.family": "serif",
+        "font.size": 10,
+        "axes.labelsize": 11,
+        "axes.titlesize": 12,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "legend.fontsize": 10,
+        "legend.title_fontsize": 11,
+        "figure.dpi": 300,
+        "lines.markersize": 6,
+        "lines.linewidth": 1.5,
+    }
+)
+df = pl.read_csv("scripts/empirical/vw_returns_final.csv")
 df.head()
-df_with_date=pl.read_csv("scripts/empirical/vw_returns_final_with_date.csv")
+df_with_date = pl.read_csv("scripts/empirical/vw_returns_final_with_date.csv")
 # os.getcwd()
-returns=df.to_jax()
-N=95
-K=5
-T=returns.shape[0]
+returns = df.to_jax()
+N = 95
+K = 5
+T = returns.shape[0]
 
 # %%
-#Load pickle file
-with open('scripts/empirical/insample/bfpf/bif_full_result_20250425_144625.pkl', 'rb') as f:
+# Load pickle file
+with open(
+    "scripts/empirical/insample/bfpf/bif_full_result_20250425_144625.pkl", "rb"
+) as f:
     result_bif = cloudpickle.load(f)
-bif_filter=DFSVBellmanInformationFilter(N,K)
+bif_filter = DFSVBellmanInformationFilter(N, K)
 # bif_filter=DFSVParticleFilter(N,K,num_particles=10000)
-bif_params=result_bif.final_params
-print(round(bif_params.Phi_f,3))
-filtered_states_bf,filtered_infos_bf,log_likelihood_bf=bif_filter.filter(bif_params,returns)
+bif_params = result_bif.final_params
+print(round(bif_params.Phi_f, 3))
+filtered_states_bf, filtered_infos_bf, log_likelihood_bf = bif_filter.filter(
+    bif_params, returns
+)
 
 # %%
-filtered_covs_bf=np.array(bif_filter.get_filtered_covariances())
-filtered_factors_bf=filtered_states_bf[:,:K]
-predicted_states_bf=np.array(bif_filter.get_predicted_states())
-predicted_factors_bf=predicted_states_bf[:,:K]
-predicted_covs_bf=np.array(bif_filter.get_predicted_covariances())
+filtered_covs_bf = np.array(bif_filter.get_filtered_covariances())
+filtered_factors_bf = filtered_states_bf[:, :K]
+predicted_states_bf = np.array(bif_filter.get_predicted_states())
+predicted_factors_bf = predicted_states_bf[:, :K]
+predicted_covs_bf = np.array(bif_filter.get_predicted_covariances())
 
 # %% [markdown]
 # #Calculate standardized residuals z_t
 
 # %%
-returns_arr=np.array(returns)
-lambda_hat_bif=np.array(bif_params.lambda_r)
-sigma_eps_hat_diag_bif=np.array(bif_params.sigma2)
-sigma_eps_hat_mat_bif=np.diag(sigma_eps_hat_diag_bif)
+returns_arr = np.array(returns)
+lambda_hat_bif = np.array(bif_params.lambda_r)
+sigma_eps_hat_diag_bif = np.array(bif_params.sigma2)
+sigma_eps_hat_mat_bif = np.diag(sigma_eps_hat_diag_bif)
 
 # Extract factor components from filtered states and covariances
-filtered_factor_covs_bif=filtered_covs_bf[:,:K,:K]
-predicted_factor_covs_bif=predicted_covs_bf[:,:K,:K]
+filtered_factor_covs_bif = filtered_covs_bf[:, :K, :K]
+predicted_factor_covs_bif = predicted_covs_bf[:, :K, :K]
 
 # Arrays to store results
-standardized_residuals_bif = np.full((T,N),np.nan)
-conditional_covariance_H_bif = np.full((T, N, N), np.nan) # Store Sigma_t|t (from original script, kept for reference)
-predicted_covariance_H_bif = np.full((T, N, N), np.nan)   # Store Sigma_t|t-1
+standardized_residuals_bif = np.full((T, N), np.nan)
+conditional_covariance_H_bif = np.full(
+    (T, N, N), np.nan
+)  # Store Sigma_t|t (from original script, kept for reference)
+predicted_covariance_H_bif = np.full((T, N, N), np.nan)  # Store Sigma_t|t-1
 
 # Calculate filtered covariance for reference (as in original script)
 print("Calculating filtered covariances (for reference)...")
@@ -93,15 +101,16 @@ for t in range(T):
     f_t_filt = filtered_factors_bf[t, :]
     P_f_t_filt = filtered_factor_covs_bif[t, :, :]
     mu_t_filt = lambda_hat_bif @ f_t_filt
-    Sigma_t_filt = (lambda_hat_bif @ P_f_t_filt @ lambda_hat_bif.T
-                   + sigma_eps_hat_mat_bif)
+    Sigma_t_filt = (
+        lambda_hat_bif @ P_f_t_filt @ lambda_hat_bif.T + sigma_eps_hat_mat_bif
+    )
     Sigma_t_filt = (Sigma_t_filt + Sigma_t_filt.T) / 2
     conditional_covariance_H_bif[t, :, :] = Sigma_t_filt
 
 
 # Calculate standardized residuals z_t using PREDICTED mean and cov
 print("Calculating standardized residuals using PREDICTED states (for diagnostics)...")
-standardized_residuals_bif = np.full((T,N),np.nan) # Reset array
+standardized_residuals_bif = np.full((T, N), np.nan)  # Reset array
 
 for t in range(T):
     # Get predicted factor state and covariance at time t
@@ -112,21 +121,28 @@ for t in range(T):
     # predicted_factors_bf[t, :] is f_{t|t-1}
     # predicted_factor_covs_bif[t, :, :] is P_{f,t|t-1}
 
-    f_t_pred = predicted_factors_bf[t, :]        # Shape (K,) - Predicted factor
-    P_f_t_pred = predicted_factor_covs_bif[t, :, :]  # Shape (K, K) - Predicted factor covariance
+    f_t_pred = predicted_factors_bf[t, :]  # Shape (K,) - Predicted factor
+    P_f_t_pred = predicted_factor_covs_bif[
+        t, :, :
+    ]  # Shape (K, K) - Predicted factor covariance
 
     # Calculate conditional observation mean and covariance Sigma_{t|t-1}
     mu_t_pred = lambda_hat_bif @ f_t_pred  # Shape (N,) - Predicted mean
-    Sigma_t_pred = (lambda_hat_bif @ P_f_t_pred @ lambda_hat_bif.T
-                   + sigma_eps_hat_mat_bif)  # Shape (N, N) - Predicted covariance
+    Sigma_t_pred = (
+        lambda_hat_bif @ P_f_t_pred @ lambda_hat_bif.T + sigma_eps_hat_mat_bif
+    )  # Shape (N, N) - Predicted covariance
     Sigma_t_pred = (Sigma_t_pred + Sigma_t_pred.T) / 2  # Ensure symmetry
 
     # Store predicted covariance (this is now the primary covariance used)
-    predicted_covariance_H_bif[t, :, :] = Sigma_t_pred # Overwrite or ensure this is stored
+    predicted_covariance_H_bif[t, :, :] = (
+        Sigma_t_pred  # Overwrite or ensure this is stored
+    )
 
     try:
         # Cholesky decomposition: Sigma_{t|t-1} = L * L'
-        L_t_pred = np.linalg.cholesky(Sigma_t_pred + 1e-7 * np.eye(N))  # Add jitter for numerical stability
+        L_t_pred = np.linalg.cholesky(
+            Sigma_t_pred + 1e-7 * np.eye(N)
+        )  # Add jitter for numerical stability
 
         # Raw residual e_t = r'_t - mu_t|t-1 (using predicted mean)
         e_t_pred = returns_arr[t, :] - mu_t_pred  # Shape (N,)
@@ -151,7 +167,9 @@ standardized_residuals_bif_df = pd.DataFrame(
 )
 # Define burn-in for analysis if needed (e.g., analysis_burn_in = 50)
 analysis_burn_in = 0
-standardized_residuals_bif_post_burn = standardized_residuals_bif_df.iloc[analysis_burn_in:]
+standardized_residuals_bif_post_burn = standardized_residuals_bif_df.iloc[
+    analysis_burn_in:
+]
 
 # %%
 standardized_residuals_bif_df
@@ -159,7 +177,7 @@ standardized_residuals_bif_df
 # %%
 # --- Univariate Diagnostic Tests ---
 #  Also assume N (number of series) and T_eff (effective number of observations post-burn)
-if 'standardized_residuals_bif_post_burn' in locals():
+if "standardized_residuals_bif_post_burn" in locals():
     residuals_df = standardized_residuals_bif_post_burn
     N = residuals_df.shape[1]
     T_eff = residuals_df.shape[0]
@@ -167,16 +185,14 @@ if 'standardized_residuals_bif_post_burn' in locals():
 else:
     print("Error: standardized_residuals_bif_post_burn DataFrame not found.")
     # As a placeholder for testing the code structure:
-    T_eff, N = 500, 95 # Example dimensions
+    T_eff, N = 500, 95  # Example dimensions
     print(f"Creating placeholder DataFrame with shape ({T_eff}, {N})")
-    residuals_df = pd.DataFrame(np.random.randn(T_eff, N), columns=[f'Asset_{i+1}' for i in range(N)])
+    residuals_df = pd.DataFrame(
+        np.random.randn(T_eff, N), columns=[f"Asset_{i + 1}" for i in range(N)]
+    )
 
 # --- Dictionary to store test results ---
-diagnostic_results_bif = {
-    "ljung_box_squared": {},
-    "arch_lm": {},
-    "jarque_bera": {}
-}
+diagnostic_results_bif = {"ljung_box_squared": {}, "arch_lm": {}, "jarque_bera": {}}
 
 # Significance level for counting rejections/passes
 alpha = 0.05
@@ -186,7 +202,7 @@ alpha = 0.05
 
 # %%
 print("\n--- Running Ljung-Box Test (Squared Residuals) ---")
-lags_lb = [5, 10, 15, 20] # Lags to test (similar to DFM script) [cite: 2]
+lags_lb = [5, 10, 15, 20]  # Lags to test (similar to DFM script) [cite: 2]
 
 for lag in lags_lb:
     lb_results = {
@@ -195,24 +211,26 @@ for lag in lags_lb:
         "reject_count": 0,
         "error_count": 0,
         "total": N,
-        "pass_rate": 0.0
+        "pass_rate": 0.0,
     }
     print(f"Testing with lag = {lag}...")
     for i in range(N):
         col_name = residuals_df.columns[i]
-        series_sq = residuals_df.iloc[:, i]**2
+        series_sq = residuals_df.iloc[:, i] ** 2
         # Drop NaN values which can cause issues, though standardized residuals shouldn't have them
         series_sq = series_sq.dropna()
 
         if len(series_sq) <= lag:
-             print(f"  Skipping Series {i+1} ({col_name}): Not enough observations ({len(series_sq)}) for lag {lag}")
-             lb_results["error_count"] += 1
-             continue
+            print(
+                f"  Skipping Series {i + 1} ({col_name}): Not enough observations ({len(series_sq)}) for lag {lag}"
+            )
+            lb_results["error_count"] += 1
+            continue
 
         try:
             # Run the Ljung-Box test
             lb_test = acorr_ljungbox(series_sq, lags=[lag], return_df=True)
-            p_value = lb_test.iloc[0, 1] # Get p-value for the specified lag
+            p_value = lb_test.iloc[0, 1]  # Get p-value for the specified lag
 
             # Check if null hypothesis is rejected (p-value <= alpha means reject H0 -> autocorrelation exists)
             if p_value <= alpha:
@@ -227,21 +245,23 @@ for lag in lags_lb:
 
     # Calculate pass rate (proportion of series where H0 is NOT rejected)
     if N > 0:
-         # Calculate rate based on successfully tested series
+        # Calculate rate based on successfully tested series
         tested_count = N - lb_results["error_count"]
         if tested_count > 0:
             lb_results["pass_rate"] = lb_results["pass_count"] / tested_count
         else:
-            lb_results["pass_rate"] = np.nan # Or 0.0 if preferred
+            lb_results["pass_rate"] = np.nan  # Or 0.0 if preferred
 
     diagnostic_results_bif["ljung_box_squared"][f"lag_{lag}"] = lb_results
-    print(f"Lag {lag}: Pass Rate = {lb_results['pass_rate']:.3f} ({lb_results['pass_count']}/{tested_count})")
+    print(
+        f"Lag {lag}: Pass Rate = {lb_results['pass_rate']:.3f} ({lb_results['pass_count']}/{tested_count})"
+    )
 
 print("Ljung-Box Test Complete.")
 
 # %%
 print("\n--- Running ARCH-LM Test ---")
-lags_arch = [5, 10] # Lags to test
+lags_arch = [5, 10]  # Lags to test
 
 for lag in lags_arch:
     arch_results = {
@@ -250,7 +270,7 @@ for lag in lags_arch:
         "reject_count": 0,
         "error_count": 0,
         "total": N,
-        "pass_rate": 0.0
+        "pass_rate": 0.0,
     }
     print(f"Testing with lag = {lag}...")
     for i in range(N):
@@ -259,9 +279,11 @@ for lag in lags_arch:
 
         # het_arch requires length > nlags
         if len(series) <= lag:
-             print(f"  Skipping Series {i+1} ({col_name}): Not enough observations ({len(series)}) for lag {lag}")
-             arch_results["error_count"] += 1
-             continue
+            print(
+                f"  Skipping Series {i + 1} ({col_name}): Not enough observations ({len(series)}) for lag {lag}"
+            )
+            arch_results["error_count"] += 1
+            continue
 
         try:
             # Run the ARCH-LM test
@@ -285,10 +307,12 @@ for lag in lags_arch:
         if tested_count > 0:
             arch_results["pass_rate"] = arch_results["pass_count"] / tested_count
         else:
-             arch_results["pass_rate"] = np.nan
+            arch_results["pass_rate"] = np.nan
 
     diagnostic_results_bif["arch_lm"][f"lag_{lag}"] = arch_results
-    print(f"Lag {lag}: Pass Rate = {arch_results['pass_rate']:.3f} ({arch_results['pass_count']}/{tested_count})")
+    print(
+        f"Lag {lag}: Pass Rate = {arch_results['pass_rate']:.3f} ({arch_results['pass_count']}/{tested_count})"
+    )
 
 print("ARCH-LM Test Complete.")
 
@@ -299,7 +323,7 @@ jb_results = {
     "reject_count": 0,
     "error_count": 0,
     "total": N,
-    "pass_rate": 0.0
+    "pass_rate": 0.0,
 }
 
 for i in range(N):
@@ -308,9 +332,11 @@ for i in range(N):
 
     # Jarque-Bera test requires at least 2 observations
     if len(series) < 2:
-         print(f"  Skipping Series {i+1} ({col_name}): Not enough observations ({len(series)})")
-         jb_results["error_count"] += 1
-         continue
+        print(
+            f"  Skipping Series {i + 1} ({col_name}): Not enough observations ({len(series)})"
+        )
+        jb_results["error_count"] += 1
+        continue
 
     try:
         # Run the Jarque-Bera test
@@ -332,12 +358,14 @@ for i in range(N):
 if N > 0:
     tested_count = N - jb_results["error_count"]
     if tested_count > 0:
-         jb_results["pass_rate"] = jb_results["pass_count"] / tested_count
+        jb_results["pass_rate"] = jb_results["pass_count"] / tested_count
     else:
         jb_results["pass_rate"] = np.nan
 
 diagnostic_results_bif["jarque_bera"] = jb_results
-print(f"Jarque-Bera: Pass Rate = {jb_results['pass_rate']:.3f} ({jb_results['pass_count']}/{tested_count})")
+print(
+    f"Jarque-Bera: Pass Rate = {jb_results['pass_rate']:.3f} ({jb_results['pass_count']}/{tested_count})"
+)
 
 print("Jarque-Bera Test Complete.")
 
@@ -346,22 +374,22 @@ print("\n--- BIF Diagnostic Test Summary ---")
 print(json.dumps(diagnostic_results_bif, indent=2))
 
 # %%
-print((np.abs(predicted_factors_bf[2,:] - filtered_factors_bf[1,:])))
-
-
+print((np.abs(predicted_factors_bf[2, :] - filtered_factors_bf[1, :])))
 
 
 # %%
 # Extract the date column (ensure it's in pandas datetime format)
 # If df_with_date is polars:
-time_column_pd = df_with_date.select(pl.col("Date").cast(pl.Date)).to_pandas()['Date']
+time_column_pd = df_with_date.select(pl.col("Date").cast(pl.Date)).to_pandas()["Date"]
 # If df_with_date is already pandas:
 # time_column_pd = df_with_date['Date']
 
 # Ensure output directories exist for saving results
-main_output_dir = 'outputs/empirical/insample/'
-bif_output_dir = os.path.join(main_output_dir, 'bif_predicted_residuals') # Changed output directory
-data_dir = os.path.join(bif_output_dir, 'data')
+main_output_dir = "outputs/empirical/insample/"
+bif_output_dir = os.path.join(
+    main_output_dir, "bif_predicted_residuals"
+)  # Changed output directory
+data_dir = os.path.join(bif_output_dir, "data")
 os.makedirs(main_output_dir, exist_ok=True)
 os.makedirs(bif_output_dir, exist_ok=True)
 os.makedirs(data_dir, exist_ok=True)
@@ -372,8 +400,8 @@ filtered_factors = filtered_states_bf[:, :K]
 filtered_log_vols = filtered_states_bf[:, K:]
 
 # Create meaningful column names
-factor_cols = [f'Factor_{i+1}' for i in range(K)]
-logvol_cols = [f'LogVol_{i+1}' for i in range(K)]
+factor_cols = [f"Factor_{i + 1}" for i in range(K)]
+logvol_cols = [f"LogVol_{i + 1}" for i in range(K)]
 
 # Create pandas DataFrame
 plot_df = pd.DataFrame(filtered_factors, columns=factor_cols, index=time_column_pd)
@@ -385,43 +413,47 @@ print(plot_df.head())
 
 # %%
 # --- Plotting ---
-num_states = K # Number of factors OR log-vols to plot
+num_states = K  # Number of factors OR log-vols to plot
 
 # Create figures directory if it doesn't exist
-figures_dir = os.path.join(bif_output_dir, 'figures')
+figures_dir = os.path.join(bif_output_dir, "figures")
 os.makedirs(figures_dir, exist_ok=True)
 
 # Create figure with 2 rows, 1 column
-fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(14, 10), sharex=True) # Share x-axis
+fig, axes = plt.subplots(
+    nrows=2, ncols=1, figsize=(14, 10), sharex=True
+)  # Share x-axis
 
 # Plot Factors on the first subplot (axes[0])
-axes[0].set_title(f'Estimated Latent Factors (K={K})')
+axes[0].set_title(f"Estimated Latent Factors (K={K})")
 for i in range(num_states):
     col_name = factor_cols[i]
     axes[0].plot(plot_df.index, plot_df[col_name], label=col_name, linewidth=1)
-axes[0].set_ylabel('Factor Value')
-axes[0].legend(loc='upper right')
-axes[0].grid(True, linestyle='--', alpha=0.6)
+axes[0].set_ylabel("Factor Value")
+axes[0].legend(loc="upper right")
+axes[0].grid(True, linestyle="--", alpha=0.6)
 
 # Plot Log-Volatilities on the second subplot (axes[1])
-axes[1].set_title(f'Estimated Log-Volatilities (K={K})')
+axes[1].set_title(f"Estimated Log-Volatilities (K={K})")
 for i in range(num_states):
     col_name = logvol_cols[i]
     axes[1].plot(plot_df.index, plot_df[col_name], label=col_name, linewidth=1)
-axes[1].set_ylabel('Log-Volatility (h_t)')
-axes[1].legend(loc='upper right')
-axes[1].grid(True, linestyle='--', alpha=0.6)
+axes[1].set_ylabel("Log-Volatility (h_t)")
+axes[1].legend(loc="upper right")
+axes[1].grid(True, linestyle="--", alpha=0.6)
 
 # Common X-axis label
-axes[1].set_xlabel('Date')
+axes[1].set_xlabel("Date")
 
 # Improve layout and display
 plt.tight_layout()
 
 # Save the figure to the figures directory
-plt.savefig(os.path.join(figures_dir, 'filtered_states.png'), dpi=300)
-print(f"Filtered states plot saved to {os.path.join(figures_dir, 'filtered_states.png')}")
-plt.close() # Close the figure to free memory
+plt.savefig(os.path.join(figures_dir, "filtered_states.png"), dpi=300)
+print(
+    f"Filtered states plot saved to {os.path.join(figures_dir, 'filtered_states.png')}"
+)
+plt.close()  # Close the figure to free memory
 
 # Create individual plots for each factor and log-volatility
 print("\nCreating individual factor and log-volatility plots...")
@@ -431,16 +463,16 @@ for i in range(K):
     plt.figure(figsize=(12, 6))
     col_name = factor_cols[i]
     plt.plot(plot_df.index, plot_df[col_name], linewidth=1.5)
-    plt.title(f'Estimated Latent Factor {i+1}')
-    plt.xlabel('Date')
-    plt.ylabel('Factor Value')
-    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.title(f"Estimated Latent Factor {i + 1}")
+    plt.xlabel("Date")
+    plt.ylabel("Factor Value")
+    plt.grid(True, linestyle="--", alpha=0.6)
     plt.tight_layout()
 
     # Save the figure
-    factor_file = os.path.join(figures_dir, f'factor_{i+1}.png')
+    factor_file = os.path.join(figures_dir, f"factor_{i + 1}.png")
     plt.savefig(factor_file, dpi=300)
-    print(f"Factor {i+1} plot saved to {factor_file}")
+    print(f"Factor {i + 1} plot saved to {factor_file}")
     plt.close()
 
 # Individual log-volatility plots
@@ -448,16 +480,16 @@ for i in range(K):
     plt.figure(figsize=(12, 6))
     col_name = logvol_cols[i]
     plt.plot(plot_df.index, plot_df[col_name], linewidth=1.5)
-    plt.title(f'Estimated Log-Volatility {i+1}')
-    plt.xlabel('Date')
-    plt.ylabel('Log-Volatility Value')
-    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.title(f"Estimated Log-Volatility {i + 1}")
+    plt.xlabel("Date")
+    plt.ylabel("Log-Volatility Value")
+    plt.grid(True, linestyle="--", alpha=0.6)
     plt.tight_layout()
 
     # Save the figure
-    logvol_file = os.path.join(figures_dir, f'logvol_{i+1}.png')
+    logvol_file = os.path.join(figures_dir, f"logvol_{i + 1}.png")
     plt.savefig(logvol_file, dpi=300)
-    print(f"Log-Volatility {i+1} plot saved to {logvol_file}")
+    print(f"Log-Volatility {i + 1} plot saved to {logvol_file}")
     plt.close()
 
 # %%
@@ -465,42 +497,48 @@ for i in range(K):
 print("\nCreating parameter heatmaps...")
 
 # Create figures directory if it doesn't exist
-figures_dir = os.path.join(bif_output_dir, 'figures')
+figures_dir = os.path.join(bif_output_dir, "figures")
 os.makedirs(figures_dir, exist_ok=True)
 
 # 1. Factor loadings (Lambda)
 lambda_r = np.array(bif_params.lambda_r)
 plt.figure(figsize=(16, 12))
-sns.heatmap(lambda_r, annot=False, cmap='coolwarm', fmt='.2f', linewidths=0.5)
-plt.title('Heatmap of Factor Loadings (Lambda)')
-plt.xlabel('Factors')
-plt.ylabel('Assets')
+sns.heatmap(lambda_r, annot=False, cmap="coolwarm", fmt=".2f", linewidths=0.5)
+plt.title("Heatmap of Factor Loadings (Lambda)")
+plt.xlabel("Factors")
+plt.ylabel("Assets")
 plt.tight_layout()
-plt.savefig(os.path.join(figures_dir, 'lambda_heatmap.png'), dpi=300) # Removed interactive from filename
+plt.savefig(
+    os.path.join(figures_dir, "lambda_heatmap.png"), dpi=300
+)  # Removed interactive from filename
 print(f"Lambda heatmap saved to {os.path.join(figures_dir, 'lambda_heatmap.png')}")
 plt.close()
 
 # 2. Factor transition matrix (Phi_f)
 phi_f = np.array(bif_params.Phi_f)
 plt.figure(figsize=(10, 8))
-sns.heatmap(phi_f, annot=True, cmap='viridis', fmt='.2f', linewidths=0.5)
-plt.title('Heatmap of Factor Transition Matrix (Phi_f)')
-plt.xlabel('Factor (t-1)')
-plt.ylabel('Factor (t)')
+sns.heatmap(phi_f, annot=True, cmap="viridis", fmt=".2f", linewidths=0.5)
+plt.title("Heatmap of Factor Transition Matrix (Phi_f)")
+plt.xlabel("Factor (t-1)")
+plt.ylabel("Factor (t)")
 plt.tight_layout()
-plt.savefig(os.path.join(figures_dir, 'phi_f_heatmap.png'), dpi=300) # Removed interactive from filename
+plt.savefig(
+    os.path.join(figures_dir, "phi_f_heatmap.png"), dpi=300
+)  # Removed interactive from filename
 print(f"Phi_f heatmap saved to {os.path.join(figures_dir, 'phi_f_heatmap.png')}")
 plt.close()
 
 # 3. Log-volatility transition matrix (Phi_h)
 phi_h = np.array(bif_params.Phi_h)
 plt.figure(figsize=(10, 8))
-sns.heatmap(phi_h, annot=True, cmap='viridis', fmt='.2f', linewidths=0.5)
-plt.title('Heatmap of Log-Volatility Transition Matrix (Phi_h)')
-plt.xlabel('Log-Vol (t-1)')
-plt.ylabel('Log-Vol (t)')
+sns.heatmap(phi_h, annot=True, cmap="viridis", fmt=".2f", linewidths=0.5)
+plt.title("Heatmap of Log-Volatility Transition Matrix (Phi_h)")
+plt.xlabel("Log-Vol (t-1)")
+plt.ylabel("Log-Vol (t)")
 plt.tight_layout()
-plt.savefig(os.path.join(figures_dir, 'phi_h_heatmap.png'), dpi=300) # Removed interactive from filename
+plt.savefig(
+    os.path.join(figures_dir, "phi_h_heatmap.png"), dpi=300
+)  # Removed interactive from filename
 print(f"Phi_h heatmap saved to {os.path.join(figures_dir, 'phi_h_heatmap.png')}")
 plt.close()
 
@@ -544,17 +582,21 @@ try:
         skewness = 0
         for i in range(n_obs):
             for j in range(n_obs):
-                skewness += (mahal_dist_sq[i] * mahal_dist_sq[j]) ** (3/2)
-        skewness = skewness / (n_obs ** 2)
+                skewness += (mahal_dist_sq[i] * mahal_dist_sq[j]) ** (3 / 2)
+        skewness = skewness / (n_obs**2)
 
         # Mardia's multivariate kurtosis
-        kurtosis_mardia = np.mean(mahal_dist_sq ** 2)
+        kurtosis_mardia = np.mean(mahal_dist_sq**2)
         kurtosis_expected = N * (N + 2)  # Expected value under multivariate normality
 
         # Test statistics
         skewness_stat = (n_obs / 6) * skewness
-        skewness_p = 1 - chi2.cdf(skewness_stat, N * (N + 1) * (N + 2) / 6) # Corrected df for skewness test
-        kurtosis_stat = (kurtosis_mardia - kurtosis_expected) / np.sqrt(8 * N * (N + 2) / n_obs)
+        skewness_p = 1 - chi2.cdf(
+            skewness_stat, N * (N + 1) * (N + 2) / 6
+        )  # Corrected df for skewness test
+        kurtosis_stat = (kurtosis_mardia - kurtosis_expected) / np.sqrt(
+            8 * N * (N + 2) / n_obs
+        )
 
         # p-values
         kurtosis_p = 2 * (1 - norm.cdf(abs(kurtosis_stat)))  # Two-tailed test
@@ -564,23 +606,33 @@ try:
             "mardia_skewness": {
                 "statistic": float(skewness_stat),
                 "p_value": float(skewness_p),
-                "reject_normality": bool(skewness_p < alpha)
+                "reject_normality": bool(skewness_p < alpha),
             },
             "mardia_kurtosis": {
                 "statistic": float(kurtosis_stat),
                 "p_value": float(kurtosis_p),
-                "reject_normality": bool(kurtosis_p < alpha)
-            }
+                "reject_normality": bool(kurtosis_p < alpha),
+            },
         }
 
-        print(f"Mardia's multivariate skewness: statistic={skewness_stat:.4f}, p-value={skewness_p:.4f}")
-        print(f"Mardia's multivariate kurtosis: statistic={kurtosis_stat:.4f}, p-value={kurtosis_p:.4f}")
-        print(f"Multivariate normality based on skewness {'rejected' if skewness_p < alpha else 'not rejected'} at {alpha} significance level")
-        print(f"Multivariate normality based on kurtosis {'rejected' if kurtosis_p < alpha else 'not rejected'} at {alpha} significance level")
+        print(
+            f"Mardia's multivariate skewness: statistic={skewness_stat:.4f}, p-value={skewness_p:.4f}"
+        )
+        print(
+            f"Mardia's multivariate kurtosis: statistic={kurtosis_stat:.4f}, p-value={kurtosis_p:.4f}"
+        )
+        print(
+            f"Multivariate normality based on skewness {'rejected' if skewness_p < alpha else 'not rejected'} at {alpha} significance level"
+        )
+        print(
+            f"Multivariate normality based on kurtosis {'rejected' if kurtosis_p < alpha else 'not rejected'} at {alpha} significance level"
+        )
 
     except np.linalg.LinAlgError:
         print("Warning: Covariance matrix is singular, cannot compute Mardia's tests")
-        extended_metrics_bif["multivariate_normality"] = {"error": "Covariance matrix is singular"}
+        extended_metrics_bif["multivariate_normality"] = {
+            "error": "Covariance matrix is singular"
+        }
 
     # Multivariate Portmanteau tests (Hosking/Li-McLeod)
     print("\nRunning multivariate Portmanteau tests (Hosking/Li-McLeod)...")
@@ -600,8 +652,8 @@ try:
             residuals_matrix_portmanteau,
             lags=portmanteau_lags,
             df_model=df_model,
-            max_dimension=max_dimension, # Use actual N
-            random_state=42  # For reproducibility
+            max_dimension=max_dimension,  # Use actual N
+            random_state=42,  # For reproducibility
         )
 
         # Store results in extended metrics
@@ -618,12 +670,18 @@ try:
             lm_pvalue = result["li_mcleod"]["p_value"]
 
             print(f"  {lag} (testing {result['N_tested']} of {N} series):")
-            print(f"    Hosking: stat={result['hosking']['statistic']:.2f}, p-value={h_pvalue:.4f}, "
-                  f"{'REJECT H0' if h_pvalue < 0.05 else 'FAIL TO REJECT H0'}")
-            print(f"    Li-McLeod: stat={result['li_mcleod']['statistic']:.2f}, p-value={lm_pvalue:.4f}, "
-                  f"{'REJECT H0' if lm_pvalue < 0.05 else 'FAIL TO REJECT H0'}")
+            print(
+                f"    Hosking: stat={result['hosking']['statistic']:.2f}, p-value={h_pvalue:.4f}, "
+                f"{'REJECT H0' if h_pvalue < 0.05 else 'FAIL TO REJECT H0'}"
+            )
+            print(
+                f"    Li-McLeod: stat={result['li_mcleod']['statistic']:.2f}, p-value={lm_pvalue:.4f}, "
+                f"{'REJECT H0' if lm_pvalue < 0.05 else 'FAIL TO REJECT H0'}"
+            )
 
-        print("\nNote: H0 = No autocorrelation in residuals. Rejection indicates presence of autocorrelation.")
+        print(
+            "\nNote: H0 = No autocorrelation in residuals. Rejection indicates presence of autocorrelation."
+        )
         # Removed the note about subsetting as we are using the full N
         # print("Note: Tests performed on a random subset of series due to high dimensionality (N=95).")
 
@@ -648,35 +706,39 @@ try:
         generalized_variance[t] = sign * np.exp(logdet)
 
     # Create DataFrame with date index for plotting
-    gv_df = pd.DataFrame({
-        'Generalized_Variance': generalized_variance
-    }, index=time_column_pd)
+    gv_df = pd.DataFrame(
+        {"Generalized_Variance": generalized_variance}, index=time_column_pd
+    )
 
     # Plot generalized variance over time
     plt.figure(figsize=(12, 6))
-    plt.plot(gv_df.index, gv_df['Generalized_Variance'])
-    plt.title('Generalized Variance (Determinant of Predicted Conditional Covariance Matrix)') # Updated title
-    plt.xlabel('Date')
-    plt.ylabel('Determinant')
-    plt.yscale('log')  # Log scale often helps visualize this better
-    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.plot(gv_df.index, gv_df["Generalized_Variance"])
+    plt.title(
+        "Generalized Variance (Determinant of Predicted Conditional Covariance Matrix)"
+    )  # Updated title
+    plt.xlabel("Date")
+    plt.ylabel("Determinant")
+    plt.yscale("log")  # Log scale often helps visualize this better
+    plt.grid(True, linestyle="--", alpha=0.6)
     plt.tight_layout()
-    plt.close() # Close the figure
+    plt.close()  # Close the figure
 
     # Create figures directory if it doesn't exist
-    figures_dir = os.path.join(bif_output_dir, 'figures')
+    figures_dir = os.path.join(bif_output_dir, "figures")
     os.makedirs(figures_dir, exist_ok=True)
 
     # Save the plot
     plt.figure(figsize=(12, 6))
-    plt.plot(gv_df.index, gv_df['Generalized_Variance'])
-    plt.title('Generalized Variance (Determinant of Predicted Conditional Covariance Matrix)') # Updated title
-    plt.xlabel('Date')
-    plt.ylabel('Determinant')
-    plt.yscale('log')
-    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.plot(gv_df.index, gv_df["Generalized_Variance"])
+    plt.title(
+        "Generalized Variance (Determinant of Predicted Conditional Covariance Matrix)"
+    )  # Updated title
+    plt.xlabel("Date")
+    plt.ylabel("Determinant")
+    plt.yscale("log")
+    plt.grid(True, linestyle="--", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(os.path.join(figures_dir, 'generalized_variance.png'), dpi=300)
+    plt.savefig(os.path.join(figures_dir, "generalized_variance.png"), dpi=300)
     plt.close()
 
     # Save generalized variance to extended metrics
@@ -685,11 +747,11 @@ try:
         "std": float(np.std(generalized_variance)),
         "min": float(np.min(generalized_variance)),
         "max": float(np.max(generalized_variance)),
-        "values": generalized_variance.tolist()  # Full time series
+        "values": generalized_variance.tolist(),  # Full time series
     }
 
     # Save generalized variance to file
-    gv_path = os.path.join(data_dir, 'generalized_variance.npy')
+    gv_path = os.path.join(data_dir, "generalized_variance.npy")
     np.save(gv_path, generalized_variance)
 
 except Exception as e:
@@ -706,7 +768,7 @@ try:
     # Use predicted_covariance_H_bif for average correlation
     for t in range(T):
         # Get the covariance matrix at time t
-        cov_t = predicted_covariance_H_bif[t] # Use predicted covariance
+        cov_t = predicted_covariance_H_bif[t]  # Use predicted covariance
 
         # Calculate the correlation matrix
         # Correlation = Cov_ij / sqrt(Var_i * Var_j)
@@ -720,36 +782,38 @@ try:
 
         # Calculate average of off-diagonal elements
         n_off_diag = N * (N - 1) / 2  # Number of unique off-diagonal elements
-        avg_correlation[t] = (np.sum(corr_t) - N) / n_off_diag  # Subtract diagonal elements (N ones)
+        avg_correlation[t] = (
+            np.sum(corr_t) - N
+        ) / n_off_diag  # Subtract diagonal elements (N ones)
 
     # Create DataFrame with date index for plotting
-    corr_df = pd.DataFrame({
-        'Average_Correlation': avg_correlation
-    }, index=time_column_pd)
+    corr_df = pd.DataFrame(
+        {"Average_Correlation": avg_correlation}, index=time_column_pd
+    )
 
     # Plot average correlation over time
     plt.figure(figsize=(12, 6))
-    plt.plot(corr_df.index, corr_df['Average_Correlation'])
-    plt.title('Average Predicted Conditional Correlation') # Updated title
-    plt.xlabel('Date')
-    plt.ylabel('Average Correlation')
-    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.plot(corr_df.index, corr_df["Average_Correlation"])
+    plt.title("Average Predicted Conditional Correlation")  # Updated title
+    plt.xlabel("Date")
+    plt.ylabel("Average Correlation")
+    plt.grid(True, linestyle="--", alpha=0.6)
     plt.tight_layout()
-    plt.close() # Close the figure
+    plt.close()  # Close the figure
 
     # Create figures directory if it doesn't exist
-    figures_dir = os.path.join(bif_output_dir, 'figures')
+    figures_dir = os.path.join(bif_output_dir, "figures")
     os.makedirs(figures_dir, exist_ok=True)
 
     # Save the plot
     plt.figure(figsize=(12, 6))
-    plt.plot(corr_df.index, corr_df['Average_Correlation'])
-    plt.title('Average Predicted Conditional Correlation') # Updated title
-    plt.xlabel('Date')
-    plt.ylabel('Average Correlation')
-    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.plot(corr_df.index, corr_df["Average_Correlation"])
+    plt.title("Average Predicted Conditional Correlation")  # Updated title
+    plt.xlabel("Date")
+    plt.ylabel("Average Correlation")
+    plt.grid(True, linestyle="--", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(os.path.join(figures_dir, 'average_correlation.png'), dpi=300)
+    plt.savefig(os.path.join(figures_dir, "average_correlation.png"), dpi=300)
     plt.close()
 
     # Save average correlation to extended metrics
@@ -758,14 +822,14 @@ try:
         "std": float(np.std(avg_correlation)),
         "min": float(np.min(avg_correlation)),
         "max": float(np.max(avg_correlation)),
-        "values": avg_correlation.tolist()  # Full time series
+        "values": avg_correlation.tolist(),  # Full time series
     }
 
     # Save correlation matrices and average correlation to file
-    corr_path = os.path.join(data_dir, 'correlation_matrices.npy')
+    corr_path = os.path.join(data_dir, "correlation_matrices.npy")
     np.save(corr_path, correlation_matrices)
 
-    avg_corr_path = os.path.join(data_dir, 'average_correlation.npy')
+    avg_corr_path = os.path.join(data_dir, "average_correlation.npy")
     np.save(avg_corr_path, avg_correlation)
 
 except Exception as e:
@@ -783,7 +847,7 @@ try:
     # Use predicted_covariance_H_bif and predicted_factor_covs_bif for variance decomposition
     for t in range(T):
         # Get the covariance matrix at time t (predicted)
-        cov_t = predicted_covariance_H_bif[t] # Use predicted covariance
+        cov_t = predicted_covariance_H_bif[t]  # Use predicted covariance
 
         # Total variance is the trace of the covariance matrix
         total_var_t = np.trace(cov_t)
@@ -804,44 +868,55 @@ try:
     factor_ratio = factor_contribution / total_variance
 
     # Create DataFrame with date index for plotting
-    ratio_df = pd.DataFrame({
-        'Factor_Ratio': factor_ratio,
-        'Idiosyncratic_Ratio': idiosyncratic_contribution / total_variance
-    }, index=time_column_pd)
+    ratio_df = pd.DataFrame(
+        {
+            "Factor_Ratio": factor_ratio,
+            "Idiosyncratic_Ratio": idiosyncratic_contribution / total_variance,
+        },
+        index=time_column_pd,
+    )
 
     # Plot variance decomposition over time
     plt.figure(figsize=(12, 6))
-    plt.stackplot(ratio_df.index,
-                 ratio_df['Factor_Ratio'],
-                 ratio_df['Idiosyncratic_Ratio'],
-                 labels=['Factor Contribution', 'Idiosyncratic Contribution'],
-                 alpha=0.7)
-    plt.title('Variance Decomposition: Factor vs. Idiosyncratic (Using Predicted Covariance)') # Updated title
-    plt.xlabel('Date')
-    plt.ylabel('Proportion of Total Variance')
-    plt.legend(loc='upper right')
-    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.stackplot(
+        ratio_df.index,
+        ratio_df["Factor_Ratio"],
+        ratio_df["Idiosyncratic_Ratio"],
+        labels=["Factor Contribution", "Idiosyncratic Contribution"],
+        alpha=0.7,
+    )
+    plt.title(
+        "Variance Decomposition: Factor vs. Idiosyncratic (Using Predicted Covariance)"
+    )  # Updated title
+    plt.xlabel("Date")
+    plt.ylabel("Proportion of Total Variance")
+    plt.legend(loc="upper right")
+    plt.grid(True, linestyle="--", alpha=0.6)
     plt.tight_layout()
-    plt.close() # Close the figure
+    plt.close()  # Close the figure
 
     # Create figures directory if it doesn't exist
-    figures_dir = os.path.join(bif_output_dir, 'figures')
+    figures_dir = os.path.join(bif_output_dir, "figures")
     os.makedirs(figures_dir, exist_ok=True)
 
     # Save the plot
     plt.figure(figsize=(12, 6))
-    plt.stackplot(ratio_df.index,
-                 ratio_df['Factor_Ratio'],
-                 ratio_df['Idiosyncratic_Ratio'],
-                 labels=['Factor Contribution', 'Idiosyncratic Contribution'],
-                 alpha=0.7)
-    plt.title('Variance Decomposition: Factor vs. Idiosyncratic (Using Predicted Covariance)') # Updated title
-    plt.xlabel('Date')
-    plt.ylabel('Proportion of Total Variance')
-    plt.legend(loc='upper right')
-    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.stackplot(
+        ratio_df.index,
+        ratio_df["Factor_Ratio"],
+        ratio_df["Idiosyncratic_Ratio"],
+        labels=["Factor Contribution", "Idiosyncratic Contribution"],
+        alpha=0.7,
+    )
+    plt.title(
+        "Variance Decomposition: Factor vs. Idiosyncratic (Using Predicted Covariance)"
+    )  # Updated title
+    plt.xlabel("Date")
+    plt.ylabel("Proportion of Total Variance")
+    plt.legend(loc="upper right")
+    plt.grid(True, linestyle="--", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(os.path.join(figures_dir, 'variance_decomposition.png'), dpi=300)
+    plt.savefig(os.path.join(figures_dir, "variance_decomposition.png"), dpi=300)
     plt.close()
 
     # Save factor variance contribution to extended metrics
@@ -853,16 +928,18 @@ try:
         "factor_ratio_values": factor_ratio.tolist(),  # Full time series
         "mean_total_variance": float(np.mean(total_variance)),
         "mean_factor_variance": float(np.mean(factor_contribution)),
-        "mean_idiosyncratic_variance": float(np.mean(idiosyncratic_contribution))
+        "mean_idiosyncratic_variance": float(np.mean(idiosyncratic_contribution)),
     }
 
     # Save variance components to file
-    variance_components_path = os.path.join(data_dir, 'variance_components.npz')
-    np.savez(variance_components_path,
-             factor_contribution=factor_contribution,
-             idiosyncratic_contribution=idiosyncratic_contribution,
-             total_variance=total_variance,
-             factor_ratio=factor_ratio)
+    variance_components_path = os.path.join(data_dir, "variance_components.npz")
+    np.savez(
+        variance_components_path,
+        factor_contribution=factor_contribution,
+        idiosyncratic_contribution=idiosyncratic_contribution,
+        total_variance=total_variance,
+        factor_ratio=factor_ratio,
+    )
 
 except Exception as e:
     print(f"Error calculating factor variance contribution: {e}")
@@ -887,21 +964,25 @@ final_phi_f_max_eig = np.max(np.abs(np.linalg.eigvals(phi_f_hat_bif)))
 final_phi_h_max_eig = np.max(np.abs(np.linalg.eigvals(phi_h_hat_bif)))
 
 # Get estimation time from result_bif if available, otherwise use placeholder
-estimation_time = getattr(result_bif, 'estimation_time', 0.0)
-convergence_success = getattr(result_bif, 'convergence_success', True)
-convergence_message = getattr(result_bif, 'convergence_message', "Success")
+estimation_time = getattr(result_bif, "estimation_time", 0.0)
+convergence_success = getattr(result_bif, "convergence_success", True)
+convergence_message = getattr(result_bif, "convergence_message", "Success")
 
 # Get log-likelihood
 log_likelihood_base = log_likelihood_bf
 log_likelihood_penalized = log_likelihood_bf  # No penalty in current implementation
 
 # Calculate AIC and BIC
-num_params = N*K-K*(K+1)/2+2*K**2+N+K #lamda-lambda_constraints+(phi matrixes)+sigma+Q_h
+num_params = (
+    N * K - K * (K + 1) / 2 + 2 * K**2 + N + K
+)  # lamda-lambda_constraints+(phi matrixes)+sigma+Q_h
 aic_bif = -2 * log_likelihood_base + 2 * num_params
 bic_bif = -2 * log_likelihood_base + np.log(T) * num_params
 
 # Main results pickle file (for comparison with other models)
-main_output_path = os.path.join(main_output_dir, 'bif_predicted_residuals_results.pkl') # Changed output filename
+main_output_path = os.path.join(
+    main_output_dir, "bif_predicted_residuals_results.pkl"
+)  # Changed output filename
 
 try:
     # Create comprehensive results dictionary
@@ -926,7 +1007,9 @@ try:
         "Q_h_hat": Q_h_hat_bif,
         "filtered_states": filtered_states_bf,  # T x (K+K) (original filtered states)
         "filtered_factors": filtered_factors_bf,  # T x K (original filtered factors)
-        "filtered_log_vols": filtered_states_bf[:, K:],  # T x K (original filtered log-vols)
+        "filtered_log_vols": filtered_states_bf[
+            :, K:
+        ],  # T x K (original filtered log-vols)
         "filtered_state_covariances": filtered_covs_bf,  # T x (K+K) x (K+K) (original filtered covs)
         "conditional_covariance_H": conditional_covariance_H_bif,  # T x N x N (original filtered observation covs, for reference)
         "predicted_covariance_H": predicted_covariance_H_bif,  # T x N x N (predicted observation covs, used for residuals)
@@ -939,21 +1022,21 @@ try:
     }
 
     # Save main results pickle
-    with open(main_output_path, 'wb') as f:
+    with open(main_output_path, "wb") as f:
         pickle.dump(bif_results_for_comparison, f)
     print(f"Results dictionary saved to {main_output_path}")
 
     # Save individual components in DCC-like format
 
     # 2. Save model parameters
-    params_path = os.path.join(data_dir, 'params.pkl')
-    with open(params_path, 'wb') as f:
+    params_path = os.path.join(data_dir, "params.pkl")
+    with open(params_path, "wb") as f:
         pickle.dump(bif_params, f)
     print(f"BIF parameters saved to {params_path}")
 
     # 3. Save model metadata as JSON
     metadata = {
-        "model_type": "Bellman Information Filter DFSV (Predicted Residuals)", # Updated description
+        "model_type": "Bellman Information Filter DFSV (Predicted Residuals)",  # Updated description
         "distribution": "Gaussian",  # Current implementation assumes Gaussian errors
         "num_params": int(num_params),
         "estimation_time": float(estimation_time),
@@ -969,58 +1052,68 @@ try:
         "final_phi_h_max_eig": float(final_phi_h_max_eig),
     }
 
-    metadata_path = os.path.join(bif_output_dir, 'metadata.json')
-    with open(metadata_path, 'w') as f:
+    metadata_path = os.path.join(bif_output_dir, "metadata.json")
+    with open(metadata_path, "w") as f:
         json.dump(metadata, f, indent=4)
     print(f"Model metadata saved to {metadata_path}")
 
     # 4. Save standardized residuals (eps_tilde.npy in DCC)
-    eps_path = os.path.join(data_dir, 'eps_tilde.npy')
+    eps_path = os.path.join(data_dir, "eps_tilde.npy")
     np.save(eps_path, standardized_residuals_bif_post_burn.values)
     print(f"Standardized residuals saved to {eps_path}")
 
     # Also save as CSV with date index (like in DCC/Factor-CV)
     # First create a DataFrame with date index
-    time_column_pd = df_with_date.select(pl.col("Date").cast(pl.Date)).to_pandas()['Date']
+    time_column_pd = df_with_date.select(pl.col("Date").cast(pl.Date)).to_pandas()[
+        "Date"
+    ]
     standardized_residuals_df = pd.DataFrame(
         standardized_residuals_bif_post_burn.values,
         index=time_column_pd[analysis_burn_in:],
-        columns=[f'Asset_{i+1}' for i in range(N)]
+        columns=[f"Asset_{i + 1}" for i in range(N)],
     )
-    eps_csv_path = os.path.join(bif_output_dir, 'standardized_residuals.csv')
+    eps_csv_path = os.path.join(bif_output_dir, "standardized_residuals.csv")
     standardized_residuals_df.to_csv(eps_csv_path)
     print(f"Standardized residuals CSV saved to {eps_csv_path}")
 
     # 5. Save conditional covariance matrices (Ht.npy in DCC)
-    ht_path = os.path.join(data_dir, 'Ht.npy')
+    ht_path = os.path.join(data_dir, "Ht.npy")
     # Extract post-burn predicted covariances to match DCC format
-    post_burn_H = predicted_covariance_H_bif[analysis_burn_in:, :, :] # Use predicted covariance
+    post_burn_H = predicted_covariance_H_bif[
+        analysis_burn_in:, :, :
+    ]  # Use predicted covariance
     np.save(ht_path, post_burn_H)
     print(f"Predicted conditional covariance matrices saved to {ht_path}")
 
     # 6. Save date index (date_index.txt in DCC)
-    date_path = os.path.join(data_dir, 'date_index.txt')
-    with open(date_path, 'w') as f:
+    date_path = os.path.join(data_dir, "date_index.txt")
+    with open(date_path, "w") as f:
         for date in time_column_pd[analysis_burn_in:]:
             f.write(f"{date.strftime('%Y-%m-%d')}\n")
     print(f"Date index saved to {date_path}")
 
     # 7. Save filtered states (factors and log-vols)
-    states_path = os.path.join(data_dir, 'filtered_states.npy')
+    states_path = os.path.join(data_dir, "filtered_states.npy")
     np.save(states_path, filtered_states_bf[analysis_burn_in:])
     print(f"Filtered states saved to {states_path}")
 
     # 8. Save diagnostic results
-    diagnostic_path = os.path.join(bif_output_dir, 'diagnostic_results.json')
-    with open(diagnostic_path, 'w') as f:
+    diagnostic_path = os.path.join(bif_output_dir, "diagnostic_results.json")
+    with open(diagnostic_path, "w") as f:
         # Convert numpy values to Python types for JSON serialization
-        diagnostic_json = json.dumps(diagnostic_results_bif, indent=2, default=lambda x: float(x) if isinstance(x, (np.float32, np.float64)) else x)
+        diagnostic_json = json.dumps(
+            diagnostic_results_bif,
+            indent=2,
+            default=lambda x: float(x)
+            if isinstance(x, (np.float32, np.float64))
+            else x,
+        )
         f.write(diagnostic_json)
     print(f"Diagnostic results saved to {diagnostic_path}")
 
     # 9. Save metrics summary (similar to Factor-CV)
     metrics_summary = {
-        "model_name": "BIF-DFSV (Predicted Residuals)", # Updated description
+        "model_name": "BIF-DFSV (Predicted Residuals)",  # Updated description
         "convergence_success": bool(convergence_success),
         "convergence_message": str(convergence_message),
         "estimation_time": float(estimation_time),
@@ -1032,57 +1125,71 @@ try:
         "final_phi_f_max_eig": float(final_phi_f_max_eig),
         "final_phi_h_max_eig": float(final_phi_h_max_eig),
         "diagnostic_tests": diagnostic_results_bif,
-        "extended_metrics": extended_metrics_bif
+        "extended_metrics": extended_metrics_bif,
     }
 
     # Also save extended metrics separately for easier access
-    extended_metrics_path = os.path.join(bif_output_dir, 'extended_metrics.json')
-    with open(extended_metrics_path, 'w') as f:
-        json.dump(extended_metrics_bif, f, indent=2, default=lambda x: float(x) if isinstance(x, (np.float32, np.float64)) else x)
+    extended_metrics_path = os.path.join(bif_output_dir, "extended_metrics.json")
+    with open(extended_metrics_path, "w") as f:
+        json.dump(
+            extended_metrics_bif,
+            f,
+            indent=2,
+            default=lambda x: float(x)
+            if isinstance(x, (np.float32, np.float64))
+            else x,
+        )
     print(f"Extended metrics saved to {extended_metrics_path}")
 
     # 10. Save parameter heatmaps
     print("\nSaving parameter heatmaps...")
 
     # Create figures directory if not already created
-    figures_dir = os.path.join(bif_output_dir, 'figures')
+    figures_dir = os.path.join(bif_output_dir, "figures")
     os.makedirs(figures_dir, exist_ok=True)
 
     # 1. Factor loadings (Lambda)
     plt.figure(figsize=(16, 12))
-    sns.heatmap(lambda_hat_bif, annot=False, cmap='coolwarm', fmt='.2f', linewidths=0.5)
-    plt.title('Heatmap of Factor Loadings (Lambda)')
-    plt.xlabel('Factors')
-    plt.ylabel('Assets')
+    sns.heatmap(lambda_hat_bif, annot=False, cmap="coolwarm", fmt=".2f", linewidths=0.5)
+    plt.title("Heatmap of Factor Loadings (Lambda)")
+    plt.xlabel("Factors")
+    plt.ylabel("Assets")
     plt.tight_layout()
-    plt.savefig(os.path.join(figures_dir, 'lambda_heatmap.png'), dpi=300)
+    plt.savefig(os.path.join(figures_dir, "lambda_heatmap.png"), dpi=300)
     plt.close()
 
     # 2. Factor transition matrix (Phi_f)
     plt.figure(figsize=(10, 8))
-    sns.heatmap(phi_f_hat_bif, annot=True, cmap='viridis', fmt='.2f', linewidths=0.5)
-    plt.title('Heatmap of Factor Transition Matrix (Phi_f)')
-    plt.xlabel('Factor (t-1)')
-    plt.ylabel('Factor (t)')
+    sns.heatmap(phi_f_hat_bif, annot=True, cmap="viridis", fmt=".2f", linewidths=0.5)
+    plt.title("Heatmap of Factor Transition Matrix (Phi_f)")
+    plt.xlabel("Factor (t-1)")
+    plt.ylabel("Factor (t)")
     plt.tight_layout()
-    plt.savefig(os.path.join(figures_dir, 'phi_f_heatmap.png'), dpi=300)
+    plt.savefig(os.path.join(figures_dir, "phi_f_heatmap.png"), dpi=300)
     plt.close()
 
     # 3. Log-volatility transition matrix (Phi_h)
     plt.figure(figsize=(10, 8))
-    sns.heatmap(phi_h_hat_bif, annot=True, cmap='viridis', fmt='.2f', linewidths=0.5)
-    plt.title('Heatmap of Log-Volatility Transition Matrix (Phi_h)')
-    plt.xlabel('Log-Vol (t-1)')
-    plt.ylabel('Log-Vol (t)')
+    sns.heatmap(phi_h_hat_bif, annot=True, cmap="viridis", fmt=".2f", linewidths=0.5)
+    plt.title("Heatmap of Log-Volatility Transition Matrix (Phi_h)")
+    plt.xlabel("Log-Vol (t-1)")
+    plt.ylabel("Log-Vol (t)")
     plt.tight_layout()
-    plt.savefig(os.path.join(figures_dir, 'phi_h_heatmap.png'), dpi=300)
+    plt.savefig(os.path.join(figures_dir, "phi_h_heatmap.png"), dpi=300)
     plt.close()
 
     print(f"Parameter heatmaps saved to {figures_dir}")
 
-    metrics_path = os.path.join(bif_output_dir, 'metrics_summary.json')
-    with open(metrics_path, 'w') as f:
-        json.dump(metrics_summary, f, indent=2, default=lambda x: float(x) if isinstance(x, (np.float32, np.float64)) else x)
+    metrics_path = os.path.join(bif_output_dir, "metrics_summary.json")
+    with open(metrics_path, "w") as f:
+        json.dump(
+            metrics_summary,
+            f,
+            indent=2,
+            default=lambda x: float(x)
+            if isinstance(x, (np.float32, np.float64))
+            else x,
+        )
     print(f"Metrics summary saved to {metrics_path}")
 
     print("All DCC-compatible outputs saved successfully")
@@ -1090,6 +1197,7 @@ try:
 except Exception as e:
     print(f"Error saving outputs: {e}")
     import traceback
+
     traceback.print_exc()
 
 print("\nBIF Extraction Script Finished.")

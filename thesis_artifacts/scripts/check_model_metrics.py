@@ -20,6 +20,7 @@ PF_DATA_DIR = OUTPUTS_DIR / "pf" / "data"
 FACTORCV_DATA_DIR = OUTPUTS_DIR / "factorcv" / "data"
 DCC_DATA_DIR = SCRIPTS_DIR / "dcc" / "data"
 
+
 def calculate_generalized_variance(covariance_matrices):
     """Calculate generalized variance (determinant) from covariance matrices."""
     T = covariance_matrices.shape[0]
@@ -35,6 +36,7 @@ def calculate_generalized_variance(covariance_matrices):
         generalized_variance[t] = sign * np.exp(logdet) if logdet > -700 else 0
 
     return generalized_variance, log_generalized_variance
+
 
 def calculate_average_correlation(covariance_matrices):
     """Calculate average correlation from covariance matrices."""
@@ -53,9 +55,12 @@ def calculate_average_correlation(covariance_matrices):
 
         # Calculate average of off-diagonal elements
         n_off_diag = N * (N - 1) / 2  # Number of unique off-diagonal elements
-        avg_correlation[t] = (np.sum(corr_t) - N) / n_off_diag  # Subtract diagonal elements (N ones)
+        avg_correlation[t] = (
+            np.sum(corr_t) - N
+        ) / n_off_diag  # Subtract diagonal elements (N ones)
 
     return avg_correlation
+
 
 def check_bif_metrics():
     """Check BIF model metrics."""
@@ -69,7 +74,9 @@ def check_bif_metrics():
     # Calculate log-determinant from saved generalized variance
     # This is an approximation since we're working backwards
     bif_log_gv = np.log(np.maximum(bif_gv, 1e-320))
-    print(f"Approximated Log-Determinant range: {np.min(bif_log_gv)} to {np.max(bif_log_gv)}")
+    print(
+        f"Approximated Log-Determinant range: {np.min(bif_log_gv)} to {np.max(bif_log_gv)}"
+    )
 
     # Load average correlation
     bif_ac = np.load(BIF_DATA_DIR / "average_correlation.npy")
@@ -80,6 +87,7 @@ def check_bif_metrics():
     invalid_corr = np.sum((bif_ac > 1) | (bif_ac < -1))
     if invalid_corr > 0:
         print(f"WARNING: {invalid_corr} invalid correlation values found!")
+
 
 def check_pf_metrics():
     """Check PF model metrics."""
@@ -93,7 +101,9 @@ def check_pf_metrics():
     # Calculate log-determinant from saved generalized variance
     # This is an approximation since we're working backwards
     pf_log_gv = np.log(np.maximum(pf_gv, 1e-320))
-    print(f"Approximated Log-Determinant range: {np.min(pf_log_gv)} to {np.max(pf_log_gv)}")
+    print(
+        f"Approximated Log-Determinant range: {np.min(pf_log_gv)} to {np.max(pf_log_gv)}"
+    )
 
     # Load average correlation
     pf_ac = np.load(PF_DATA_DIR / "average_correlation.npy")
@@ -104,6 +114,7 @@ def check_pf_metrics():
     invalid_corr = np.sum((pf_ac > 1) | (pf_ac < -1))
     if invalid_corr > 0:
         print(f"WARNING: {invalid_corr} invalid correlation values found!")
+
 
 def check_dcc_metrics():
     """Check DCC-GARCH model metrics."""
@@ -138,23 +149,31 @@ def check_dcc_metrics():
             n_off_diag = N * (N - 1) / 2
             dcc_ac_direct[t] = (np.sum(dcc_corr[t]) - N) / n_off_diag
 
-        print(f"Average Correlation range (from Rt.npy): {np.min(dcc_ac_direct)} to {np.max(dcc_ac_direct)}")
+        print(
+            f"Average Correlation range (from Rt.npy): {np.min(dcc_ac_direct)} to {np.max(dcc_ac_direct)}"
+        )
 
         # Check if any correlation values are invalid (>1 or <-1)
         invalid_corr_direct = np.sum((dcc_ac_direct > 1) | (dcc_ac_direct < -1))
         if invalid_corr_direct > 0:
-            print(f"WARNING: {invalid_corr_direct} invalid correlation values found in direct calculation!")
+            print(
+                f"WARNING: {invalid_corr_direct} invalid correlation values found in direct calculation!"
+            )
     except Exception as e:
         print(f"Error loading correlation matrices: {e}")
 
     # Also calculate from covariance matrices for comparison
     dcc_ac = calculate_average_correlation(dcc_cov)
-    print(f"Average Correlation range (calculated from Ht.npy): {np.min(dcc_ac)} to {np.max(dcc_ac)}")
+    print(
+        f"Average Correlation range (calculated from Ht.npy): {np.min(dcc_ac)} to {np.max(dcc_ac)}"
+    )
 
     # Check if any correlation values are invalid (>1 or <-1)
     invalid_corr = np.sum((dcc_ac > 1) | (dcc_ac < -1))
     if invalid_corr > 0:
-        print(f"WARNING: {invalid_corr} invalid correlation values found in calculation from covariance!")
+        print(
+            f"WARNING: {invalid_corr} invalid correlation values found in calculation from covariance!"
+        )
 
     # Check for positive definiteness
     pd_count = 0
@@ -166,6 +185,7 @@ def check_dcc_metrics():
         except np.linalg.LinAlgError:
             pass
     print(f"Positive definite matrices in first 10: {pd_count}/10")
+
 
 def check_factorcv_metrics():
     """Check Factor-CV model metrics."""
@@ -207,6 +227,7 @@ def check_factorcv_metrics():
             pass
     print(f"Positive definite matrices in first 10: {pd_count}/10")
 
+
 def main():
     """Main function."""
     print("Checking model metrics...")
@@ -232,6 +253,7 @@ def main():
         print(f"Error checking Factor-CV metrics: {e}")
 
     print("\nMetrics check complete.")
+
 
 if __name__ == "__main__":
     main()

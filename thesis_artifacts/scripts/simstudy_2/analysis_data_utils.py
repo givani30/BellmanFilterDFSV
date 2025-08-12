@@ -38,7 +38,12 @@ def load_and_validate_metrics(csv_path: Path) -> pl.DataFrame:
     logging.debug("DataFrame schema:\n%s", df.schema)
 
     # Check for required columns
-    required_cols = ["unique_id", "json_read_error", "pkl_read_error", "results_success"]
+    required_cols = [
+        "unique_id",
+        "json_read_error",
+        "pkl_read_error",
+        "results_success",
+    ]
     missing_cols = [col for col in required_cols if col not in df.columns]
     if missing_cols:
         raise ValueError(f"Missing required columns: {missing_cols}")
@@ -63,8 +68,8 @@ def load_and_validate_params(npz_path: Path) -> Tuple[Dict, Dict]:
 
     logging.info("Loading parameters from %s", npz_path)
     with np.load(npz_path, allow_pickle=True) as data:
-        true_params_dict = data['true_params'].item()
-        estimated_params_dict = data['estimated_params'].item()
+        true_params_dict = data["true_params"].item()
+        estimated_params_dict = data["estimated_params"].item()
 
     logging.info("Loaded %d parameter sets", len(true_params_dict))
     return true_params_dict, estimated_params_dict
@@ -81,28 +86,26 @@ def filter_successful_runs(df: pl.DataFrame) -> pl.DataFrame:
     """
     # Filter out rows with data loading errors
     df_clean = df.filter(
-        (pl.col('json_read_error') == False) &
-        (pl.col('pkl_read_error') == False)
+        (pl.col("json_read_error") == False) & (pl.col("pkl_read_error") == False)
     )
     logging.info(
-        "Removed %d rows with data loading errors",
-        df.shape[0] - df_clean.shape[0]
+        "Removed %d rows with data loading errors", df.shape[0] - df_clean.shape[0]
     )
 
     # Filter for successful runs
-    df_success = df_clean.filter(pl.col('results_success') == True)
+    df_success = df_clean.filter(pl.col("results_success") == True)
     logging.info(
         "Filtered to %d successful runs (removed %d failed runs)",
         df_success.shape[0],
-        df_clean.shape[0] - df_success.shape[0]
+        df_clean.shape[0] - df_success.shape[0],
     )
 
     # Check unique_id integrity
-    n_unique = df_success.select(pl.col('unique_id')).n_unique()
+    n_unique = df_success.select(pl.col("unique_id")).n_unique()
     if n_unique != df_success.shape[0]:
         logging.warning(
             "Found %d duplicate unique_ids in successful runs",
-            df_success.shape[0] - n_unique
+            df_success.shape[0] - n_unique,
         )
 
     return df_success
@@ -118,5 +121,7 @@ def calculate_loss_diff(df: pl.DataFrame) -> pl.DataFrame:
         DataFrame with additional loss_diff column
     """
     return df.with_columns(
-        (pl.col('results_final_loss') - pl.col('results_loss_at_true_params')).alias('loss_diff')
+        (pl.col("results_final_loss") - pl.col("results_loss_at_true_params")).alias(
+            "loss_diff"
+        )
     )

@@ -16,23 +16,25 @@ import subprocess
 import sys
 import argparse
 
+
 def run_script(script_path):
     """Run a Python script and return its exit code."""
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"Running {script_path}")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     start_time = time.time()
     result = subprocess.run([sys.executable, script_path], check=False)
     end_time = time.time()
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"Finished {script_path}")
     print(f"Exit code: {result.returncode}")
     print(f"Execution time: {end_time - start_time:.2f} seconds")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     return result.returncode
+
 
 def main():
     """Main function to run all Factor-CV estimation scripts."""
@@ -60,12 +62,13 @@ def main():
     total_end_time = time.time()
     total_execution_time = total_end_time - total_start_time
 
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("Factor-CV Estimation Process Complete")
     print(f"Total execution time: {total_execution_time:.2f} seconds")
-    print("="*80)
+    print("=" * 80)
 
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

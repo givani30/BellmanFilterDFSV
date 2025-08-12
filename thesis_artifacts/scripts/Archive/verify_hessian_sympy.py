@@ -1,6 +1,20 @@
 # scripts/verify_hessian_sympy.py
 import sympy
-from sympy import symbols, MatrixSymbol, Matrix, Function, diag, Derivative, trace, KroneckerDelta, simplify, expand, init_printing, assuming, Q
+from sympy import (
+    symbols,
+    MatrixSymbol,
+    Matrix,
+    Function,
+    diag,
+    Derivative,
+    trace,
+    KroneckerDelta,
+    simplify,
+    expand,
+    init_printing,
+    assuming,
+    Q,
+)
 
 # Use init_printing for better display in environments like Jupyter
 # init_printing(use_unicode=True)
@@ -10,23 +24,25 @@ print("--- SymPy Verification Script for DFSV Hessian Blocks ---")
 # --- Dimensions ---
 # Using small concrete dimensions for potential evaluation, though derivation is symbolic
 N_val, K_val = 3, 2
-N = symbols('N', integer=True, positive=True)
-K = symbols('K', integer=True, positive=True)
+N = symbols("N", integer=True, positive=True)
+K = symbols("K", integer=True, positive=True)
 
 
 # --- Indices ---
-i, j, k, l = symbols('i j k l', integer=True) # Using generic indices
+i, j, k, l = symbols("i j k l", integer=True)  # Using generic indices
 
 # --- Parameters and Variables ---
 # Use Matrix instead of MatrixSymbol for element access if needed for differentiation
-f_vec = sympy.Matrix([symbols(f'f_{idx}') for idx in range(K_val)])
-h_vec = sympy.Matrix([symbols(f'h_{idx}') for idx in range(K_val)])
-y_vec = sympy.Matrix([symbols(f'y_{idx}') for idx in range(N_val)])
+f_vec = sympy.Matrix([symbols(f"f_{idx}") for idx in range(K_val)])
+h_vec = sympy.Matrix([symbols(f"h_{idx}") for idx in range(K_val)])
+y_vec = sympy.Matrix([symbols(f"y_{idx}") for idx in range(N_val)])
 
 # --- Model Matrices ---
 # Define symbolic matrices with fixed dimensions for this example
-Lambda_mat = MatrixSymbol('Lambda', N_val, K_val)
-Sigma_mat = MatrixSymbol('Sigma', N_val, N_val) # Assume symmetric: Sigma_mat.T = Sigma_mat
+Lambda_mat = MatrixSymbol("Lambda", N_val, K_val)
+Sigma_mat = MatrixSymbol(
+    "Sigma", N_val, N_val
+)  # Assume symmetric: Sigma_mat.T = Sigma_mat
 
 # Define D_h = diag(exp(h))
 exp_h = Matrix([sympy.exp(hk) for hk in h_vec])
@@ -36,7 +52,7 @@ D_h = diag(*exp_h)
 A = Lambda_mat * D_h * Lambda_mat.T + Sigma_mat
 # Assume A is invertible and symmetric
 # Represent A_inv as a symbolic inverse for derivation purposes
-A_inv = A.inverse() # Sympy can handle symbolic inverse
+A_inv = A.inverse()  # Sympy can handle symbolic inverse
 
 # --- Log-Likelihood (Ignoring constant C) ---
 # Use sympy.log(A.det()) for log determinant
@@ -45,7 +61,7 @@ y_mf = y_vec - Lambda_mat * f_vec
 # Ensure term2 is treated as a scalar for differentiation
 term2_expr = (y_mf).T * A_inv * (y_mf)
 # Extract the scalar element directly from the 1x1 matrix expression
-term2 = term2_expr[0,0]
+term2 = term2_expr[0, 0]
 
 log_likelihood = -sympy.Rational(1, 2) * logdet_A - sympy.Rational(1, 2) * term2
 
@@ -114,7 +130,9 @@ d2l_dhkdhl = Derivative(log_likelihood, h_k, h_l).doit()
 print(f"Symbolic Result (needs simplification):")
 print(sympy.pretty(d2l_dhkdhl))
 # Target J_hh[k, l]: 1/2*δ_kl*e^hk*(q_kk-p_k^2) - 1/2*e^hk*e^hl*q_kl*(q_kl-2*p_k*p_l)
-print(f"Target J_hh[{k_idx},{l_idx}]: 1/2*δ({k_idx},{l_idx})*exp(h_{k_idx})*(q[{k_idx},{k_idx}]-p[{k_idx}]^2) - 1/2*exp(h_{k_idx})*exp(h_{l_idx})*q[{k_idx},{l_idx}]*(q[{k_idx},{l_idx}]-2*p[{k_idx}]*p[{l_idx}])")
+print(
+    f"Target J_hh[{k_idx},{l_idx}]: 1/2*δ({k_idx},{l_idx})*exp(h_{k_idx})*(q[{k_idx},{k_idx}]-p[{k_idx}]^2) - 1/2*exp(h_{k_idx})*exp(h_{l_idx})*q[{k_idx},{l_idx}]*(q[{k_idx},{l_idx}]-2*p[{k_idx}]*p[{l_idx}])"
+)
 
 print("-" * 60)
 print("\nNOTE: This script demonstrates setting up the symbolic derivatives.")
@@ -125,19 +143,20 @@ print("      mathematical derivation.")
 print("-" * 60)
 
 # --- Explicit Target Formulas (using symbolic p's and q's for clarity) ---
-q_ik_sym = symbols(f'q_{i_idx}{k_idx}')
-q_kk_sym = symbols(f'q_{k_idx}{k_idx}')
-q_kl_sym = symbols(f'q_{k_idx}{l_idx}')
-p_k_sym = symbols(f'p_{k_idx}')
-p_l_sym = symbols(f'p_{l_idx}')
+q_ik_sym = symbols(f"q_{i_idx}{k_idx}")
+q_kk_sym = symbols(f"q_{k_idx}{k_idx}")
+q_kl_sym = symbols(f"q_{k_idx}{l_idx}")
+p_k_sym = symbols(f"p_{k_idx}")
+p_l_sym = symbols(f"p_{l_idx}")
 exp_hk_sym = sympy.exp(h_k)
 exp_hl_sym = sympy.exp(h_l)
-delta_kl_sym = KroneckerDelta(k_idx, l_idx) # Evaluates to 0 since k_idx != l_idx
+delta_kl_sym = KroneckerDelta(k_idx, l_idx)  # Evaluates to 0 since k_idx != l_idx
 
 target_J_fh_ik = exp_hk_sym * q_ik_sym * p_k_sym
-target_J_hh_kl = (
-    sympy.Rational(1, 2) * delta_kl_sym * exp_hk_sym * (q_kk_sym - p_k_sym**2) -
-    sympy.Rational(1, 2) * exp_hk_sym * exp_hl_sym * q_kl_sym * (q_kl_sym - 2 * p_k_sym * p_l_sym)
+target_J_hh_kl = sympy.Rational(1, 2) * delta_kl_sym * exp_hk_sym * (
+    q_kk_sym - p_k_sym**2
+) - sympy.Rational(1, 2) * exp_hk_sym * exp_hl_sym * q_kl_sym * (
+    q_kl_sym - 2 * p_k_sym * p_l_sym
 )
 
 print("\nTarget Formulas (using symbolic p, q for comparison):")

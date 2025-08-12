@@ -13,22 +13,24 @@ import jax.random as jr
 import equinox as eqx
 import optimistix as optx
 import optax
-import jax.debug # Add import for debug printing
+import jax.debug  # Add import for debug printing
 from jax_dataclasses import pytree_dataclass
-from typing import Optional # Add Optional for type hinting
+from typing import Optional  # Add Optional for type hinting
 
 from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
+
 # Keep standard pf_objective as wrapper handles untransform + constraint
 from bellman_filter_dfsv.filters.objectives import pf_objective
 from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.models.simulation import simulate_DFSV
 from bellman_filter_dfsv.utils.transformations import safe_arctanh
+
 # float64_decorator import removed (not implemented)
 # from optax import warmup_cosine_decay_schedule, apply_if_finite # Removed optax imports
 from bellman_filter_dfsv.utils.transformations import (
     transform_params,
     untransform_params,
-    apply_identification_constraint # Import the constraint function
+    apply_identification_constraint,  # Import the constraint function
 )
 import numpy as np
 
@@ -51,13 +53,13 @@ class StaticArgs:
     observations: jax.Array
     filter_instance: DFSVParticleFilter
     stability_penalty_weight: float
-    prior_mu_mean: Optional[jax.Array] = None # Add prior args
+    prior_mu_mean: Optional[jax.Array] = None  # Add prior args
     prior_mu_std_dev: Optional[jax.Array] = None
 
 
 def create_simple_model(N: int, K: int, seed: int = 42) -> DFSVParamsDataclass:
     """Create a simple DFSV model based on test_bif_full_phi_hybrid_integration.py."""
-    np.random.seed(seed) # Keep seed for reproducibility
+    np.random.seed(seed)  # Keep seed for reproducibility
 
     # Factor loadings (N x K)
     lambda_r_init = np.random.randn(N, K) * 0.5 + 0.5
@@ -81,7 +83,14 @@ def create_simple_model(N: int, K: int, seed: int = 42) -> DFSVParamsDataclass:
     Q_h = np.diag(np.random.uniform(0.1, 0.3, K))
 
     params = DFSVParamsDataclass(
-        N=N, K=K, lambda_r=lambda_r, Phi_f=Phi_f, Phi_h=Phi_h, mu=mu, sigma2=sigma2, Q_h=Q_h
+        N=N,
+        K=K,
+        lambda_r=lambda_r,
+        Phi_f=Phi_f,
+        Phi_h=Phi_h,
+        mu=mu,
+        sigma2=sigma2,
+        Q_h=Q_h,
     )
     # Ensure constraint is applied correctly after creation
     params = apply_identification_constraint(params)
@@ -123,9 +132,12 @@ def pf_objective_wrapper(
 
     # Construct the priors dictionary from static_args if priors are present
     priors_dict = {}
-    if static_args.prior_mu_mean is not None and static_args.prior_mu_std_dev is not None:
-        priors_dict['prior_mu_mean'] = static_args.prior_mu_mean
-        priors_dict['prior_mu_std_dev'] = static_args.prior_mu_std_dev
+    if (
+        static_args.prior_mu_mean is not None
+        and static_args.prior_mu_std_dev is not None
+    ):
+        priors_dict["prior_mu_mean"] = static_args.prior_mu_mean
+        priors_dict["prior_mu_std_dev"] = static_args.prior_mu_std_dev
     # Use None if the dictionary is empty, otherwise pass the dictionary
     priors_arg = priors_dict if priors_dict else None
 
@@ -135,8 +147,8 @@ def pf_objective_wrapper(
         params=params,
         observations=static_args.observations,
         filter_instance=static_args.filter_instance,
-        priors=priors_arg, # Pass the constructed dictionary
-        stability_penalty_weight=static_args.stability_penalty_weight
+        priors=priors_arg,  # Pass the constructed dictionary
+        stability_penalty_weight=static_args.stability_penalty_weight,
     )
 
     # --- Debug Logging: Loss Components (Reduced Verbosity) ---
@@ -161,24 +173,28 @@ def pf_objective_wrapper(
 def main(
     seed: int = 42,
     T: int = 250,
-    K: int = 2, # Ensure K matches PRIOR constants if changed
+    K: int = 2,  # Ensure K matches PRIOR constants if changed
     N: int = 5,
     N_particles: int = 5000,
     # learning_rate: float = 1e-3, # Removed AdamW param
     max_steps: int = 1000,
     # warmup_steps: int = 100, # Removed AdamW param
     stability_penalty_weight: float = 1000.0,
-    use_mu_prior: bool = True # Flag to use the mu prior
+    use_mu_prior: bool = True,  # Flag to use the mu prior
 ):
     """Main function to run the PF optimization verification."""
     print("--- Starting PF Optimization Verification ---")
     print(f"Config: seed={seed}, T={T}, K={K}, N={N}, N_particles={N_particles}")
     print(f"Optimizer: BFGS, Max Steps={max_steps}")
-    print(f"Objective: Stability Penalty Weight={stability_penalty_weight}, Use Mu Prior={use_mu_prior}")
+    print(
+        f"Objective: Stability Penalty Weight={stability_penalty_weight}, Use Mu Prior={use_mu_prior}"
+    )
 
     # Ensure K matches prior definitions if changed
     if K != PRIOR_MU_MEAN.shape[0]:
-         raise ValueError(f"K={K} does not match PRIOR_MU_MEAN dimension {PRIOR_MU_MEAN.shape[0]}")
+        raise ValueError(
+            f"K={K} does not match PRIOR_MU_MEAN dimension {PRIOR_MU_MEAN.shape[0]}"
+        )
 
     key = jr.PRNGKey(seed)
     model_key, data_key, init_key, filter_key, optim_key = jr.split(key, 5)
@@ -187,14 +203,16 @@ def main(
     print("\n1. Creating true model and generating synthetic data...")
     # Use N=3 as default, similar to reference script
     true_params = create_simple_model(N=N, K=K, seed=seed)
-    observations, _, _ = simulate_DFSV(params=true_params, T=T,seed=seed)
+    observations, _, _ = simulate_DFSV(params=true_params, T=T, seed=seed)
     print("   True Parameters:")
     print(true_params)
     print(f"   Generated {T} observations.")
 
     # 2. Instantiate Particle Filter
     print(f"\n2. Instantiating DFSV Particle Filter with N={N_particles} particles...")
-    pf_filter = DFSVParticleFilter(N=true_params.N, K=true_params.K, num_particles=N_particles, seed=seed)
+    pf_filter = DFSVParticleFilter(
+        N=true_params.N, K=true_params.K, num_particles=N_particles, seed=seed
+    )
     print("   Filter instantiated.")
 
     # 3. Define Optimizer (AdamW - Commented Out)
@@ -209,7 +227,7 @@ def main(
     # # Use apply_if_finite to prevent NaN/inf propagation
     # optimizer = optax.apply_if_finite(optax.adamw(learning_rate=schedule),max_consecutive_errors=5) # Reset state after 5 non-finite steps
     # print("   Optimizer defined.")
-    print("\n3. Setting up Optimizer (BFGS)...") # Indicate BFGS is now active
+    print("\n3. Setting up Optimizer (BFGS)...")  # Indicate BFGS is now active
     print("   Optimizer (BFGS) will be instantiated by optimistix.minimise.")
 
     # 4. Initial Parameter Guess
@@ -224,11 +242,12 @@ def main(
     initial_stable_diag_val = 0.95
     unconstrained_diag_val = safe_arctanh(initial_stable_diag_val)
 
-    phi_f_init = jnp.eye(K)*0.2
-    phi_h_init = jnp.eye(K)*unconstrained_diag_val
+    phi_f_init = jnp.eye(K) * 0.2
+    phi_h_init = jnp.eye(K) * unconstrained_diag_val
 
     uninformed_params = DFSVParamsDataclass(
-        N=N, K=K,
+        N=N,
+        K=K,
         lambda_r=lambda_r_init_guess,
         Phi_f=initial_stable_diag_val * jnp.eye(K),
         Phi_h=initial_stable_diag_val * jnp.eye(K),
@@ -247,7 +266,6 @@ def main(
     print("   Initial Guess (Transformed):")
     print(transformed_initial_guess)
 
-
     # 5. Run Optimization
     print("\n5. Starting optimization...")
     # Conditionally add priors to static_args
@@ -255,22 +273,28 @@ def main(
     if use_mu_prior:
         # Ensure PRIOR constants are defined and match K
         if PRIOR_MU_MEAN is None or PRIOR_MU_STD_DEV is None:
-             raise ValueError("Mu priors requested but PRIOR_MU_MEAN or PRIOR_MU_STD_DEV is None.")
+            raise ValueError(
+                "Mu priors requested but PRIOR_MU_MEAN or PRIOR_MU_STD_DEV is None."
+            )
         if K != PRIOR_MU_MEAN.shape[0]:
-             raise ValueError(f"K={K} does not match PRIOR_MU_MEAN dimension {PRIOR_MU_MEAN.shape[0]}")
-        prior_args['prior_mu_mean'] = PRIOR_MU_MEAN
-        prior_args['prior_mu_std_dev'] = PRIOR_MU_STD_DEV
+            raise ValueError(
+                f"K={K} does not match PRIOR_MU_MEAN dimension {PRIOR_MU_MEAN.shape[0]}"
+            )
+        prior_args["prior_mu_mean"] = PRIOR_MU_MEAN
+        prior_args["prior_mu_std_dev"] = PRIOR_MU_STD_DEV
 
     static_args = StaticArgs(
         observations=observations,
         filter_instance=pf_filter,
         stability_penalty_weight=stability_penalty_weight,
-        **prior_args # Unpack the prior dictionary here
+        **prior_args,  # Unpack the prior dictionary here
     )
 
     # Define the solver
     # solver = optx.OptaxMinimiser(optimizer, rtol=1e-6, atol=1e-6,norm=optx.rms_norm,verbose=frozenset({"loss"}))
-    solver=optx.BFGS(rtol=1e-6, atol=1e-6, norm=optx.rms_norm, verbose=frozenset({"loss"}))
+    solver = optx.BFGS(
+        rtol=1e-6, atol=1e-6, norm=optx.rms_norm, verbose=frozenset({"loss"})
+    )
     start_time = time.time()
     try:
         # Run the minimization
@@ -280,7 +304,7 @@ def main(
             y0=transformed_initial_guess,
             args=static_args,
             max_steps=max_steps,
-            throw=False, # Throw errors instead of returning sentinel values
+            throw=False,  # Throw errors instead of returning sentinel values
         )
         optim_result = solution.value
         # Recalculate final objective to get components if needed, but only print total
@@ -300,7 +324,6 @@ def main(
     print(f"   Optimization finished in {elapsed_time:.2f} seconds.")
     print(f"   Success: {success}")
     print(f"   Final Objective Value: {final_objective_value}")
-
 
     # 6. Process and Compare Results
     print("\n6. Comparing True vs. Estimated Parameters...")
@@ -340,6 +363,6 @@ if __name__ == "__main__":
         K=2,
         N=5,
         N_particles=1000,
-        max_steps=1000, # Reduced steps for quicker test
+        max_steps=1000,  # Reduced steps for quicker test
         stability_penalty_weight=10.0,
     )

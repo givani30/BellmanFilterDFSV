@@ -1,9 +1,12 @@
 import numpy as np
 import jax
 import jax.numpy as jnp
+
 # Updated imports to use the installed package
 from bellman_filter_dfsv.models.simulation import simulate_DFSV
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Import the JAX dataclass
+from bellman_filter_dfsv.models.dfsv import (
+    DFSVParamsDataclass,
+)  # Import the JAX dataclass
 from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
 
 # Set random seed for reproducibility
@@ -24,13 +27,14 @@ Q_h = np.array([[0.2]])  # Volatility of log-volatility
 # Create parameter object
 # Create parameter dataclass object using JAX arrays
 params = DFSVParamsDataclass(
-    N=N, K=K,
+    N=N,
+    K=K,
     lambda_r=jnp.array(lambda_r),
     Phi_f=jnp.array(Phi_f),
     Phi_h=jnp.array(Phi_h),
     mu=jnp.array(mu),
-    sigma2=jnp.array(sigma2), # Keep as 1D for dataclass
-    Q_h=jnp.array(Q_h)
+    sigma2=jnp.array(sigma2),  # Keep as 1D for dataclass
+    Q_h=jnp.array(Q_h),
 )
 
 print("Model parameters created successfully")

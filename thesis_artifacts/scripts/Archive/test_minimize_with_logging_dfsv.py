@@ -20,7 +20,10 @@ from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformationFilter
 from bellman_filter_dfsv.models.simulation import simulate_DFSV
 from bellman_filter_dfsv.filters.objectives import bellman_objective
-from bellman_filter_dfsv.utils.transformations import transform_params, untransform_params
+from bellman_filter_dfsv.utils.transformations import (
+    transform_params,
+    untransform_params,
+)
 from bellman_filter_dfsv.utils.optimization import minimize_with_logging
 from bellman_filter_dfsv.utils.solvers import create_optimizer
 
@@ -67,11 +70,7 @@ def create_simple_model():
 def create_training_data(params, T=500, seed=None):
     """Generate training data from the model."""
     # Simulate data
-    returns, factors, log_vols = simulate_DFSV(
-        params=params,
-        T=T,
-        seed=seed
-    )
+    returns, factors, log_vols = simulate_DFSV(params=params, T=T, seed=seed)
 
     return returns, factors, log_vols
 
@@ -89,7 +88,7 @@ def create_initial_params(true_params, data_variance, perturbation=0.2):
         Phi_h=0.8 * jnp.eye(K),  # Moderate persistence
         mu=jnp.zeros(K),  # Zero mean for log volatility
         sigma2=0.5 * data_variance,  # Provide as 1D array (variances)
-        Q_h=0.2 * jnp.eye(K)  # Moderate volatility of volatility
+        Q_h=0.2 * jnp.eye(K),  # Moderate volatility of volatility
     )
 
     return initial_params
@@ -117,39 +116,39 @@ def plot_parameter_history(param_history, true_params, output_dir):
     fig, axes = plt.subplots(3, 2, figsize=(12, 10))
 
     # Lambda_r
-    axes[0, 0].plot(lambda_r_history, label='Estimated')
-    axes[0, 0].axhline(y=true_lambda_r, color='r', linestyle='--', label='True')
-    axes[0, 0].set_title('Factor Loading (λ)')
+    axes[0, 0].plot(lambda_r_history, label="Estimated")
+    axes[0, 0].axhline(y=true_lambda_r, color="r", linestyle="--", label="True")
+    axes[0, 0].set_title("Factor Loading (λ)")
     axes[0, 0].legend()
 
     # Phi_f
-    axes[0, 1].plot(phi_f_history, label='Estimated')
-    axes[0, 1].axhline(y=true_phi_f, color='r', linestyle='--', label='True')
-    axes[0, 1].set_title('Factor Persistence (Φ_f)')
+    axes[0, 1].plot(phi_f_history, label="Estimated")
+    axes[0, 1].axhline(y=true_phi_f, color="r", linestyle="--", label="True")
+    axes[0, 1].set_title("Factor Persistence (Φ_f)")
     axes[0, 1].legend()
 
     # Phi_h
-    axes[1, 0].plot(phi_h_history, label='Estimated')
-    axes[1, 0].axhline(y=true_phi_h, color='r', linestyle='--', label='True')
-    axes[1, 0].set_title('Log-Volatility Persistence (Φ_h)')
+    axes[1, 0].plot(phi_h_history, label="Estimated")
+    axes[1, 0].axhline(y=true_phi_h, color="r", linestyle="--", label="True")
+    axes[1, 0].set_title("Log-Volatility Persistence (Φ_h)")
     axes[1, 0].legend()
 
     # Mu
-    axes[1, 1].plot(mu_history, label='Estimated')
-    axes[1, 1].axhline(y=true_mu, color='r', linestyle='--', label='True')
-    axes[1, 1].set_title('Long-run Mean (μ)')
+    axes[1, 1].plot(mu_history, label="Estimated")
+    axes[1, 1].axhline(y=true_mu, color="r", linestyle="--", label="True")
+    axes[1, 1].set_title("Long-run Mean (μ)")
     axes[1, 1].legend()
 
     # Sigma2
-    axes[2, 0].plot(sigma2_history, label='Estimated')
-    axes[2, 0].axhline(y=true_sigma2, color='r', linestyle='--', label='True')
-    axes[2, 0].set_title('Idiosyncratic Variance (σ²)')
+    axes[2, 0].plot(sigma2_history, label="Estimated")
+    axes[2, 0].axhline(y=true_sigma2, color="r", linestyle="--", label="True")
+    axes[2, 0].set_title("Idiosyncratic Variance (σ²)")
     axes[2, 0].legend()
 
     # Q_h
-    axes[2, 1].plot(q_h_history, label='Estimated')
-    axes[2, 1].axhline(y=true_q_h, color='r', linestyle='--', label='True')
-    axes[2, 1].set_title('Log-Volatility Noise Variance (Q_h)')
+    axes[2, 1].plot(q_h_history, label="Estimated")
+    axes[2, 1].axhline(y=true_q_h, color="r", linestyle="--", label="True")
+    axes[2, 1].set_title("Log-Volatility Noise Variance (Q_h)")
     axes[2, 1].legend()
 
     plt.tight_layout()
@@ -183,11 +182,7 @@ def test_minimize_with_logging_dfsv():
 
     # Create optimizer
     optimizer = create_optimizer(
-        optimizer_name="BFGS",
-        learning_rate=1e-3,
-        rtol=1e-4,
-        atol=1e-4,
-        verbose=True
+        optimizer_name="BFGS", learning_rate=1e-3, rtol=1e-4, atol=1e-4, verbose=True
     )
 
     # Print initial loss
@@ -205,7 +200,7 @@ def test_minimize_with_logging_dfsv():
         static_args=returns,
         max_steps=50,  # Use fewer steps for testing
         log_interval=1,
-        options={}
+        options={},
     )
 
     end_time = time.time()
@@ -223,12 +218,22 @@ def test_minimize_with_logging_dfsv():
     final_params = sol.value
 
     print("\nParameter comparison:")
-    print(f"Lambda_r: True={true_params.lambda_r[0, 0]:.4f}, Estimated={final_params.lambda_r[0, 0]:.4f}")
-    print(f"Phi_f: True={true_params.Phi_f[0, 0]:.4f}, Estimated={final_params.Phi_f[0, 0]:.4f}")
-    print(f"Phi_h: True={true_params.Phi_h[0, 0]:.4f}, Estimated={final_params.Phi_h[0, 0]:.4f}")
+    print(
+        f"Lambda_r: True={true_params.lambda_r[0, 0]:.4f}, Estimated={final_params.lambda_r[0, 0]:.4f}"
+    )
+    print(
+        f"Phi_f: True={true_params.Phi_f[0, 0]:.4f}, Estimated={final_params.Phi_f[0, 0]:.4f}"
+    )
+    print(
+        f"Phi_h: True={true_params.Phi_h[0, 0]:.4f}, Estimated={final_params.Phi_h[0, 0]:.4f}"
+    )
     print(f"Mu: True={true_params.mu[0]:.4f}, Estimated={final_params.mu[0]:.4f}")
-    print(f"Sigma2: True={true_params.sigma2[0]:.4f}, Estimated={final_params.sigma2[0]:.4f}")
-    print(f"Q_h: True={true_params.Q_h[0, 0]:.4f}, Estimated={final_params.Q_h[0, 0]:.4f}")
+    print(
+        f"Sigma2: True={true_params.sigma2[0]:.4f}, Estimated={final_params.sigma2[0]:.4f}"
+    )
+    print(
+        f"Q_h: True={true_params.Q_h[0, 0]:.4f}, Estimated={final_params.Q_h[0, 0]:.4f}"
+    )
 
     return sol, param_history, true_params
 

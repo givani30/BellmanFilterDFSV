@@ -35,27 +35,31 @@ def plot_scatter_comparison(df: pl.DataFrame) -> Dict[str, Figure]:
     Returns:
         Dict[str, Figure]: Dictionary of matplotlib figures, keyed by parameter name.
     """
-    apply_publication_style() # Apply centralized plotting style
+    apply_publication_style()  # Apply centralized plotting style
 
     # Create mapping for filter config names (no changes)
     filter_config_map = {
         "BIF": "Bellman Filter",
         "PF-1000": "Particle Filter (1000)",
         "PF-5000": "Particle Filter (5000)",
-        "PF-10000": "Particle Filter (10000)"
+        "PF-10000": "Particle Filter (10000)",
     }
 
     # Data preprocessing (no changes)
-    df = df.with_columns([
-        pl.col("N").cast(pl.Int64),
-        pl.col("K").cast(pl.Int64),
-        pl.col("config_T").cast(pl.Int64),
-        pl.col("filter_config").cast(pl.Utf8).replace(filter_config_map).alias("filter_config_display"),
-        pl.concat_str([
-            pl.lit("T = "),
-            pl.col("config_T").cast(pl.Utf8)
-        ]).alias("time_length_display")
-    ])
+    df = df.with_columns(
+        [
+            pl.col("N").cast(pl.Int64),
+            pl.col("K").cast(pl.Int64),
+            pl.col("config_T").cast(pl.Int64),
+            pl.col("filter_config")
+            .cast(pl.Utf8)
+            .replace(filter_config_map)
+            .alias("filter_config_display"),
+            pl.concat_str([pl.lit("T = "), pl.col("config_T").cast(pl.Utf8)]).alias(
+                "time_length_display"
+            ),
+        ]
+    )
 
     figures = {}  # Dictionary to store figures
 
@@ -65,7 +69,7 @@ def plot_scatter_comparison(df: pl.DataFrame) -> Dict[str, Figure]:
         "Phi_h": "Log-Volatility Transition Matrix",
         "Q_h": "Volatility Covariance Matrix",
         "mu": "Long-run mean of Log-Volatilities",
-        "sigma2": "Idiosyncratic Noise Variance"
+        "sigma2": "Idiosyncratic Noise Variance",
     }
 
     for param, title in params_to_plot.items():
@@ -76,8 +80,10 @@ def plot_scatter_comparison(df: pl.DataFrame) -> Dict[str, Figure]:
         # This filtering is crucial to avoid errors on parameters that might not have these metrics
         # Also filter out rows where bias or rmse are NaN/Inf
         param_df = df.filter(
-            (bias_col in df.columns) & (rmse_col in df.columns) &
-            pl.col(bias_col).is_finite() & pl.col(rmse_col).is_finite()
+            (bias_col in df.columns)
+            & (rmse_col in df.columns)
+            & pl.col(bias_col).is_finite()
+            & pl.col(rmse_col).is_finite()
         )
 
         if param_df.height == 0:
@@ -86,8 +92,10 @@ def plot_scatter_comparison(df: pl.DataFrame) -> Dict[str, Figure]:
 
         configs = param_df.select(["N", "K"]).unique().sort(["N", "K"])
         if configs.height == 0:
-             # This case should be covered by param_df.height == 0, but double check
-            logging.warning(f"No unique configurations found for {param} with valid data.")
+            # This case should be covered by param_df.height == 0, but double check
+            logging.warning(
+                f"No unique configurations found for {param} with valid data."
+            )
             continue
 
         n_configs = configs.height
@@ -102,28 +110,35 @@ def plot_scatter_comparison(df: pl.DataFrame) -> Dict[str, Figure]:
         fig_height = base_width * n_rows
         fig = plt.figure(figsize=(fig_width, fig_height))
 
-        scatter_plots = [] # To collect subplot objects for legend handles/labels
+        scatter_plots = []  # To collect subplot objects for legend handles/labels
 
         first_subplot_handles = None
         first_subplot_labels = None
 
         for idx, (N, K) in enumerate(configs.iter_rows(), 1):
-            ax = fig.add_subplot(n_rows, n_cols, idx) # Use fig.add_subplot
+            ax = fig.add_subplot(n_rows, n_cols, idx)  # Use fig.add_subplot
 
-            plot_data = param_df.filter(
-                (pl.col("N") == N) &
-                (pl.col("K") == K)
-            ).select([
-                pl.col(bias_col).cast(pl.Float64),
-                pl.col(rmse_col).cast(pl.Float64),
-                "filter_config_display",
-                "time_length_display"
-            ]).to_pandas()
+            plot_data = (
+                param_df.filter((pl.col("N") == N) & (pl.col("K") == K))
+                .select(
+                    [
+                        pl.col(bias_col).cast(pl.Float64),
+                        pl.col(rmse_col).cast(pl.Float64),
+                        "filter_config_display",
+                        "time_length_display",
+                    ]
+                )
+                .to_pandas()
+            )
 
             # Add a larger offset to PF-1000 points to prevent overlap
             if "Particle Filter (1000)" in plot_data["filter_config_display"].values:
-                pf1000_mask = plot_data["filter_config_display"] == "Particle Filter (1000)"
-                plot_data.loc[pf1000_mask, bias_col] = plot_data.loc[pf1000_mask, bias_col] + 0.005
+                pf1000_mask = (
+                    plot_data["filter_config_display"] == "Particle Filter (1000)"
+                )
+                plot_data.loc[pf1000_mask, bias_col] = (
+                    plot_data.loc[pf1000_mask, bias_col] + 0.005
+                )
 
             scatter = sns.scatterplot(
                 data=plot_data,
@@ -139,24 +154,25 @@ def plot_scatter_comparison(df: pl.DataFrame) -> Dict[str, Figure]:
                     "Bellman Filter": 40,
                     "Particle Filter (1000)": 50,
                     "Particle Filter (5000)": 40,
-                    "Particle Filter (10000)": 40
+                    "Particle Filter (10000)": 40,
                 },
             )
 
-            if idx == 1: # Get handles/labels from the first subplot
-                first_subplot_handles, first_subplot_labels = ax.get_legend_handles_labels()
+            if idx == 1:  # Get handles/labels from the first subplot
+                first_subplot_handles, first_subplot_labels = (
+                    ax.get_legend_handles_labels()
+                )
 
             if ax.get_legend() is not None:
-                 ax.get_legend().remove() # Remove legend after getting handles/labels
-
+                ax.get_legend().remove()  # Remove legend after getting handles/labels
 
             # Professional subplot formatting
             ax.set_title(f"N = {N}, K = {K}", pad=10)
             ax.set_xlabel("Bias")
             ax.set_ylabel("RMSE")
-            ax.grid(True, alpha=0.3, linestyle='--')
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
+            ax.grid(True, alpha=0.3, linestyle="--")
+            ax.spines["top"].set_visible(False)
+            ax.spines["right"].set_visible(False)
 
         # Add overall title
         fig.suptitle(f"{title} - Bias vs. RMSE Analysis", y=1.02, fontsize=13)
@@ -165,48 +181,60 @@ def plot_scatter_comparison(df: pl.DataFrame) -> Dict[str, Figure]:
         if first_subplot_handles is not None and first_subplot_labels is not None:
             # Split handles and labels (assuming hue comes first, then style)
             # Need to handle cases where not all filter configs or time lengths are present in the data
-            unique_filter_displays = param_df.select("filter_config_display").unique().sort("filter_config_display").to_series().to_list()
-            unique_time_lengths = param_df.select("time_length_display").unique().sort("time_length_display").to_series().to_list()
+            unique_filter_displays = (
+                param_df.select("filter_config_display")
+                .unique()
+                .sort("filter_config_display")
+                .to_series()
+                .to_list()
+            )
+            unique_time_lengths = (
+                param_df.select("time_length_display")
+                .unique()
+                .sort("time_length_display")
+                .to_series()
+                .to_list()
+            )
 
             legend_handles = []
             legend_labels = []
 
             # Add filter type handles/labels
             for cfg_display in unique_filter_displays:
-                 try:
+                try:
                     idx = first_subplot_labels.index(cfg_display)
                     legend_handles.append(first_subplot_handles[idx])
                     legend_labels.append(cfg_display)
-                 except ValueError:
-                    pass # Filter type not present in the first subplot's legend (shouldn't happen if data is present)
+                except ValueError:
+                    pass  # Filter type not present in the first subplot's legend (shouldn't happen if data is present)
 
             # Add time length handles/labels
             for time_label in unique_time_lengths:
-                 try:
+                try:
                     idx = first_subplot_labels.index(time_label)
                     legend_handles.append(first_subplot_handles[idx])
                     legend_labels.append(time_label)
-                 except ValueError:
-                    pass # Time length not present in the first subplot's legend (shouldn't happen if data is present)
+                except ValueError:
+                    pass  # Time length not present in the first subplot's legend (shouldn't happen if data is present)
 
-
-            if legend_handles: # Only add legend if there are handles
+            if legend_handles:  # Only add legend if there are handles
                 legend = fig.legend(
                     legend_handles,
                     legend_labels,
                     title="Filter Type / Time Series Length",
                     bbox_to_anchor=(1.02, 0.5),
-                    loc='center left',
+                    loc="center left",
                     ncol=1,
                     frameon=True,
                     framealpha=0.9,
-                    edgecolor='lightgray'
+                    edgecolor="lightgray",
                 )
-                legend.get_frame().set_alpha(0.9) # Ensure legend background is visible
-
+                legend.get_frame().set_alpha(0.9)  # Ensure legend background is visible
 
         # Adjust layout
-        plt.tight_layout(rect=[0, 0, 1, 0.98]) # Adjust layout to accommodate suptitle and potential legend outside
+        plt.tight_layout(
+            rect=[0, 0, 1, 0.98]
+        )  # Adjust layout to accommodate suptitle and potential legend outside
 
         figures[param] = fig  # Store the figure in the dictionary
 
@@ -227,34 +255,49 @@ def plot_error_heatmaps(df: pl.DataFrame) -> Figure:
     matrix_params = ["Phi_f", "Phi_h"]
     param_titles = {
         "Phi_f": "State Transition Matrix",
-        "Phi_h": "Volatility Transition Matrix"
+        "Phi_h": "Volatility Transition Matrix",
     }
 
-    df_casted = df.with_columns([
-        pl.col("N").cast(pl.Int64),
-        pl.col("K").cast(pl.Int64),
-        pl.col("config_T").cast(pl.Int64),
-        pl.col("filter_config").cast(pl.Categorical)
-    ])
-    configs = df_casted.select(["N", "K", "config_T"]).unique().sort(["N", "K", "config_T"])
+    df_casted = df.with_columns(
+        [
+            pl.col("N").cast(pl.Int64),
+            pl.col("K").cast(pl.Int64),
+            pl.col("config_T").cast(pl.Int64),
+            pl.col("filter_config").cast(pl.Categorical),
+        ]
+    )
+    configs = (
+        df_casted.select(["N", "K", "config_T"]).unique().sort(["N", "K", "config_T"])
+    )
 
     for param in matrix_params:
         for config_row in configs.iter_rows(named=True):
             N, K, T = config_row["N"], config_row["K"], config_row["config_T"]
             config_label = f"N{N}-K{K}-T{T}"
 
-            filter_configs_to_plot = df_casted.filter(
-                (pl.col("N") == N) & (pl.col("K") == K) & (pl.col("config_T") == T)
-            ).select("filter_config").unique().sort("filter_config").to_series().to_list()
+            filter_configs_to_plot = (
+                df_casted.filter(
+                    (pl.col("N") == N) & (pl.col("K") == K) & (pl.col("config_T") == T)
+                )
+                .select("filter_config")
+                .unique()
+                .sort("filter_config")
+                .to_series()
+                .to_list()
+            )
 
             if not filter_configs_to_plot:
-                logging.warning(f"No filter configs found for heatmap: {param}, {config_label}. Skipping.")
+                logging.warning(
+                    f"No filter configs found for heatmap: {param}, {config_label}. Skipping."
+                )
                 continue
 
             num_filters = len(filter_configs_to_plot)
             fig_width = min(16, max(8, num_filters * K * 1.5))
             fig_height = min(8, max(5, K * 1.5))
-            fig, axes = plt.subplots(1, num_filters, figsize=(fig_width, fig_height), squeeze=False)
+            fig, axes = plt.subplots(
+                1, num_filters, figsize=(fig_width, fig_height), squeeze=False
+            )
 
             for idx, filter_cfg in enumerate(filter_configs_to_plot):
                 ax = axes[0, idx]
@@ -262,17 +305,29 @@ def plot_error_heatmaps(df: pl.DataFrame) -> Figure:
 
                 try:
                     filter_data = df_casted.filter(
-                        (pl.col("filter_config") == filter_cfg) &
-                        (pl.col("N") == N) &
-                        (pl.col("K") == K) &
-                        (pl.col("config_T") == T)
+                        (pl.col("filter_config") == filter_cfg)
+                        & (pl.col("N") == N)
+                        & (pl.col("K") == K)
+                        & (pl.col("config_T") == T)
                     )
 
                     if filter_data.height == 0:
-                        logging.warning(f"Data unexpectedly empty for heatmap: {param}, {filter_cfg}, {config_label}")
-                        ax.text(0.5, 0.5, 'No data', ha='center', va='center', fontsize=fontsize)
-                        ax.set_title(f"{filter_cfg} - {config_label}\nMean Element-wise Bias",
-                                  fontsize=fontsize + 2, pad=10)
+                        logging.warning(
+                            f"Data unexpectedly empty for heatmap: {param}, {filter_cfg}, {config_label}"
+                        )
+                        ax.text(
+                            0.5,
+                            0.5,
+                            "No data",
+                            ha="center",
+                            va="center",
+                            fontsize=fontsize,
+                        )
+                        ax.set_title(
+                            f"{filter_cfg} - {config_label}\nMean Element-wise Bias",
+                            fontsize=fontsize + 2,
+                            pad=10,
+                        )
                         continue
 
                     matrix_data = np.full((K, K), np.nan)
@@ -280,10 +335,16 @@ def plot_error_heatmaps(df: pl.DataFrame) -> Figure:
                         for j in range(K):
                             col_name = f"param_{param}_element_{i}_{j}_bias"
                             if col_name in filter_data.columns:
-                                bias_val = filter_data.select(
-                                    pl.col(col_name).cast(pl.Float64)
-                                ).mean().item()
-                                matrix_data[i, j] = bias_val if bias_val is not None else np.nan
+                                bias_val = (
+                                    filter_data.select(
+                                        pl.col(col_name).cast(pl.Float64)
+                                    )
+                                    .mean()
+                                    .item()
+                                )
+                                matrix_data[i, j] = (
+                                    bias_val if bias_val is not None else np.nan
+                                )
 
                     sns.heatmap(
                         data=matrix_data,
@@ -291,31 +352,42 @@ def plot_error_heatmaps(df: pl.DataFrame) -> Figure:
                         center=0,
                         annot=True,
                         fmt=".3f",
-                        annot_kws={'size': fontsize},
+                        annot_kws={"size": fontsize},
                         square=True,
-                        cbar_kws={'label': 'Bias'},
-                        ax=ax
+                        cbar_kws={"label": "Bias"},
+                        ax=ax,
                     )
 
-                    ax.tick_params(axis='x', labelsize=fontsize)
-                    ax.tick_params(axis='y', labelsize=fontsize)
+                    ax.tick_params(axis="x", labelsize=fontsize)
+                    ax.tick_params(axis="y", labelsize=fontsize)
                     ax.set_title(
                         f"{filter_cfg} - {config_label}\nMean Element-wise Bias (Est - True)",
                         fontsize=fontsize + 2,
-                        pad=10
+                        pad=10,
                     )
 
                 except Exception as e:
-                    logging.error(f"Error creating heatmap for {param} ({filter_cfg}, {config_label}): {str(e)}")
-                    ax.text(0.5, 0.5, 'Error generating heatmap',
-                          ha='center', va='center', fontsize=fontsize)
-                    ax.set_title(f"{filter_cfg} - {config_label}\nError",
-                              fontsize=fontsize + 2, pad=10)
+                    logging.error(
+                        f"Error creating heatmap for {param} ({filter_cfg}, {config_label}): {str(e)}"
+                    )
+                    ax.text(
+                        0.5,
+                        0.5,
+                        "Error generating heatmap",
+                        ha="center",
+                        va="center",
+                        fontsize=fontsize,
+                    )
+                    ax.set_title(
+                        f"{filter_cfg} - {config_label}\nError",
+                        fontsize=fontsize + 2,
+                        pad=10,
+                    )
 
             plt.suptitle(
                 f"{param_titles[param]} Bias Analysis (K={K})",
                 y=1.05,
-                fontsize=fontsize + 4
+                fontsize=fontsize + 4,
             )
             plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
@@ -330,7 +402,7 @@ def plot_error_heatmaps(df: pl.DataFrame) -> Figure:
 def plot_k2_eigenvalue_distributions(
     df: pl.DataFrame,
     true_params_dict: Dict[str, DFSVParamsDataclass],
-    estimated_params_dict: Dict[str, DFSVParamsDataclass]
+    estimated_params_dict: Dict[str, DFSVParamsDataclass],
 ) -> Figure:
     """Create distribution plots and ellipse visualizations for K=2 configurations.
 
@@ -345,31 +417,43 @@ def plot_k2_eigenvalue_distributions(
     apply_publication_style()
 
     # Cast columns and filter for K=2 configurations
-    df_k2 = df.with_columns([
-        pl.col("K").cast(pl.Int64),
-        pl.col("N").cast(pl.Int64),
-        pl.col("config_T").cast(pl.Int64),
-        pl.col("filter_config").cast(pl.Categorical),
-        pl.col("config_fix_mu").cast(pl.Boolean),
-    ]).filter(pl.col("K") == 2)
+    df_k2 = df.with_columns(
+        [
+            pl.col("K").cast(pl.Int64),
+            pl.col("N").cast(pl.Int64),
+            pl.col("config_T").cast(pl.Int64),
+            pl.col("filter_config").cast(pl.Categorical),
+            pl.col("config_fix_mu").cast(pl.Boolean),
+        ]
+    ).filter(pl.col("K") == 2)
 
     if df_k2.height == 0:
         logging.info("No K=2 configurations found for eigenvalue plots")
         return None
 
-    df_k2 = df_k2.with_columns([
-        pl.concat_str([
-            pl.lit("N"), pl.col("N").cast(pl.Utf8),
-            pl.lit("-K2-T"), pl.col("config_T").cast(pl.Utf8)
-        ]).alias("config_label").cast(pl.Categorical)
-    ])
+    df_k2 = df_k2.with_columns(
+        [
+            pl.concat_str(
+                [
+                    pl.lit("N"),
+                    pl.col("N").cast(pl.Utf8),
+                    pl.lit("-K2-T"),
+                    pl.col("config_T").cast(pl.Utf8),
+                ]
+            )
+            .alias("config_label")
+            .cast(pl.Categorical)
+        ]
+    )
 
     param_titles = {
         "Phi_f": "State Transition Matrix",
-        "Phi_h": "Volatility Transition Matrix"
+        "Phi_h": "Volatility Transition Matrix",
     }
 
-    filter_configs = df_k2.select("filter_config").unique().sort("filter_config").to_series()
+    filter_configs = (
+        df_k2.select("filter_config").unique().sort("filter_config").to_series()
+    )
     color_palette = sns.color_palette("husl", n_colors=len(filter_configs))
     color_dict = dict(zip(filter_configs, color_palette))
 
@@ -379,9 +463,7 @@ def plot_k2_eigenvalue_distributions(
     for param, title in param_titles.items():
         eig_col = f"param_{param}_eig_rmse"
 
-        df_plot = df_k2.with_columns([
-            pl.col(eig_col).cast(pl.Float64)
-        ])
+        df_plot = df_k2.with_columns([pl.col(eig_col).cast(pl.Float64)])
 
         fig = plt.figure(figsize=(15, 6))
 
@@ -391,7 +473,7 @@ def plot_k2_eigenvalue_distributions(
             x="config_label",
             y=eig_col,
             hue="filter_config",
-            palette="Set2"
+            palette="Set2",
         )
         plt.title(f"Eigenvalue RMSE Distribution")
         plt.xticks(rotation=45)
@@ -401,15 +483,17 @@ def plot_k2_eigenvalue_distributions(
 
         plt.subplot(1, 2, 2)
 
-        configs = df_plot.unique(["config_label", "filter_config"]).sort(["config_label", "filter_config"])
+        configs = df_plot.unique(["config_label", "filter_config"]).sort(
+            ["config_label", "filter_config"]
+        )
 
         for config_row in configs.iter_rows(named=True):
             filter_cfg = config_row["filter_config"]
             config = config_row["config_label"]
 
             mean_data = df_plot.filter(
-                (pl.col("filter_config") == filter_cfg) &
-                (pl.col("config_label") == config)
+                (pl.col("filter_config") == filter_cfg)
+                & (pl.col("config_label") == config)
             )
 
             matrix = np.zeros((2, 2))
@@ -417,14 +501,18 @@ def plot_k2_eigenvalue_distributions(
                 for j in range(2):
                     col_name = f"param_{param}_element_{i}_{j}_bias"
                     if col_name in mean_data.columns:
-                        matrix[i, j] = mean_data.select(
-                            pl.col(col_name).cast(pl.Float64)
-                        ).mean().item()
+                        matrix[i, j] = (
+                            mean_data.select(pl.col(col_name).cast(pl.Float64))
+                            .mean()
+                            .item()
+                        )
 
             try:
                 eigvals, eigvecs = np.linalg.eig(matrix)
                 eigvecs_np = jnp.asarray(eigvecs).astype(float)
-                angle = float(jnp.degrees(jnp.arctan2(eigvecs_np[1, 0], eigvecs_np[0, 0])))
+                angle = float(
+                    jnp.degrees(jnp.arctan2(eigvecs_np[1, 0], eigvecs_np[0, 0]))
+                )
                 width = 2 * np.abs(eigvals[0])
                 height = 2 * np.abs(eigvals[1])
 
@@ -437,7 +525,7 @@ def plot_k2_eigenvalue_distributions(
                     "label": f"{filter_cfg} ({config}{'†' if fix_mu else ''})",
                     "linestyle": style_dict[fix_mu],
                     "hatch": hatch_dict[fix_mu],
-                    "fill": True
+                    "fill": True,
                 }
 
                 ellipse = plt.matplotlib.patches.Ellipse(
@@ -446,26 +534,28 @@ def plot_k2_eigenvalue_distributions(
                 plt.gca().add_patch(ellipse)
 
             except np.linalg.LinAlgError as e:
-                logging.warning(f"Failed to compute ellipse for {filter_cfg}-{config}: {e}")
+                logging.warning(
+                    f"Failed to compute ellipse for {filter_cfg}-{config}: {e}"
+                )
 
         plt.title("Mean Matrix Eigenstructure Visualization")
-        plt.grid(True, linestyle='--', alpha=0.7)
-        plt.axhline(y=0, color='gray', linestyle='-', alpha=0.3)
-        plt.axvline(x=0, color='gray', linestyle='-', alpha=0.3)
+        plt.grid(True, linestyle="--", alpha=0.7)
+        plt.axhline(y=0, color="gray", linestyle="-", alpha=0.3)
+        plt.axvline(x=0, color="gray", linestyle="-", alpha=0.3)
 
         legend = plt.legend(
             bbox_to_anchor=(1.05, 1),
-            loc='upper left',
+            loc="upper left",
             title="Filter Config (N,K,T)\n† = Fix μ",
             frameon=True,
             framealpha=0.95,
-            edgecolor='lightgray'
+            edgecolor="lightgray",
         )
         legend.get_frame().set_alpha(0.9)
 
-        fig.suptitle(f"{title} Analysis (K=2)", y=1.05, fontsize=14, weight='bold')
+        fig.suptitle(f"{title} Analysis (K=2)", y=1.05, fontsize=14, weight="bold")
         plt.tight_layout()
-        
+
         # Close all other figures to prevent memory issues
         for i in plt.get_fignums():
             if i != fig.number:
@@ -475,10 +565,7 @@ def plot_k2_eigenvalue_distributions(
 
 
 def create_time_scaling_plots(
-    df: pl.DataFrame,
-    fixed_N: int = 10,
-    fixed_T: int = 1000,
-    fixed_K: int = 3
+    df: pl.DataFrame, fixed_N: int = 10, fixed_T: int = 1000, fixed_K: int = 3
 ) -> Dict[str, plt.Figure]:
     """Create line plots showing how computation time scales with dimensions.
 
@@ -496,22 +583,21 @@ def create_time_scaling_plots(
         Dict[str, plt.Figure]: Dictionary of matplotlib figures, keyed by plot type
             ("scaling_N", "scaling_T", "scaling_K").
     """
-    apply_publication_style() # Apply global style settings
+    apply_publication_style()  # Apply global style settings
 
     figures: Dict[str, plt.Figure] = {}
 
     # Professional color palette for filter types (from original code)
     palette = {
-        'BIF': '#0173B2',
-        'PF-1000': '#DE8F05',
-        'PF-5000': '#029E73',
-        'PF-10000': '#CC78BC'
+        "BIF": "#0173B2",
+        "PF-1000": "#DE8F05",
+        "PF-5000": "#029E73",
+        "PF-10000": "#CC78BC",
     }
 
     # --- Figure 1: Scaling vs N (Fixed T, K) ---
     filtered_df_N = df.filter(
-        (pl.col("config_T") == fixed_T) &
-        (pl.col("K") == fixed_K)
+        (pl.col("config_T") == fixed_T) & (pl.col("K") == fixed_K)
     )
     if filtered_df_N.height > 0:
         fig_N, ax_N = plt.subplots(figsize=(8, 6))
@@ -521,25 +607,25 @@ def create_time_scaling_plots(
             y="timing_total_script_duration_s_mean",
             hue="filter_config",
             marker="o",
-            palette=palette, # Use the defined palette
-            ax=ax_N
+            palette=palette,  # Use the defined palette
+            ax=ax_N,
         )
-        ax_N.set_yscale('log')
-        ax_N.set_title(f"Computation Time Scaling vs. N (Fixed T={fixed_T}, K={fixed_K})")
+        ax_N.set_yscale("log")
+        ax_N.set_title(
+            f"Computation Time Scaling vs. N (Fixed T={fixed_T}, K={fixed_K})"
+        )
         ax_N.set_xlabel("Number of Particles (N)")
         ax_N.set_ylabel("Mean Computation Time (s, log scale)")
-        ax_N.grid(True, linestyle='--', alpha=0.7)
-        apply_publication_style() # Apply style to the specific axes
+        ax_N.grid(True, linestyle="--", alpha=0.7)
+        apply_publication_style()  # Apply style to the specific axes
         figures["scaling_N"] = fig_N
     else:
-        logging.warning(f"No data for scaling vs N plot (T={fixed_T}, K={fixed_K}). Skipping.")
-
+        logging.warning(
+            f"No data for scaling vs N plot (T={fixed_T}, K={fixed_K}). Skipping."
+        )
 
     # --- Figure 2: Scaling vs T (Fixed N, K) ---
-    filtered_df_T = df.filter(
-        (pl.col("N") == fixed_N) &
-        (pl.col("K") == fixed_K)
-    )
+    filtered_df_T = df.filter((pl.col("N") == fixed_N) & (pl.col("K") == fixed_K))
     if filtered_df_T.height > 0:
         fig_T, ax_T = plt.subplots(figsize=(8, 6))
         sns.lineplot(
@@ -548,24 +634,26 @@ def create_time_scaling_plots(
             y="timing_total_script_duration_s_mean",
             hue="filter_config",
             marker="o",
-            palette=palette, # Use the defined palette
-            ax=ax_T
+            palette=palette,  # Use the defined palette
+            ax=ax_T,
         )
-        ax_T.set_yscale('log')
-        ax_T.set_title(f"Computation Time Scaling vs. T (Fixed N={fixed_N}, K={fixed_K})")
+        ax_T.set_yscale("log")
+        ax_T.set_title(
+            f"Computation Time Scaling vs. T (Fixed N={fixed_N}, K={fixed_K})"
+        )
         ax_T.set_xlabel("Time Series Length (T)")
         ax_T.set_ylabel("Mean Computation Time (s, log scale)")
-        ax_T.grid(True, linestyle='--', alpha=0.7)
-        apply_publication_style() # Apply style to the specific axes
+        ax_T.grid(True, linestyle="--", alpha=0.7)
+        apply_publication_style()  # Apply style to the specific axes
         figures["scaling_T"] = fig_T
     else:
-         logging.warning(f"No data for scaling vs T plot (N={fixed_N}, K={fixed_K}). Skipping.")
-
+        logging.warning(
+            f"No data for scaling vs T plot (N={fixed_N}, K={fixed_K}). Skipping."
+        )
 
     # --- Figure 3: Scaling vs K (Fixed N, T) ---
     filtered_df_K = df.filter(
-        (pl.col("N") == fixed_N) &
-        (pl.col("config_T") == fixed_T)
+        (pl.col("N") == fixed_N) & (pl.col("config_T") == fixed_T)
     )
     if filtered_df_K.height > 0:
         fig_K, ax_K = plt.subplots(figsize=(8, 6))
@@ -575,18 +663,22 @@ def create_time_scaling_plots(
             y="timing_total_script_duration_s_mean",
             hue="filter_config",
             marker="o",
-            palette=palette, # Use the defined palette
-            ax=ax_K
+            palette=palette,  # Use the defined palette
+            ax=ax_K,
         )
-        ax_K.set_yscale('log')
-        ax_K.set_title(f"Computation Time Scaling vs. K (Fixed N={fixed_N}, T={fixed_T})")
+        ax_K.set_yscale("log")
+        ax_K.set_title(
+            f"Computation Time Scaling vs. K (Fixed N={fixed_N}, T={fixed_T})"
+        )
         ax_K.set_xlabel("Number of Factors (K)")
         ax_K.set_ylabel("Mean Computation Time (s, log scale)")
-        ax_K.grid(True, linestyle='--', alpha=0.7)
-        apply_publication_style() # Apply style to the specific axes
+        ax_K.grid(True, linestyle="--", alpha=0.7)
+        apply_publication_style()  # Apply style to the specific axes
         figures["scaling_K"] = fig_K
     else:
-        logging.warning(f"No data for scaling vs K plot (N={fixed_N}, T={fixed_T}). Skipping.")
+        logging.warning(
+            f"No data for scaling vs K plot (N={fixed_N}, T={fixed_T}). Skipping."
+        )
 
     # Close any figures that might have been implicitly created by seaborn if not explicitly managed
     # (though plt.subplots should handle this, it's good practice)
@@ -598,6 +690,7 @@ def create_time_scaling_plots(
             plt.close(i)
 
     return figures
+
 
 # ---------- helper -----------------------------------------------------------
 def _prepare_error_df(
@@ -612,8 +705,7 @@ def _prepare_error_df(
     """
     if metric_col in df.columns and not df.schema[metric_col].starts_with("List"):
         return (
-            df
-            .group_by(["filter_config", "N", "K", "T"])
+            df.group_by(["filter_config", "N", "K", "T"])
             .median()
             .select(["filter_config", "N", "K", "T", metric_col])
             .rename({metric_col: "metric"})
@@ -640,15 +732,14 @@ def create_error_scaling_plots(
     if metric_col not in df.columns:
         raise ValueError(f"Column '{metric_col}' not found in DataFrame")
     tidy = (
-        df
-        .group_by(["filter_config", "N", "K", "T"])
+        df.group_by(["filter_config", "N", "K", "T"])
         .median()
         .select(["filter_config", "N", "K", "T", metric_col])
         .rename({metric_col: "metric"})
     )
 
     # Desired line order
-    order= ["BIF", "PF-1000", "PF-5000", "PF-10000"]
+    order = ["BIF", "PF-1000", "PF-5000", "PF-10000"]
 
     # Color palette
     palette = {
@@ -666,8 +757,7 @@ def create_error_scaling_plots(
     # Helper to plot one subplot
     def _plot_sub(ax, x_col: str, filter_mask: pl.Expr, title: str):
         data = (
-            tidy
-            .filter(filter_mask)
+            tidy.filter(filter_mask)
             .group_by(["filter_config", x_col])
             .median()
             .sort([pl.col("filter_config"), pl.col(x_col)])

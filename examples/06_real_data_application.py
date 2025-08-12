@@ -23,12 +23,14 @@ import yfinance as yf
 from datetime import datetime, timedelta
 from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
-from bellman_filter_dfsv.core.filters.bellman_information import DFSVBellmanInformationFilter
+from bellman_filter_dfsv.core.filters.bellman_information import (
+    DFSVBellmanInformationFilter,
+)
 from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
 from bellman_filter_dfsv.core.optimization.optimization import (
     FilterType,
     run_optimization,
-    OptimizerResult
+    OptimizerResult,
 )
 
 # Set random seed for reproducibility
@@ -53,10 +55,10 @@ def load_financial_data(tickers, start_date, end_date):
     data = yf.download(tickers, start=start_date, end=end_date)
 
     # Extract adjusted close prices
-    prices = data['Adj Close']
+    prices = data["Adj Close"]
 
     # Handle missing values
-    prices = prices.dropna(axis=0, how='any')
+    prices = prices.dropna(axis=0, how="any")
 
     print(f"Loaded {len(prices)} days of data")
 
@@ -91,7 +93,9 @@ def preprocess_financial_data(prices):
     # Standardize returns (optional)
     # returns = (returns - returns.mean(axis=0)) / returns.std(axis=0)
 
-    print(f"Preprocessed {returns.shape[0]} days of returns for {returns.shape[1]} assets")
+    print(
+        f"Preprocessed {returns.shape[0]} days of returns for {returns.shape[1]} assets"
+    )
 
     return returns, dates, tickers
 
@@ -120,8 +124,10 @@ def create_initial_parameters(returns, K=1):
         Phi_f=jnp.eye(K) * 0.7,  # Moderate persistence for factors
         Phi_h=jnp.eye(K) * 0.95,  # High persistence for volatilities
         mu=jnp.zeros(K),  # Zero mean for log volatility
-        sigma2=jnp.array(data_variance * 0.5),  # Half of data variance for idiosyncratic variance
-        Q_h=jnp.eye(K) * 0.1  # Moderate volatility of volatility
+        sigma2=jnp.array(
+            data_variance * 0.5
+        ),  # Half of data variance for idiosyncratic variance
+        Q_h=jnp.eye(K) * 0.1,  # Moderate volatility of volatility
     )
 
     return initial_params
@@ -157,7 +163,7 @@ def estimate_parameters(returns, K=1, filter_type=FilterType.BIF, max_steps=200)
         optimizer_name="DampedTrustRegionBFGS",
         max_steps=max_steps,
         log_params=True,
-        verbose=True
+        verbose=True,
     )
     estimation_time = time.time() - start_time
 
@@ -198,7 +204,9 @@ def filter_states(params, returns, filter_type=FilterType.BIF):
 
     # Run filter
     start_time = time.time()
-    filtered_states, filtered_covs, log_likelihood = filter_instance.filter(params, jax_returns)
+    filtered_states, filtered_covs, log_likelihood = filter_instance.filter(
+        params, jax_returns
+    )
     filtering_time = time.time() - start_time
 
     print(f"State filtering completed in {filtering_time:.2f} seconds")
@@ -224,7 +232,7 @@ def analyze_filtered_states(filtered_states, dates, tickers, K):
 
     # Extract factors and log-volatilities
     factors = np.array(filtered_states[:, :K])
-    log_vols = np.array(filtered_states[:, K:2*K])
+    log_vols = np.array(filtered_states[:, K : 2 * K])
 
     # Convert log-volatilities to volatilities
     volatilities = np.exp(log_vols / 2)
@@ -250,14 +258,14 @@ def analyze_filtered_states(filtered_states, dates, tickers, K):
 
     print("\nFactor Statistics:")
     for k in range(K):
-        print(f"Factor {k+1}:")
+        print(f"Factor {k + 1}:")
         print(f"  Mean: {factor_mean[k]:.4f}")
         print(f"  Std Dev: {factor_std[k]:.4f}")
         print(f"  Autocorrelation (lag=1): {factor_autocorr[k]:.4f}")
 
     print("\nVolatility Statistics:")
     for k in range(K):
-        print(f"Volatility {k+1}:")
+        print(f"Volatility {k + 1}:")
         print(f"  Mean: {vol_mean[k]:.4f}")
         print(f"  Min: {vol_min[k]:.4f}")
         print(f"  Max: {vol_max[k]:.4f}")
@@ -265,16 +273,16 @@ def analyze_filtered_states(filtered_states, dates, tickers, K):
 
     # Return analysis results
     analysis = {
-        'factors': factors,
-        'log_vols': log_vols,
-        'volatilities': volatilities,
-        'factor_mean': factor_mean,
-        'factor_std': factor_std,
-        'vol_mean': vol_mean,
-        'vol_min': vol_min,
-        'vol_max': vol_max,
-        'factor_autocorr': factor_autocorr,
-        'vol_autocorr': vol_autocorr
+        "factors": factors,
+        "log_vols": log_vols,
+        "volatilities": volatilities,
+        "factor_mean": factor_mean,
+        "factor_std": factor_std,
+        "vol_mean": vol_mean,
+        "vol_min": vol_min,
+        "vol_max": vol_max,
+        "factor_autocorr": factor_autocorr,
+        "vol_autocorr": vol_autocorr,
     }
 
     return analysis
@@ -291,8 +299,8 @@ def plot_filtered_states(analysis, dates, tickers, K):
         K (int): Number of factors
     """
     # Extract data from analysis
-    factors = analysis['factors']
-    volatilities = analysis['volatilities']
+    factors = analysis["factors"]
+    volatilities = analysis["volatilities"]
 
     # Create time axis
     time_axis = np.arange(len(dates))
@@ -303,9 +311,9 @@ def plot_filtered_states(analysis, dates, tickers, K):
     for k in range(K):
         plt.subplot(K, 1, k + 1)
         plt.plot(dates, factors[:, k])
-        plt.title(f'Factor {k+1}')
-        plt.xlabel('Date')
-        plt.ylabel('Factor Value')
+        plt.title(f"Factor {k + 1}")
+        plt.xlabel("Date")
+        plt.ylabel("Factor Value")
         plt.grid(True)
 
     plt.tight_layout()
@@ -317,9 +325,9 @@ def plot_filtered_states(analysis, dates, tickers, K):
     for k in range(K):
         plt.subplot(K, 1, k + 1)
         plt.plot(dates, volatilities[:, k])
-        plt.title(f'Volatility {k+1}')
-        plt.xlabel('Date')
-        plt.ylabel('Volatility')
+        plt.title(f"Volatility {k + 1}")
+        plt.xlabel("Date")
+        plt.ylabel("Volatility")
         plt.grid(True)
 
     plt.tight_layout()
@@ -329,22 +337,22 @@ def plot_filtered_states(analysis, dates, tickers, K):
     if K >= 1:
         plt.figure(figsize=(12, 6))
         plt.plot(dates, volatilities[:, 0])
-        plt.title('Market Volatility')
-        plt.xlabel('Date')
-        plt.ylabel('Volatility')
+        plt.title("Market Volatility")
+        plt.xlabel("Date")
+        plt.ylabel("Volatility")
         plt.grid(True)
 
         # Add annotations for major market events
         # These are example events - adjust based on your date range
         events = {
-            '2008-09-15': 'Lehman Brothers Bankruptcy',
-            '2010-05-06': 'Flash Crash',
-            '2011-08-05': 'US Credit Downgrade',
-            '2015-08-24': 'Black Monday 2015',
-            '2016-06-24': 'Brexit Vote',
-            '2018-02-05': 'Volatility Spike',
-            '2020-03-16': 'COVID-19 Crash',
-            '2022-02-24': 'Russia-Ukraine War'
+            "2008-09-15": "Lehman Brothers Bankruptcy",
+            "2010-05-06": "Flash Crash",
+            "2011-08-05": "US Credit Downgrade",
+            "2015-08-24": "Black Monday 2015",
+            "2016-06-24": "Brexit Vote",
+            "2018-02-05": "Volatility Spike",
+            "2020-03-16": "COVID-19 Crash",
+            "2022-02-24": "Russia-Ukraine War",
         }
 
         # Add vertical lines and annotations for events within the date range
@@ -352,11 +360,17 @@ def plot_filtered_states(analysis, dates, tickers, K):
             event_dt = pd.to_datetime(event_date)
             if event_dt in dates or (dates[0] <= event_dt <= dates[-1]):
                 try:
-                    idx = dates.get_indexer([event_dt], method='nearest')[0]
-                    plt.axvline(x=dates[idx], color='r', linestyle='--', alpha=0.5)
-                    plt.annotate(event_name, xy=(dates[idx], volatilities[idx, 0]),
-                                xytext=(10, 30), textcoords='offset points',
-                                arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0.2'))
+                    idx = dates.get_indexer([event_dt], method="nearest")[0]
+                    plt.axvline(x=dates[idx], color="r", linestyle="--", alpha=0.5)
+                    plt.annotate(
+                        event_name,
+                        xy=(dates[idx], volatilities[idx, 0]),
+                        xytext=(10, 30),
+                        textcoords="offset points",
+                        arrowprops=dict(
+                            arrowstyle="->", connectionstyle="arc3,rad=0.2"
+                        ),
+                    )
                 except:
                     pass  # Skip if event date is not in range
 
@@ -381,7 +395,7 @@ def evaluate_model_performance(returns, filtered_states, params, K):
 
     # Extract factors and log-volatilities
     factors = np.array(filtered_states[:, :K])
-    log_vols = np.array(filtered_states[:, K:2*K])
+    log_vols = np.array(filtered_states[:, K : 2 * K])
 
     # Convert log-volatilities to volatilities
     volatilities = np.exp(log_vols / 2)
@@ -399,12 +413,12 @@ def evaluate_model_performance(returns, filtered_states, params, K):
     residuals = returns - implied_returns_mean
 
     # Calculate mean squared error
-    mse = np.mean(residuals ** 2, axis=0)
+    mse = np.mean(residuals**2, axis=0)
     rmse = np.sqrt(mse)
 
     # Calculate R-squared
     tss = np.sum((returns - returns.mean(axis=0)) ** 2, axis=0)
-    rss = np.sum(residuals ** 2, axis=0)
+    rss = np.sum(residuals**2, axis=0)
     r_squared = 1 - (rss / tss)
 
     # Print performance metrics
@@ -413,22 +427,22 @@ def evaluate_model_performance(returns, filtered_states, params, K):
 
     print("\nRoot Mean Squared Error (RMSE):")
     for n in range(N):
-        print(f"  Asset {n+1}: {rmse[n]:.4f}")
+        print(f"  Asset {n + 1}: {rmse[n]:.4f}")
 
     print("\nR-squared:")
     for n in range(N):
-        print(f"  Asset {n+1}: {r_squared[n]:.4f}")
+        print(f"  Asset {n + 1}: {r_squared[n]:.4f}")
 
     print(f"\nAverage RMSE: {rmse.mean():.4f}")
     print(f"Average R-squared: {r_squared.mean():.4f}")
 
     # Return performance metrics
     performance = {
-        'mse': mse,
-        'rmse': rmse,
-        'r_squared': r_squared,
-        'implied_returns_mean': implied_returns_mean,
-        'residuals': residuals
+        "mse": mse,
+        "rmse": rmse,
+        "r_squared": r_squared,
+        "implied_returns_mean": implied_returns_mean,
+        "residuals": residuals,
     }
 
     return performance
@@ -440,11 +454,11 @@ def main():
     print("============================================")
 
     # Define tickers (S&P 500 sectors ETFs)
-    tickers = ['XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLP', 'XLI', 'XLB', 'XLU', 'XLRE']
+    tickers = ["XLK", "XLF", "XLE", "XLV", "XLY", "XLP", "XLI", "XLB", "XLU", "XLRE"]
 
     # Define date range (5 years)
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    start_date = (datetime.now() - timedelta(days=5*365)).strftime('%Y-%m-%d')
+    end_date = datetime.now().strftime("%Y-%m-%d")
+    start_date = (datetime.now() - timedelta(days=5 * 365)).strftime("%Y-%m-%d")
 
     # Load and preprocess data
     try:
@@ -468,7 +482,7 @@ def main():
         dates = pd.DatetimeIndex(dates)
 
         # Create tickers
-        tickers = [f"Asset{i+1}" for i in range(N)]
+        tickers = [f"Asset{i + 1}" for i in range(N)]
 
     # Set number of factors
     K = 1
@@ -490,9 +504,19 @@ def main():
     plot_filtered_states(analysis, dates, tickers, K)
 
     # Evaluate model performance
-    performance = evaluate_model_performance(returns, filtered_states, estimated_params, K)
+    performance = evaluate_model_performance(
+        returns, filtered_states, estimated_params, K
+    )
 
-    return returns, dates, tickers, estimated_params, filtered_states, analysis, performance
+    return (
+        returns,
+        dates,
+        tickers,
+        estimated_params,
+        filtered_states,
+        analysis,
+        performance,
+    )
 
 
 if __name__ == "__main__":

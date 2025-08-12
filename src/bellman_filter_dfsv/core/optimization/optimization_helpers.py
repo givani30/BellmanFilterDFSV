@@ -3,9 +3,10 @@
 This module provides functions for generating stable initial parameters for optimization.
 """
 
-import jax
 import jax.numpy as jnp
+
 from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+
 
 def create_stable_initial_params(N: int, K: int) -> DFSVParamsDataclass:
     """Create stable initial parameter values for optimization.
@@ -34,13 +35,14 @@ def create_stable_initial_params(N: int, K: int) -> DFSVParamsDataclass:
     phi_h_init = phi_h_init / jnp.linalg.norm(phi_h_init, ord=2) * 0.8
 
     initial_params = DFSVParamsDataclass(
-        N=N, K=K,
+        N=N,
+        K=K,
         lambda_r=lambda_r_init,
         Phi_f=phi_f_init,
         Phi_h=phi_h_init,
         mu=jnp.zeros(K),
         sigma2=0.1 * jnp.ones(N),
-        Q_h=0.8 * jnp.eye(K)
+        Q_h=0.8 * jnp.eye(K),
     )
 
     return initial_params

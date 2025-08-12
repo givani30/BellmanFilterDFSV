@@ -20,21 +20,20 @@ jax.config.update("jax_enable_x64", True)
 # Generate synthetic data
 print("Generating synthetic data...")
 T = 200  # Very short time series for testing
-N = 3    # Number of observed variables
-K = 1    # Number of factors
+N = 3  # Number of observed variables
+K = 1  # Number of factors
 
 # Create model parameters
 lambda_r = jnp.array([[0.9], [0.6], [0.3]])  # Factor loadings
-Phi_f = jnp.array([[0.95]])                  # Factor persistence
-Phi_h = jnp.array([[0.98]])                  # Log-volatility persistence
-mu = jnp.array([-1.0])                       # Long-run mean for log-volatilities
-sigma2 = jnp.array([0.1, 0.1, 0.1])          # Idiosyncratic variance
-Q_h = jnp.array([[0.1]])                     # Log-volatility noise covariance
+Phi_f = jnp.array([[0.95]])  # Factor persistence
+Phi_h = jnp.array([[0.98]])  # Log-volatility persistence
+mu = jnp.array([-1.0])  # Long-run mean for log-volatilities
+sigma2 = jnp.array([0.1, 0.1, 0.1])  # Idiosyncratic variance
+Q_h = jnp.array([[0.1]])  # Log-volatility noise covariance
 
 # Create parameter object
 true_params = DFSVParamsDataclass(
-    N=N, K=K, lambda_r=lambda_r, Phi_f=Phi_f, Phi_h=Phi_h,
-    mu=mu, sigma2=sigma2, Q_h=Q_h
+    N=N, K=K, lambda_r=lambda_r, Phi_f=Phi_f, Phi_h=Phi_h, mu=mu, sigma2=sigma2, Q_h=Q_h
 )
 
 # Simulate data
@@ -53,7 +52,7 @@ lax_while_times = []
 lax_while_results = []
 
 for i in range(num_iterations):
-    print(f"\nIteration {i+1}/{num_iterations}")
+    print(f"\nIteration {i + 1}/{num_iterations}")
 
     # Run optimization with standard approach
     print("\nRunning optimization with standard approach...")
@@ -66,7 +65,7 @@ for i in range(num_iterations):
         optimizer_name=optimizer_name,
         max_steps=max_steps,
         verbose=False,  # Disable verbose output for cleaner output
-        use_lax_while=False  # Use standard approach
+        use_lax_while=False,  # Use standard approach
     )
     standard_time = time.time() - start_time
     standard_times.append(standard_time)
@@ -86,7 +85,7 @@ for i in range(num_iterations):
         optimizer_name=optimizer_name,
         max_steps=max_steps,
         verbose=False,  # Disable verbose output for cleaner output
-        use_lax_while=True  # Use lax.while_loop approach
+        use_lax_while=True,  # Use lax.while_loop approach
     )
     lax_while_time = time.time() - start_time
     lax_while_times.append(lax_while_time)
@@ -111,7 +110,9 @@ print(f"Speedup: {avg_standard_time / avg_lax_while_time:.2f}x")
 
 print("\nIndividual run times:")
 for i, (std_time, lax_time) in enumerate(zip(standard_times, lax_while_times)):
-    print(f"Run {i+1}: Standard: {std_time:.2f}s, lax.while_loop: {lax_time:.2f}s, Speedup: {std_time / lax_time:.2f}x")
+    print(
+        f"Run {i + 1}: Standard: {std_time:.2f}s, lax.while_loop: {lax_time:.2f}s, Speedup: {std_time / lax_time:.2f}x"
+    )
 
 # Compare parameter estimates
 print("\nParameter estimate comparison:")
@@ -133,13 +134,19 @@ print(f"sigma2: {result_lax_while.final_params.sigma2}")
 
 # Compare parameter history
 print("\nParameter history comparison:")
-print(f"Standard approach parameter history length: {len(result_standard.param_history)}")
-print(f"lax.while_loop approach parameter history length: {len(result_lax_while.param_history)}")
+print(
+    f"Standard approach parameter history length: {len(result_standard.param_history)}"
+)
+print(
+    f"lax.while_loop approach parameter history length: {len(result_lax_while.param_history)}"
+)
 
 # Check if the parameter histories match
 histories_match = True
 if len(result_standard.param_history) == len(result_lax_while.param_history):
-    for i, (p_std, p_lax) in enumerate(zip(result_standard.param_history, result_lax_while.param_history)):
+    for i, (p_std, p_lax) in enumerate(
+        zip(result_standard.param_history, result_lax_while.param_history)
+    ):
         # Check if lambda_r values match (as a simple check)
         if not jnp.allclose(p_std.lambda_r, p_lax.lambda_r):
             histories_match = False
