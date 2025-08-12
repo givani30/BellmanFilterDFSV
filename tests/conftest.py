@@ -5,16 +5,20 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import equinox as eqx
+
+# Configure JAX to use CPU for tests to avoid GPU memory issues
+jax.config.update("jax_platform_name", "cpu")
+jax.config.update("jax_enable_x64", True)
 from jaxtyping import Float, Array, PRNGKeyArray, Int, PyTree
 from typing import Dict, Any, Callable
 
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.models.simulation import simulate_DFSV
-from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
-from bellman_filter_dfsv.filters.bellman_information import (
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.core.filters.bellman_information import (
     DFSVBellmanInformationFilter,
 )
-from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
+from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
 
 
 @pytest.fixture(scope="session")
@@ -38,17 +42,17 @@ def params_fixture() -> Callable[..., DFSVParamsDataclass]:
         key, subkey_qh = jr.split(key)
         key, subkey_lambda = jr.split(key)
         key, subkey_mu = jr.split(key)
-        key, subkey_sigma2 = jr.split(key) # Added key for sigma2
+        key, subkey_sigma2 = jr.split(key)  # Added key for sigma2
 
         # Sensible default values matching DFSVParamsDataclass structure
         phi_f_diag = jnp.array([0.98] * K)
         phi_h_diag = jnp.array([0.95] * K)
-        q_h_diag = jnp.array([0.25]*K )  # Variances for Q_h diagonal
+        q_h_diag = jnp.array([0.25] * K)  # Variances for Q_h diagonal
         lambda_r_init = jr.normal(subkey_lambda, (N, K)) * 0.6
-        mu_init = -jnp.abs(
-            jr.normal(subkey_mu, (K,))
-        ) * 0.5  # Ensure mu is negative
-        sigma2_init = jnp.ones(N) * 0.05 # Default value for sigma2, shape N for idiosyncratic variances
+        mu_init = -jnp.abs(jr.normal(subkey_mu, (K,))) * 0.5  # Ensure mu is negative
+        sigma2_init = (
+            jnp.ones(N) * 0.05
+        )  # Default value for sigma2, shape N for idiosyncratic variances
 
         params = DFSVParamsDataclass(
             N=N,
@@ -88,7 +92,9 @@ def data_fixture() -> Callable[..., Dict[str, Any]]:
         key = jr.PRNGKey(seed)
         # Assuming simulate_DFSV takes DFSVParamsDataclass directly
         observations_np, true_factors_np, true_log_vols_np = simulate_DFSV(
-            params=params, T=T, seed=seed # Pass seed instead of key
+            params=params,
+            T=T,
+            seed=seed,  # Pass seed instead of key
         )
         # Convert to JAX arrays as expected by some filter methods
         return {

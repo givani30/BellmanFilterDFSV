@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-import jax.numpy as jnp # Add JAX numpy import
+import jax.numpy as jnp  # Add JAX numpy import
 import matplotlib.pyplot as plt
 import sys
 import os
@@ -9,15 +9,17 @@ import os
 # sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Updated imports
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass # Import the JAX dataclass
-from bellman_filter_dfsv.models.simulation import simulate_DFSV
-from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.core.models.dfsv import (
+    DFSVParamsDataclass,
+)  # Import the JAX dataclass
+from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
 
 
 # Removed TestDFSVParams class as it tested the deleted DFSV_params class
 
-class TestDFSVSimulation(unittest.TestCase):
 
+class TestDFSVSimulation(unittest.TestCase):
     def setUp(self):
         """Set up valid model parameters for simulation tests"""
         # Model dimensions
@@ -38,7 +40,7 @@ class TestDFSVSimulation(unittest.TestCase):
         # Other parameters
         self.lambda_r = np.random.normal(0, 1, size=(self.N, self.K))
         self.mu = np.random.normal(-1, 0.5, size=(self.K, 1))
-        self.sigma2 = np.exp(np.random.normal(-1, 0.5, size=self.N)) # Keep as 1D array
+        self.sigma2 = np.exp(np.random.normal(-1, 0.5, size=self.N))  # Keep as 1D array
 
         # Create positive definite Q_h matrix
         Q_h_raw = np.random.normal(0, 0.5, size=(self.K, self.K))
@@ -52,8 +54,8 @@ class TestDFSVSimulation(unittest.TestCase):
             lambda_r=jnp.array(self.lambda_r),
             Phi_f=jnp.array(self.Phi_f),
             Phi_h=jnp.array(self.Phi_h),
-            mu=jnp.array(self.mu.flatten()), # Ensure mu is 1D for dataclass
-            sigma2=jnp.array(self.sigma2), # Pass 1D sigma2
+            mu=jnp.array(self.mu.flatten()),  # Ensure mu is 1D for dataclass
+            sigma2=jnp.array(self.sigma2),  # Pass 1D sigma2
             Q_h=jnp.array(self.Q_h),
         )
 
@@ -102,7 +104,9 @@ class TestDFSVSimulation(unittest.TestCase):
         """Test basic statistical properties of the simulated data"""
         # Run longer simulation for better statistical properties
         returns, factors, log_vols = simulate_DFSV(
-            params=self.params, T=5000, seed=789  # Increase simulation length
+            params=self.params,
+            T=5000,
+            seed=789,  # Increase simulation length
         )
 
         # Check for volatility clustering - autocorrelation in squared returns
@@ -158,8 +162,8 @@ class TestDFSVBellmanFilter(unittest.TestCase):
             lambda_r=jnp.array(lambda_r),
             Phi_f=jnp.array(Phi_f),
             Phi_h=jnp.array(Phi_h),
-            mu=jnp.array(mu.flatten()), # Ensure mu is 1D
-            sigma2=jnp.array(sigma2), # Pass 1D sigma2
+            mu=jnp.array(mu.flatten()),  # Ensure mu is 1D
+            sigma2=jnp.array(sigma2),  # Pass 1D sigma2
             Q_h=jnp.array(Q_h),
         )
 
@@ -182,9 +186,11 @@ class TestDFSVBellmanFilter(unittest.TestCase):
 
         # Check state structure
         # Initial factors should be zero
-        self.assertTrue(np.allclose(state[:self.K], 0))
+        self.assertTrue(np.allclose(state[: self.K], 0))
         # Initial log-vols should match the parameter mu
-        self.assertTrue(np.allclose(state[self.K:].flatten(), self.params.mu)) # Compare flattened JAX array
+        self.assertTrue(
+            np.allclose(state[self.K :].flatten(), self.params.mu)
+        )  # Compare flattened JAX array
 
     def test_bellman_prediction(self):
         """Test the prediction step"""
@@ -200,7 +206,9 @@ class TestDFSVBellmanFilter(unittest.TestCase):
 
         # Covariance should be positive definite
         eigenvalues = np.linalg.eigvals(pred_cov)
-        self.assertTrue(np.all(eigenvalues > 0), "Predicted covariance is not positive definite")
+        self.assertTrue(
+            np.all(eigenvalues > 0), "Predicted covariance is not positive definite"
+        )
 
     def test_bellman_update(self):
         """Test the update step"""
@@ -224,12 +232,16 @@ class TestDFSVBellmanFilter(unittest.TestCase):
 
         # Covariance should be positive definite
         eigenvalues = np.linalg.eigvals(updated_cov)
-        self.assertTrue(np.all(eigenvalues > 0), "Updated covariance is not positive definite")
+        self.assertTrue(
+            np.all(eigenvalues > 0), "Updated covariance is not positive definite"
+        )
 
     def test_bellman_filter_run(self):
         """Test running the full filter"""
         # Run filter
-        filtered_states, filtered_covs, log_likelihood = self.bf.filter(self.params, self.returns)
+        filtered_states, filtered_covs, log_likelihood = self.bf.filter(
+            self.params, self.returns
+        )
 
         # Check output dimensions
         self.assertEqual(filtered_states.shape, (self.T, 2 * self.K))
@@ -258,13 +270,21 @@ class TestDFSVBellmanFilter(unittest.TestCase):
         # Check correlations between true and filtered states
         for k in range(self.K):
             # Factor correlation
-            factor_corr = np.corrcoef(self.true_factors[:, k], filtered_factors[:, k])[0, 1]
-            self.assertGreater(factor_corr, 0.3, f"Factor {k} correlation too low: {factor_corr}")
+            factor_corr = np.corrcoef(self.true_factors[:, k], filtered_factors[:, k])[
+                0, 1
+            ]
+            self.assertGreater(
+                factor_corr, 0.3, f"Factor {k} correlation too low: {factor_corr}"
+            )
 
             # Log-volatility correlation
-            vol_corr = np.corrcoef(self.true_log_vols[:, k], filtered_log_vols[:, k])[0, 1]
+            vol_corr = np.corrcoef(self.true_log_vols[:, k], filtered_log_vols[:, k])[
+                0, 1
+            ]
             # Restore threshold to 0.2 as T is increased
-            self.assertGreater(vol_corr, 0.2, f"Log-volatility {k} correlation too low: {vol_corr}")
+            self.assertGreater(
+                vol_corr, 0.2, f"Log-volatility {k} correlation too low: {vol_corr}"
+            )
 
         # Check RMSE
         factor_rmse = np.sqrt(np.mean((self.true_factors - filtered_factors) ** 2))
@@ -273,7 +293,6 @@ class TestDFSVBellmanFilter(unittest.TestCase):
         # Use slightly relaxed bounds for test to pass reliably
         self.assertLess(factor_rmse, 1.2, f"Factor RMSE too high: {factor_rmse}")
         self.assertLess(vol_rmse, 2.0, f"Log-volatility RMSE too high: {vol_rmse}")
-
 
     def test_smooth(self):
         """Tests the smoother implementation for the Bellman Filter."""
@@ -289,16 +308,30 @@ class TestDFSVBellmanFilter(unittest.TestCase):
 
         # Check output shapes
         state_dim = self.K * 2
-        self.assertEqual(smoothed_states.shape, (self.T, state_dim), f"Expected smoothed states shape ({self.T}, {state_dim}), got {smoothed_states.shape}")
-        self.assertEqual(smoothed_covs.shape, (self.T, state_dim, state_dim), f"Expected smoothed covs shape ({self.T}, {state_dim}, {state_dim}), got {smoothed_covs.shape}")
+        self.assertEqual(
+            smoothed_states.shape,
+            (self.T, state_dim),
+            f"Expected smoothed states shape ({self.T}, {state_dim}), got {smoothed_states.shape}",
+        )
+        self.assertEqual(
+            smoothed_covs.shape,
+            (self.T, state_dim, state_dim),
+            f"Expected smoothed covs shape ({self.T}, {state_dim}, {state_dim}), got {smoothed_covs.shape}",
+        )
 
         # Check dtypes (should be NumPy arrays)
         self.assertEqual(smoothed_states.dtype, np.float64)
         self.assertEqual(smoothed_covs.dtype, np.float64)
 
         # Check properties
-        self.assertTrue(np.all(np.isfinite(smoothed_states)), "Smoothed states contain non-finite values")
-        self.assertTrue(np.all(np.isfinite(smoothed_covs)), "Smoothed covs contain non-finite values")
+        self.assertTrue(
+            np.all(np.isfinite(smoothed_states)),
+            "Smoothed states contain non-finite values",
+        )
+        self.assertTrue(
+            np.all(np.isfinite(smoothed_covs)),
+            "Smoothed covs contain non-finite values",
+        )
 
         # Check internal storage matches returned values (use attributes directly)
         np.testing.assert_array_equal(smoothed_states, self.bf.smoothed_states)
@@ -307,9 +340,13 @@ class TestDFSVBellmanFilter(unittest.TestCase):
         # Check symmetry of smoothed covariances
         for i in range(self.T):
             matrix = smoothed_covs[i]
-            np.testing.assert_allclose(matrix, matrix.T, atol=1e-7, rtol=1e-6,
-                                       err_msg=f"Smoothed covariance matrix at index {i} is not symmetric")
-
+            np.testing.assert_allclose(
+                matrix,
+                matrix.T,
+                atol=1e-7,
+                rtol=1e-6,
+                err_msg=f"Smoothed covariance matrix at index {i} is not symmetric",
+            )
 
     def test_jax_gradients(self):
         """Test that JAX gradient computation works"""
@@ -347,6 +384,7 @@ class TestDFSVBellmanFilter(unittest.TestCase):
 
         except ImportError:
             self.skipTest("JAX not available, skipping gradient test")
+
 
 if __name__ == "__main__":
     unittest.main()

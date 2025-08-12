@@ -1,31 +1,46 @@
 .. _api_core:
 
 Core Functionality (`bellman_filter_dfsv.core`)
-=============================================
+=================================================
 
-This module contains the core components of the BellmanFilterDFSV project, including simulation tools and filtering algorithms.
+This module contains the core components of the BellmanFilterDFSV project, including filtering algorithms, model definitions, and optimization utilities.
 
 .. automodule:: bellman_filter_dfsv.core
    :members:
+   :no-index:
 
-Simulation (`bellman_filter_dfsv.core.simulation`)
---------------------------------------------------
-.. automodule:: bellman_filter_dfsv.core.simulation
+Models Subpackage (`bellman_filter_dfsv.core.models`)
+-----------------------------------------------------
+
+DFSV Model (`bellman_filter_dfsv.core.models.dfsv`)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. automodule:: bellman_filter_dfsv.core.models.dfsv
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
-Likelihood (`bellman_filter_dfsv.core.likelihood`)
---------------------------------------------------
-.. automodule:: bellman_filter_dfsv.core.likelihood
+Simulation (`bellman_filter_dfsv.core.models.simulation`)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. automodule:: bellman_filter_dfsv.core.models.simulation
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
+
+Likelihoods (`bellman_filter_dfsv.core.models.likelihoods`)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. automodule:: bellman_filter_dfsv.core.models.likelihoods
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :no-index:
 
 Filters Subpackage (`bellman_filter_dfsv.core.filters`)
 -------------------------------------------------------
 .. automodule:: bellman_filter_dfsv.core.filters
    :members:
+   :no-index:
 
 Base Filter (`bellman_filter_dfsv.core.filters.base`)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -33,6 +48,7 @@ Base Filter (`bellman_filter_dfsv.core.filters.base`)
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 Particle Filter (`bellman_filter_dfsv.core.filters.particle`)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -40,6 +56,7 @@ Particle Filter (`bellman_filter_dfsv.core.filters.particle`)
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 Bellman Filter (`bellman_filter_dfsv.core.filters.bellman`)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -47,6 +64,15 @@ Bellman Filter (`bellman_filter_dfsv.core.filters.bellman`)
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
+
+Bellman Information Filter (`bellman_filter_dfsv.core.filters.bellman_information`)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. automodule:: bellman_filter_dfsv.core.filters.bellman_information
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :no-index:
 
 Bellman Implementation (`bellman_filter_dfsv.core.filters._bellman_impl`)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -54,6 +80,7 @@ Bellman Implementation (`bellman_filter_dfsv.core.filters._bellman_impl`)
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 Bellman Optimization (`bellman_filter_dfsv.core.filters._bellman_optim`)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -61,3 +88,38 @@ Bellman Optimization (`bellman_filter_dfsv.core.filters._bellman_optim`)
    :members:
    :undoc-members:
    :show-inheritance:
+
+Optimization Subpackage (`bellman_filter_dfsv.core.optimization`)
+-----------------------------------------------------------------
+
+Optimization (`bellman_filter_dfsv.core.optimization.optimization`)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. automodule:: bellman_filter_dfsv.core.optimization.optimization
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :no-index:
+
+Objectives (`bellman_filter_dfsv.core.optimization.objectives`)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. automodule:: bellman_filter_dfsv.core.optimization.objectives
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :no-index:
+
+Solvers (`bellman_filter_dfsv.core.optimization.solvers`)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. automodule:: bellman_filter_dfsv.core.optimization.solvers
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :no-index:
+
+Transformations (`bellman_filter_dfsv.core.optimization.transformations`)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. automodule:: bellman_filter_dfsv.core.optimization.transformations
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :no-index:

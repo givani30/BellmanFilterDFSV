@@ -14,8 +14,8 @@ for time-varying volatility in the latent factors that drive returns.
 import numpy as np
 import matplotlib.pyplot as plt
 import jax.numpy as jnp
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.models.simulation import simulate_DFSV
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
 
 # Set random seed for reproducibility
 np.random.seed(42)
@@ -59,7 +59,7 @@ def create_simple_dfsv_model(N=3, K=1):
         Phi_h=jnp.array(Phi_h),
         mu=jnp.array(mu),
         sigma2=jnp.array(sigma2),
-        Q_h=jnp.array(Q_h)
+        Q_h=jnp.array(Q_h),
     )
 
     return params
@@ -84,30 +84,30 @@ def plot_simulation_results(returns, factors, log_vols, params):
     # Plot factors
     ax1 = fig.add_subplot(3, 1, 1)
     for k in range(params.K):
-        ax1.plot(time_axis, factors[:, k], label=f'Factor {k+1}')
-    ax1.set_title('Latent Factors')
-    ax1.set_xlabel('Time')
-    ax1.set_ylabel('Factor Value')
+        ax1.plot(time_axis, factors[:, k], label=f"Factor {k + 1}")
+    ax1.set_title("Latent Factors")
+    ax1.set_xlabel("Time")
+    ax1.set_ylabel("Factor Value")
     ax1.legend()
     ax1.grid(True)
 
     # Plot log-volatilities
     ax2 = fig.add_subplot(3, 1, 2)
     for k in range(params.K):
-        ax2.plot(time_axis, log_vols[:, k], label=f'Log-Vol {k+1}')
-    ax2.set_title('Log-Volatilities')
-    ax2.set_xlabel('Time')
-    ax2.set_ylabel('Log-Volatility')
+        ax2.plot(time_axis, log_vols[:, k], label=f"Log-Vol {k + 1}")
+    ax2.set_title("Log-Volatilities")
+    ax2.set_xlabel("Time")
+    ax2.set_ylabel("Log-Volatility")
     ax2.legend()
     ax2.grid(True)
 
     # Plot returns
     ax3 = fig.add_subplot(3, 1, 3)
     for n in range(min(params.N, 3)):  # Plot at most 3 return series to avoid clutter
-        ax3.plot(time_axis, returns[:, n], label=f'Returns {n+1}', alpha=0.7)
-    ax3.set_title('Observed Returns')
-    ax3.set_xlabel('Time')
-    ax3.set_ylabel('Return')
+        ax3.plot(time_axis, returns[:, n], label=f"Returns {n + 1}", alpha=0.7)
+    ax3.set_title("Observed Returns")
+    ax3.set_xlabel("Time")
+    ax3.set_ylabel("Return")
     ax3.legend()
     ax3.grid(True)
 
@@ -151,11 +151,11 @@ def analyze_simulation(returns, factors, log_vols):
 
     print("\nFactor Autocorrelations (lag=1):")
     for k in range(factors.shape[1]):
-        print(f"Factor {k+1}: {autocorr(factors[:, k]):.4f}")
+        print(f"Factor {k + 1}: {autocorr(factors[:, k]):.4f}")
 
     print("\nLog-Volatility Autocorrelations (lag=1):")
     for k in range(log_vols.shape[1]):
-        print(f"Log-Vol {k+1}: {autocorr(log_vols[:, k]):.4f}")
+        print(f"Log-Vol {k + 1}: {autocorr(log_vols[:, k]):.4f}")
 
 
 def main():
@@ -174,11 +174,7 @@ def main():
 
     # Run simulation
     print(f"Simulating DFSV model for T={T} time periods...")
-    returns, factors, log_vols = simulate_DFSV(
-        params=params,
-        T=T,
-        seed=seed
-    )
+    returns, factors, log_vols = simulate_DFSV(params=params, T=T, seed=seed)
     print("Simulation complete!")
 
     # Analyze simulation results

@@ -12,11 +12,12 @@ from typing import Dict, Any, Callable
 # Assuming fixtures are available from conftest.py:
 # params_fixture, data_fixture, filter_instances_fixture
 
-from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 
 
 # --- Specific Tests Retained and Adapted ---
+
 
 # @pytest.mark.skip(reason="Debugging interference with test_log_likelihood_wrt_params_calculation")
 def test_particle_filter_estimation(
@@ -28,13 +29,15 @@ def test_particle_filter_estimation(
     Test the particle filter's ability to estimate states from simulated data.
     """
     # Arrange: Use fixtures
-    params: DFSVParamsDataclass = params_fixture() # Default N=4, K=2
+    params: DFSVParamsDataclass = params_fixture()  # Default N=4, K=2
     sim_data: Dict[str, Any] = data_fixture(params, T=1500, seed=42)
     observations: jax.Array = sim_data["observations"]
     true_factors: np.ndarray = np.asarray(sim_data["true_factors"])
     true_log_vols: np.ndarray = np.asarray(sim_data["true_log_vols"])
     # Use fixture for filter with increased number of particles
-    pf: DFSVParticleFilter = filter_instances_fixture(params, num_particles=2000)["particle"]
+    pf: DFSVParticleFilter = filter_instances_fixture(params, num_particles=2000)[
+        "particle"
+    ]
     T = sim_data["T"]
 
     # Act: Run filter
@@ -43,48 +46,67 @@ def test_particle_filter_estimation(
     _ = pf.filter(params=params, observations=observations)
 
     # Act: Extract factor and volatility estimates
-    filtered_factors = pf.get_filtered_factors() # Returns NumPy array
-    filtered_log_vols = pf.get_filtered_volatilities() # Returns NumPy array
+    filtered_factors = pf.get_filtered_factors()  # Returns NumPy array
+    filtered_log_vols = pf.get_filtered_volatilities()  # Returns NumPy array
 
     # Assert: Check correlation between true and filtered factors
     for k in range(params.K):
         ff_k = filtered_factors[:, k]
         tf_k = true_factors[:, k]
         valid_indices = np.isfinite(ff_k) & np.isfinite(tf_k)
-        if np.sum(valid_indices) > 1 and np.std(ff_k[valid_indices]) > 1e-6 and np.std(tf_k[valid_indices]) > 1e-6:
+        if (
+            np.sum(valid_indices) > 1
+            and np.std(ff_k[valid_indices]) > 1e-6
+            and np.std(tf_k[valid_indices]) > 1e-6
+        ):
             corr = np.corrcoef(tf_k[valid_indices], ff_k[valid_indices])[0, 1]
             assert corr > 0.5, f"Factor {k} correlation too low: {corr:.4f}"
         else:
-            print(f"Warning: Skipping Factor {k} correlation check due to insufficient valid/variant data.")
-
+            print(
+                f"Warning: Skipping Factor {k} correlation check due to insufficient valid/variant data."
+            )
 
     # Assert: Check correlation between true and filtered log-volatilities
     for k in range(params.K):
         flv_k = filtered_log_vols[:, k]
         tlv_k = true_log_vols[:, k]
         valid_indices = np.isfinite(flv_k) & np.isfinite(tlv_k)
-        if np.sum(valid_indices) > 1 and np.std(flv_k[valid_indices]) > 1e-6 and np.std(tlv_k[valid_indices]) > 1e-6:
+        if (
+            np.sum(valid_indices) > 1
+            and np.std(flv_k[valid_indices]) > 1e-6
+            and np.std(tlv_k[valid_indices]) > 1e-6
+        ):
             corr = np.corrcoef(tlv_k[valid_indices], flv_k[valid_indices])[0, 1]
             assert corr > 0.15, f"Log-volatility {k} correlation too low: {corr:.4f}"
         else:
-            print(f"Warning: Skipping Log-Volatility {k} correlation check due to insufficient valid/variant data.")
-
+            print(
+                f"Warning: Skipping Log-Volatility {k} correlation check due to insufficient valid/variant data."
+            )
 
     # Assert: Check the average estimation error is within reasonable bounds
     valid_factors = np.isfinite(true_factors) & np.isfinite(filtered_factors)
-    factor_rmse = np.sqrt(np.mean((true_factors[valid_factors] - filtered_factors[valid_factors]) ** 2))
+    factor_rmse = np.sqrt(
+        np.mean((true_factors[valid_factors] - filtered_factors[valid_factors]) ** 2)
+    )
 
     valid_vols = np.isfinite(true_log_vols) & np.isfinite(filtered_log_vols)
-    vol_rmse = np.sqrt(np.mean((true_log_vols[valid_vols] - filtered_log_vols[valid_vols]) ** 2))
+    vol_rmse = np.sqrt(
+        np.mean((true_log_vols[valid_vols] - filtered_log_vols[valid_vols]) ** 2)
+    )
 
     assert factor_rmse < 4.0, f"Factor RMSE too high: {factor_rmse:.4f}"
     assert vol_rmse < 1.5, f"Log-volatility RMSE too high: {vol_rmse:.4f}"
 
     # Print additional information (optional)
-    print(f"\nFactor correlation (overall): {np.corrcoef(true_factors[valid_factors].flatten(), filtered_factors[valid_factors].flatten())[0, 1]:.4f}")
-    print(f"Log-volatility correlation (overall): {np.corrcoef(true_log_vols[valid_vols].flatten(), filtered_log_vols[valid_vols].flatten())[0, 1]:.4f}")
+    print(
+        f"\nFactor correlation (overall): {np.corrcoef(true_factors[valid_factors].flatten(), filtered_factors[valid_factors].flatten())[0, 1]:.4f}"
+    )
+    print(
+        f"Log-volatility correlation (overall): {np.corrcoef(true_log_vols[valid_vols].flatten(), filtered_log_vols[valid_vols].flatten())[0, 1]:.4f}"
+    )
     print(f"Factor RMSE: {factor_rmse:.4f}")
     print(f"Log-volatility RMSE: {vol_rmse:.4f}")
+
 
 # @pytest.mark.skip(reason="Debugging interference with test_log_likelihood_wrt_params_calculation")
 def test_smooth(
@@ -94,11 +116,13 @@ def test_smooth(
 ):
     """Test the smoother implementation for the Particle Filter."""
     # Arrange
-    params: DFSVParamsDataclass = params_fixture() # Default N=4, K=2
-    sim_data: Dict[str, Any] = data_fixture(params, T=100, seed=999) # Shorter series
+    params: DFSVParamsDataclass = params_fixture()  # Default N=4, K=2
+    sim_data: Dict[str, Any] = data_fixture(params, T=100, seed=999)  # Shorter series
     observations: jax.Array = sim_data["observations"]
     # Use fixture for filter with increased number of particles
-    pf: DFSVParticleFilter = filter_instances_fixture(params, num_particles=2000)["particle"]
+    pf: DFSVParticleFilter = filter_instances_fixture(params, num_particles=2000)[
+        "particle"
+    ]
     # Re-seed the filter instance if the smoother relies on the *exact* particles from the filter run
     # pf = pf.replace(key=jax.random.PRNGKey(999)) # Example if re-seeding is needed
     T = sim_data["T"]
@@ -111,20 +135,28 @@ def test_smooth(
     try:
         # Pass params to the smooth method if required by implementation
         # smoothed_states, smoothed_covs = pf.smooth(params)
-        smoothed_states, smoothed_covs = pf.smooth(params=params) # Pass params as required by API
+        smoothed_states, smoothed_covs = pf.smooth(
+            params=params
+        )  # Pass params as required by API
     except Exception as e:
         pytest.fail(f"Smoother raised an unexpected exception: {e}")
 
     # Assert: Check output shapes and types
-    assert smoothed_states.shape == (T, state_dim), f"Expected smoothed states shape ({T}, {state_dim}), got {smoothed_states.shape}"
-    assert smoothed_covs.shape == (T, state_dim, state_dim), f"Expected smoothed covs shape ({T}, {state_dim}, {state_dim}), got {smoothed_covs.shape}"
+    assert smoothed_states.shape == (T, state_dim), (
+        f"Expected smoothed states shape ({T}, {state_dim}), got {smoothed_states.shape}"
+    )
+    assert smoothed_covs.shape == (T, state_dim, state_dim), (
+        f"Expected smoothed covs shape ({T}, {state_dim}, {state_dim}), got {smoothed_covs.shape}"
+    )
     assert isinstance(smoothed_states, np.ndarray)
     assert isinstance(smoothed_covs, np.ndarray)
     assert smoothed_states.dtype == np.float64
     assert smoothed_covs.dtype == np.float64
 
     # Assert: Check properties
-    assert np.all(np.isfinite(smoothed_states)), "Smoothed states contain non-finite values"
+    assert np.all(np.isfinite(smoothed_states)), (
+        "Smoothed states contain non-finite values"
+    )
     assert np.all(np.isfinite(smoothed_covs)), "Smoothed covs contain non-finite values"
 
     # Assert: Check internal storage matches returned values
@@ -134,8 +166,13 @@ def test_smooth(
     # Assert: Check symmetry of smoothed covariances
     for i in range(T):
         matrix = smoothed_covs[i]
-        np.testing.assert_allclose(matrix, matrix.T, atol=1e-7, rtol=1e-6,
-                                   err_msg=f"Smoothed covariance matrix at index {i} is not symmetric")
+        np.testing.assert_allclose(
+            matrix,
+            matrix.T,
+            atol=1e-7,
+            rtol=1e-6,
+            err_msg=f"Smoothed covariance matrix at index {i} is not symmetric",
+        )
 
 
 def test_log_likelihood_wrt_params_calculation(
@@ -149,34 +186,52 @@ def test_log_likelihood_wrt_params_calculation(
     """
 
     # Arrange
-    params: DFSVParamsDataclass = params_fixture() # Default N=4, K=2
+    params: DFSVParamsDataclass = params_fixture()  # Default N=4, K=2
     sim_data: Dict[str, Any] = data_fixture(params, T=150, seed=111)
     observations: jax.Array = sim_data["observations"]
     num_particles = 500
-    filter_seed = 111 # Use consistent seed for comparison
+    filter_seed = 111  # Use consistent seed for comparison
 
     # Create filter instance specifically for log_likelihood_wrt_params
-    pf_opt = DFSVParticleFilter(N=params.N, K=params.K, num_particles=num_particles, seed=filter_seed)
+    pf_opt = DFSVParticleFilter(
+        N=params.N, K=params.K, num_particles=num_particles, seed=filter_seed
+    )
 
     # Act: Call the optimization-focused log-likelihood method
-    log_likelihood_opt = pf_opt.log_likelihood_wrt_params(params=params, observations=observations)
+    log_likelihood_opt = pf_opt.log_likelihood_wrt_params(
+        params=params, observations=observations
+    )
 
     # Assert: Check properties of the optimization likelihood
-    assert isinstance(log_likelihood_opt, (float, jax.Array)), "log_likelihood_wrt_params type mismatch"
+    assert isinstance(log_likelihood_opt, (float, jax.Array)), (
+        "log_likelihood_wrt_params type mismatch"
+    )
     assert jnp.isscalar(log_likelihood_opt), "log_likelihood_wrt_params not scalar"
-    assert jnp.isfinite(log_likelihood_opt), f"log_likelihood_wrt_params not finite: {log_likelihood_opt}"
+    assert jnp.isfinite(log_likelihood_opt), (
+        f"log_likelihood_wrt_params not finite: {log_likelihood_opt}"
+    )
     print(f"\nLog-Likelihood from log_likelihood_wrt_params: {log_likelihood_opt:.4f}")
 
     # Arrange: Create another filter instance with the same seed for standard filter run
-    pf_filter = DFSVParticleFilter(N=params.N, K=params.K, num_particles=num_particles, seed=filter_seed)
+    pf_filter = DFSVParticleFilter(
+        N=params.N, K=params.K, num_particles=num_particles, seed=filter_seed
+    )
 
     # Act: Run the standard filter method
-    _, _, log_likelihood_filter_total = pf_filter.filter(params=params, observations=observations)
+    _, _, log_likelihood_filter_total = pf_filter.filter(
+        params=params, observations=observations
+    )
 
     # Assert: Check properties of the standard filter likelihood
-    assert isinstance(log_likelihood_filter_total, (float, jax.Array)), "Standard filter likelihood type mismatch"
-    assert jnp.isscalar(log_likelihood_filter_total), "Standard filter likelihood not scalar"
-    assert jnp.isfinite(log_likelihood_filter_total), f"Standard filter likelihood not finite: {log_likelihood_filter_total}"
+    assert isinstance(log_likelihood_filter_total, (float, jax.Array)), (
+        "Standard filter likelihood type mismatch"
+    )
+    assert jnp.isscalar(log_likelihood_filter_total), (
+        "Standard filter likelihood not scalar"
+    )
+    assert jnp.isfinite(log_likelihood_filter_total), (
+        f"Standard filter likelihood not finite: {log_likelihood_filter_total}"
+    )
     print(f"Log-Likelihood from standard filter: {log_likelihood_filter_total:.4f}")
 
     # Assert: Compare the two log-likelihoods - REMOVED due to persistent numerical discrepancy
@@ -194,7 +249,7 @@ def _create_pf_visual_comparison(
     params: DFSVParamsDataclass,
     pf: DFSVParticleFilter,
     sim_data: Dict[str, Any],
-    save_path: str = None
+    save_path: str = None,
 ) -> plt.Figure:
     """Creates visual comparisons for Particle Filter results."""
     # Extract data
@@ -208,7 +263,9 @@ def _create_pf_visual_comparison(
 
     # Try getting smoothed estimates
     try:
-        smoothed_states, _ = pf.smooth(params) # Assuming smooth was run before calling this helper
+        smoothed_states, _ = pf.smooth(
+            params
+        )  # Assuming smooth was run before calling this helper
         smoothed_factors = pf.get_smoothed_factors()
         smoothed_log_vols = pf.get_smoothed_volatilities()
         include_smoothed = True
@@ -218,11 +275,10 @@ def _create_pf_visual_comparison(
         smoothed_factors = None
         smoothed_log_vols = None
 
-
     # Create figure
     fig, axs = plt.subplots(2, params.K, figsize=(7 * params.K, 10), sharex=True)
-    if params.K == 1: # Handle case where axs is 1D
-        axs = np.array([axs]).T # Make it 2x1
+    if params.K == 1:  # Handle case where axs is 1D
+        axs = np.array([axs]).T  # Make it 2x1
 
     # Plot factors
     for k in range(params.K):
@@ -231,9 +287,9 @@ def _create_pf_visual_comparison(
         ax.plot(filtered_factors[:, k], "r--", label="Filtered")
         if include_smoothed:
             ax.plot(smoothed_factors[:, k], "g-.", label="Smoothed")
-        ax.set_title(f"Factor {k+1}")
+        ax.set_title(f"Factor {k + 1}")
         ax.legend()
-        ax.grid(True, linestyle='--', alpha=0.6)
+        ax.grid(True, linestyle="--", alpha=0.6)
 
     # Plot log-volatilities (or volatilities)
     for k in range(params.K):
@@ -247,14 +303,15 @@ def _create_pf_visual_comparison(
         # ax.plot(np.exp(filtered_log_vols[:, k] / 2), "r--", label="Filtered Vol")
         # if include_smoothed:
         #     ax.plot(np.exp(smoothed_log_vols[:, k] / 2), "g-.", label="Smoothed Vol")
-        ax.set_title(f"Log-Volatility {k+1}")
+        ax.set_title(f"Log-Volatility {k + 1}")
         ax.legend()
-        ax.grid(True, linestyle='--', alpha=0.6)
+        ax.grid(True, linestyle="--", alpha=0.6)
         ax.set_xlabel("Time Step")
 
     fig.suptitle(
-        "Particle Filter Performance: True vs. Filtered" + (" vs. Smoothed" if include_smoothed else ""),
-        fontsize=16
+        "Particle Filter Performance: True vs. Filtered"
+        + (" vs. Smoothed" if include_smoothed else ""),
+        fontsize=16,
     )
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
@@ -281,17 +338,23 @@ def test_visualization(
 ):
     """Generates and saves a visual comparison of particle filter results."""
     # Arrange
-    params: DFSVParamsDataclass = params_fixture() # Default N=4, K=2
-    sim_data: Dict[str, Any] = data_fixture(params, T=300, seed=456) # Longer series for viz
+    params: DFSVParamsDataclass = params_fixture()  # Default N=4, K=2
+    sim_data: Dict[str, Any] = data_fixture(
+        params, T=300, seed=456
+    )  # Longer series for viz
     observations: jax.Array = sim_data["observations"]
-    pf: DFSVParticleFilter = filter_instances_fixture(params, num_particles=1000)["particle"]
+    pf: DFSVParticleFilter = filter_instances_fixture(params, num_particles=1000)[
+        "particle"
+    ]
 
     # Act: Run filter and smoother
     _ = pf.filter(params=params, observations=observations)
     try:
-        _ = pf.smooth(params) # Run smoother to populate smoothed states if available
+        _ = pf.smooth(params)  # Run smoother to populate smoothed states if available
     except Exception as e:
-        print(f"Smoother failed during visualization test setup: {e}") # Log failure but continue plot
+        print(
+            f"Smoother failed during visualization test setup: {e}"
+        )  # Log failure but continue plot
 
     # Define save path
     save_path = tmp_path / "pf_visual_comparison.png"

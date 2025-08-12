@@ -13,6 +13,7 @@ build/
 
 # Virtual environments
 venv/
+.venv/
 env/
 ENV/
 .env/
@@ -31,44 +32,26 @@ ENV/
 .coverage
 htmlcov/
 
+# Documentation builds
+docs/build/
+docs/_build/
+*.log
+
 # Local development
 .DS_Store
 .env
 .env.local
 
-# Project specific ignores (from original file)
-Bellman_supplements/
-xdymjf2kd61ucclr.csv
+# LLM and AI Assistant Configuration Files
+.clinerules*
+.augment*
+.cursor*
+.codeium*
+.copilot*
+*rules-default
 
-# Logs
-*.log
-Bellman filter replication code/*
+# JAX specific
+jax-trace/
 
-outputs/
-outputs/*
-jax-trace/*
-batch_outputs/*
-batch_configs/*
-
-#more stuff
-.roomodes
-.clinerules
-.coveragerc
-simulation_results_raw/*
-
-memory-bank/*
-memory-bank/activeContext.md
-memory-bank/decisionLog.md
-memory-bank/progress.md
-memory-bank/systemPatterns.md
-simulation_results_raw_memtest/*
-simulation_data/*
-test_batch_results/*
-2008.11477v16.pdf
-QF_Thesis_Proposal_GBoekestijn.pdf
-!memory-bank/thesis_timeline.md
-output_thesis/
-cloudbatchconfig.txt
-QF_Thesis_Proposal.pdf
-simulation1_data/
-thesis_code_submission/
+# Package specific
+thesis_artifacts/

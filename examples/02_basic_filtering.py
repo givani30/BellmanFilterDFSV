@@ -15,11 +15,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import jax.numpy as jnp
 import time
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.models.simulation import simulate_DFSV
-from bellman_filter_dfsv.filters.bellman import DFSVBellmanFilter
-from bellman_filter_dfsv.filters.bellman_information import DFSVBellmanInformationFilter
-from bellman_filter_dfsv.filters.particle import DFSVParticleFilter
+from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
+from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
+from bellman_filter_dfsv.core.filters.bellman_information import (
+    DFSVBellmanInformationFilter,
+)
+from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
 
 # Set random seed for reproducibility
 np.random.seed(42)
@@ -63,7 +65,7 @@ def create_simple_dfsv_model(N=3, K=1):
         Phi_h=jnp.array(Phi_h),
         mu=jnp.array(mu),
         sigma2=jnp.array(sigma2),
-        Q_h=jnp.array(Q_h)
+        Q_h=jnp.array(Q_h),
     )
 
     return params
@@ -146,7 +148,9 @@ def run_filters(params, returns, true_factors, true_log_vols):
     print(f"  Factor RMSE: {bf_factor_rmse}")
     print(f"  Log-Vol RMSE: {bf_log_vol_rmse}")
 
-    print(f"Bellman Information Filter - Log-Likelihood: {bif_ll:.2f}, Time: {bif_time:.4f}s")
+    print(
+        f"Bellman Information Filter - Log-Likelihood: {bif_ll:.2f}, Time: {bif_time:.4f}s"
+    )
     print(f"  Factor RMSE: {bif_factor_rmse}")
     print(f"  Log-Vol RMSE: {bif_log_vol_rmse}")
 
@@ -156,30 +160,30 @@ def run_filters(params, returns, true_factors, true_log_vols):
 
     # Return results
     results = {
-        'bf': {
-            'states': bf_states,
-            'covs': bf_covs,
-            'll': bf_ll,
-            'time': bf_time,
-            'factor_rmse': bf_factor_rmse,
-            'log_vol_rmse': bf_log_vol_rmse
+        "bf": {
+            "states": bf_states,
+            "covs": bf_covs,
+            "ll": bf_ll,
+            "time": bf_time,
+            "factor_rmse": bf_factor_rmse,
+            "log_vol_rmse": bf_log_vol_rmse,
         },
-        'bif': {
-            'states': bif_states,
-            'covs': bif_covs,
-            'll': bif_ll,
-            'time': bif_time,
-            'factor_rmse': bif_factor_rmse,
-            'log_vol_rmse': bif_log_vol_rmse
+        "bif": {
+            "states": bif_states,
+            "covs": bif_covs,
+            "ll": bif_ll,
+            "time": bif_time,
+            "factor_rmse": bif_factor_rmse,
+            "log_vol_rmse": bif_log_vol_rmse,
         },
-        'pf': {
-            'states': pf_states,
-            'covs': pf_covs,
-            'll': pf_ll,
-            'time': pf_time,
-            'factor_rmse': pf_factor_rmse,
-            'log_vol_rmse': pf_log_vol_rmse
-        }
+        "pf": {
+            "states": pf_states,
+            "covs": pf_covs,
+            "ll": pf_ll,
+            "time": pf_time,
+            "factor_rmse": pf_factor_rmse,
+            "log_vol_rmse": pf_log_vol_rmse,
+        },
     }
 
     return results
@@ -204,13 +208,15 @@ def plot_filter_comparison(results, true_factors, true_log_vols, params):
 
     for k in range(K):
         plt.subplot(K, 1, k + 1)
-        plt.plot(time_axis, true_factors[:, k], 'k-', label='True', alpha=0.7)
-        plt.plot(time_axis, results['bf']['states'][:, k], 'b-', label='BF', alpha=0.7)
-        plt.plot(time_axis, results['bif']['states'][:, k], 'g-', label='BIF', alpha=0.7)
-        plt.plot(time_axis, results['pf']['states'][:, k], 'r-', label='PF', alpha=0.7)
-        plt.title(f'Factor {k+1} Comparison')
-        plt.xlabel('Time')
-        plt.ylabel('Factor Value')
+        plt.plot(time_axis, true_factors[:, k], "k-", label="True", alpha=0.7)
+        plt.plot(time_axis, results["bf"]["states"][:, k], "b-", label="BF", alpha=0.7)
+        plt.plot(
+            time_axis, results["bif"]["states"][:, k], "g-", label="BIF", alpha=0.7
+        )
+        plt.plot(time_axis, results["pf"]["states"][:, k], "r-", label="PF", alpha=0.7)
+        plt.title(f"Factor {k + 1} Comparison")
+        plt.xlabel("Time")
+        plt.ylabel("Factor Value")
         plt.legend()
         plt.grid(True)
 
@@ -223,23 +229,27 @@ def plot_filter_comparison(results, true_factors, true_log_vols, params):
     plt.figure(figsize=(10, 6))
 
     # Prepare data for bar chart
-    filter_names = ['BF', 'BIF', 'PF']
-    times = [results['bf']['time'], results['bif']['time'], results['pf']['time']]
-    lls = [float(results['bf']['ll']), float(results['bif']['ll']), float(results['pf']['ll'])]
+    filter_names = ["BF", "BIF", "PF"]
+    times = [results["bf"]["time"], results["bif"]["time"], results["pf"]["time"]]
+    lls = [
+        float(results["bf"]["ll"]),
+        float(results["bif"]["ll"]),
+        float(results["pf"]["ll"]),
+    ]
 
     # Plot computation time
     plt.subplot(1, 2, 1)
-    plt.bar(filter_names, times, color=['blue', 'green', 'red'])
-    plt.title('Computation Time')
-    plt.ylabel('Time (seconds)')
-    plt.grid(True, axis='y')
+    plt.bar(filter_names, times, color=["blue", "green", "red"])
+    plt.title("Computation Time")
+    plt.ylabel("Time (seconds)")
+    plt.grid(True, axis="y")
 
     # Plot log-likelihood
     plt.subplot(1, 2, 2)
-    plt.bar(filter_names, lls, color=['blue', 'green', 'red'])
-    plt.title('Log-Likelihood')
-    plt.ylabel('Log-Likelihood')
-    plt.grid(True, axis='y')
+    plt.bar(filter_names, lls, color=["blue", "green", "red"])
+    plt.title("Log-Likelihood")
+    plt.ylabel("Log-Likelihood")
+    plt.grid(True, axis="y")
 
     plt.tight_layout()
     plt.show()
@@ -261,11 +271,7 @@ def main():
 
     # Run simulation
     print(f"Simulating DFSV model for T={T} time periods...")
-    returns, factors, log_vols = simulate_DFSV(
-        params=params,
-        T=T,
-        seed=seed
-    )
+    returns, factors, log_vols = simulate_DFSV(params=params, T=T, seed=seed)
     print("Simulation complete!")
 
     # Run filters and compare performance

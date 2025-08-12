@@ -4,55 +4,142 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bellman-filter-dfsv"
-version = "0.1.0"
-description = "Econometrics thesis project code for filtering DFSV models."
-readme = "README.md" # Optional: if you create one later
-requires-python = ">=3.12" # Adjust based on your Python version
+version = "1.0.0"
+description = "High-performance JAX-based filtering for Dynamic Factor Stochastic Volatility (DFSV) models"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    {name = "Givani Boekestijn", email = "givaniboek@hotmail.com"}
+]
+keywords = ["jax", "filtering", "stochastic-volatility", "dynamic-factors", "econometrics", "finance"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Office/Business :: Financial",
+]
 dependencies = [
-    "pandas",
-    "numpy",
-    "jax[cuda12]",
+    # Core JAX ecosystem
+    "jax",
     "jaxlib",
     "jax-dataclasses",
-    "matplotlib",
-    "jaxopt",
-    "sympy",
-    "optax",
-    "optimistix",
     "jaxtyping",
-    "plotly",
-    "tqdm",
-    "altair",
-    # "pytest", # Moved to dev dependencies
+    "equinox",
+
+    # Optimization
+    "optimistix",
+    "optax",
+
+    # Scientific computing
+    "numpy",
     "scipy",
-    # Add any other direct dependencies here
-    "gcsfs", # Added for Google Cloud Storage access
-    "pyarrow>=19.0.1",
-    "cloudpickle>=3.1.1",
-    "scikit-learn>=1.6.1",
-    "google-cloud-batch>=0.17.35",
-    "ipykernel>=6.29.5",
-    "polars>=1.27.1",
-    "seaborn>=0.13.2",
-    "marimo[lsp]>=0.13.0",
-    "jupytext>=1.17.0",
-    "tabulate>=0.9.0",
-    "python-lsp-server>=1.12.2",
-    "statsmodels>=0.14.4",
-    "rich>=14.0.0",
-    "notebook>=7.4.1",
-    "arch>=7.2.0",
-    "mgarch>=0.3.0",
+
+    # Basic utilities
+    "matplotlib",  # For basic plotting in examples
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"] # Look for packages in src/
 
-[project.optional-dependencies]
-dev = [
-    "pytest",
-    "pytest-cov", # Replaced coverage
-    "flake8",
-    "black",
-    # Add other development tools
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
 ]
+# Exclude thesis artifacts from test discovery
+norecursedirs = ["thesis_artifacts", "build", "dist", ".git", ".tox"]
+
+[project.optional-dependencies]
+# Development tools
+dev = [
+    "pytest>=8.3.5",
+    "pytest-cov>=6.1.1",
+    "ruff",
+    "mypy",
+    "sphinx>=8.2.3",
+    "sphinx-rtd-theme>=3.0.2",
+]
+
+# Data analysis and visualization
+analysis = [
+    "pandas",
+    "seaborn",
+    "plotly",
+    "altair",
+    "tabulate",
+]
+
+# Cloud computing and batch processing
+cloud = [
+    "gcsfs",
+    "google-cloud-batch",
+    "cloudpickle",
+    "pyarrow",
+]
+
+# Notebook and interactive development
+notebooks = [
+    "jupyter",
+    "ipykernel",
+    "marimo",
+    "jupytext",
+    "notebook",
+]
+
+# Econometrics and financial modeling
+econometrics = [
+    "statsmodels",
+    "arch",
+    "mgarch",
+    "scikit-learn",
+]
+
+# Development environment
+devenv = [
+    "python-lsp-server",
+    "rich",
+    "tqdm",
+]
+
+# All optional dependencies for full functionality
+all = [
+    "bellman-filter-dfsv[analysis,cloud,notebooks,econometrics,devenv]"
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501", # line too long, handled by formatter
+    "B008", # do not perform function calls in argument defaults
+    "C901", # too complex
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # unused imports in __init__.py files
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
