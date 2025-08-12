@@ -1,207 +1,204 @@
-# BellmanFilterDFSV - Dynamic Factor Stochastic Volatility (DFSV) Models in JAX
+# BellmanFilterDFSV
 
-This repository contains Python code for Dynamic Factor Stochastic Volatility (DFSV) models, leveraging JAX for enhanced performance.
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![JAX](https://img.shields.io/badge/JAX-enabled-orange.svg)](https://jax.readthedocs.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://github.com/givani30/BellmanFilterDFSV/workflows/Tests/badge.svg)](https://github.com/givani30/BellmanFilterDFSV/actions)
+[![Documentation](https://github.com/givani30/BellmanFilterDFSV/workflows/Build%20and%20Deploy%20Documentation/badge.svg)](https://givani30.github.io/BellmanFilterDFSV/)
 
-## Project Purpose
+**High-performance JAX-based filtering for Dynamic Factor Stochastic Volatility (DFSV) models**
 
-This project addresses the modeling of time-varying volatility and correlation in financial asset returns using DFSV models. It offers tools for:
-*   Simulating DFSV models.
-*   Filtering latent states with a Bellman Information Filter (BIF) and a Particle Filter (PF).
-*   Estimating model parameters using JAX-based optimization.
-*   Utilizing JAX for high performance through automatic differentiation, JIT compilation, and hardware acceleration.
+BellmanFilterDFSV is a Python package that provides efficient implementations of filtering algorithms for Dynamic Factor Stochastic Volatility models using JAX for automatic differentiation and JIT compilation.
 
-## Project Status
+## 🚀 Key Features
 
-Post Thesis Archive, considering the following extensions:
-- Implementing Expectation Maximization for parameter estimation
-- Extending the models to also incorporate time-varying idiosyncratic variance, possibly grouped 
+- **Multiple Filtering Algorithms**: Bellman Information Filter (BIF), Bellman Filter, and Particle Filter
+- **JAX-Powered Performance**: Automatic differentiation, JIT compilation, and vectorization
+- **Numerical Stability**: Advanced techniques for robust parameter estimation
+- **Clean API**: Intuitive interface for research and applications
+- **Extensible Design**: Easy to adapt for other state-space models
+- **Comprehensive Testing**: Full test suite with 76+ tests
 
-The core implementations of the DFSV model, Bellman Information Filter (BIF), and Particle Filter (PF) are stable and functional, validated by a comprehensive `pytest` test suite.
+## 📦 Installation
 
-## Key Features
+### Basic Installation
 
-*   **DFSV Core:** Model definition (`DFSVParamsDataclass`), simulation, and JAX integration for performance.
-*   **Filtering Algorithms:** Numerically stabilized Bellman Information Filter (BIF) and a benchmark Particle Filter (PF).
-*   **Parameter Estimation:** Hyperparameter estimation framework using BIF pseudo log-likelihood and JAX optimization.
-*   **Testing:** Comprehensive `pytest` suite.
+```bash
+pip install bellman-filter-dfsv
+```
 
-## Installation and Setup
+### With Optional Dependencies
 
-1.  **Clone the repository:**
-    ```bash
-    git clone <repository-url> # Replace <repository-url> with the actual URL
-    cd BellmanFilterDFSV
-    ```
+```bash
+# For data analysis and visualization
+pip install bellman-filter-dfsv[analysis]
 
-2.  **Create and activate a virtual environment:** (Recommended)
-    ```bash
-    # Using venv (standard library)
-    python -m venv .venv
-    source .venv/bin/activate  # On Linux/macOS
-    # .\.venv\Scripts\activate  # On Windows
+# For cloud computing and batch processing
+pip install bellman-filter-dfsv[cloud]
 
-    # Or using conda
-    # conda create -n bellman_filter_dfsv python=3.10 # Or your preferred Python version >= 3.10
-    # conda activate qf_thesis
-    ```
+# For notebook development
+pip install bellman-filter-dfsv[notebooks]
 
-3.  **Install dependencies and the package:**
-    Project dependencies are managed with `pyproject.toml`. Install the package in editable mode (`-e`) so changes in the `src/` directory are immediately reflected.
-    ```bash
-    # Using pip (standard)
-    pip install -e .
-    ```
+# For econometric extensions
+pip install bellman-filter-dfsv[econometrics]
 
-## Usage Example: Simulating a Simple DFSV Model
+# Everything
+pip install bellman-filter-dfsv[all]
+```
 
-The following example demonstrates how to define parameters for a DFSV model (with K=1 factor and N=3 observed series) and simulate data using the `bellman_filter_dfsv` package. This is based on `scripts/simple_dfsv_example.py`.
+### Development Installation
 
-To run this example:
+```bash
+git clone https://github.com/givani30/BellmanFilterDFSV.git
+cd BellmanFilterDFSV
+pip install -e .[dev,all]
+```
 
-1.  Ensure you have installed the package as described in the "Installation and Setup" section.
-2.  Navigate to the `scripts/` directory: `cd scripts/`
-3.  Run the script: `python simple_dfsv_example.py`
+Or using [uv](https://docs.astral.sh/uv/) (recommended):
 
-The script will simulate data from a simple DFSV model and generate plots of the simulated factors, log-volatilities, and returns.
+```bash
+git clone https://github.com/givani30/BellmanFilterDFSV.git
+cd BellmanFilterDFSV
+uv sync
+uv run pytest  # Run tests
+```
+
+## 🚀 Quick Start
 
 ```python
 import jax.numpy as jnp
-import numpy as np
-import matplotlib.pyplot as plt
-from bellman_filter_dfsv.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.core.simulation import simulate_DFSV
+from bellman_filter_dfsv.core.models import DFSVParamsDataclass, simulate_DFSV
+from bellman_filter_dfsv.core.filters import DFSVBellmanInformationFilter
 
-# 1. Define Model Parameters (K=1, N=3)
+# Define model parameters
 params = DFSVParamsDataclass(
-    N=3,
-    K=1,
-    lambda_r=jnp.array([[0.8], [0.6], [0.4]]), # Factor loadings
-    Phi_f=jnp.array([[0.95]]),                # Factor state transition
-    Phi_h=jnp.array([[0.98]]),                # Log-vol state transition
-    mu=jnp.array([0.0]),                      # Log-vol long-run mean
-    sigma2=jnp.array([0.2, 0.3, 0.4]),        # Idiosyncratic variances
-    Q_h=jnp.array([[0.1]])                    # Log-vol noise covariance
+    N=3,  # Number of observed series
+    K=1,  # Number of factors
+    Lambda=jnp.array([[0.8], [0.7], [0.9]]),
+    phi_f=jnp.array([[0.7]]),
+    phi_h=jnp.array([0.95]),
+    sigma_f=jnp.array([1.0]),
+    sigma_h=jnp.array([0.1]),
+    sigma_eps=jnp.array([0.3, 0.25, 0.35]),
+    mu=jnp.array([-1.2])
 )
 
-# 2. Simulation Settings
-T = 500  # Number of time periods
-seed = 42 # For reproducibility
+# Simulate data
+returns, factors, log_vols = simulate_DFSV(params, T=500, key=42)
 
-# 3. Simulate Data
-returns, factors, log_vols = simulate_DFSV(params, T=T, seed=seed)
+# Create and run filter
+bif = DFSVBellmanInformationFilter(N=3, K=1)
+states, covs, loglik = bif.filter(params, returns)
 
-# 4. (Optional) Plotting Results (as done in the script)
-# This part generates plots similar to the one saved in outputs/simple_dfsv_example.png
-print(f"Simulated returns shape: {returns.shape}") # Output: (500, 3)
-print(f"Simulated factors shape: {factors.shape}") # Output: (500, 1)
-print(f"Simulated log-vols shape: {log_vols.shape}") # Output: (500, 1)
-
-# Example plot generation (requires matplotlib)
-fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
-axes[0].plot(factors, label='Latent Factor')
-axes[0].set_title('Latent Factor')
-axes[0].legend()
-axes[1].plot(log_vols, label='Log Volatility', color='orange')
-axes[1].set_title('Log Volatility')
-axes[1].legend()
-axes[2].plot(returns[:, 0], label='Returns Series 1', alpha=0.7)
-axes[2].plot(returns[:, 1], label='Returns Series 2', alpha=0.7)
-axes[2].plot(returns[:, 2], label='Returns Series 3', alpha=0.7)
-axes[2].set_title('Simulated Returns')
-axes[2].legend()
-plt.tight_layout()
-plt.show() # Or plt.savefig('outputs/simple_dfsv_simulation.png')
-# To embed this plot in a Markdown file, you would typically save it as an image and use Markdown image syntax: `![Simple DFSV Simulation](path/to/outputs/simple_dfsv_simulation.png)` (assuming the image is saved in the `outputs` directory and accessible where the README is displayed).
+print(f"Log-likelihood: {loglik:.2f}")
+print(f"Filtered states shape: {states.shape}")
 ```
 
-Explore the `scripts/` and `examples/` directories for more detailed use cases, including filter implementations and parameter estimation examples. To run other examples, navigate to the corresponding directory and execute the Python script. For instance, to run the basic filtering example:
+## 📊 Examples
 
-1.  Navigate to the `examples/` directory: `cd examples/`
-2.  Run the script: `python 02_basic_filtering.py`
+The package includes several comprehensive examples:
 
-## Project Structure
+- **Basic Simulation**: Simulate DFSV models and analyze properties
+- **Filter Comparison**: Compare BIF, Bellman, and Particle filters
+- **Parameter Estimation**: Maximum likelihood estimation with optimization
+- **Real Data Application**: Apply to financial time series
+
+```bash
+# Run examples
+python examples/01_dfsv_simulation.py
+python examples/02_basic_filtering.py
+python examples/03_parameter_optimization.py
+```
+
+## 🏗️ Architecture
+
+### DFSV Model
+
+The Dynamic Factor Stochastic Volatility model represents observed returns as:
 
 ```
+y_t = Λf_t + ε_t
+```
+
+Where:
+- `y_t`: Observed returns (N×1)
+- `f_t`: Latent factors (K×1)
+- `Λ`: Factor loading matrix (N×K)
+- `ε_t`: Idiosyncratic errors with stochastic volatility
+
+### Filtering Algorithms
+
+1. **Bellman Information Filter (BIF)**: Information-form implementation for numerical stability
+2. **Bellman Filter**: Traditional covariance-form implementation
+3. **Particle Filter**: Bootstrap particle filter for non-linear/non-Gaussian cases
+
+## 📁 Project Structure
+
+```text
 BellmanFilterDFSV/
-├── .gitignore
-├── Dockerfile
-├── LICENSE                 # Recommended (Add a note if not present)
-├── README.md
-├── batch_job_bf.template.json
-├── batch_job_pf.template.json
-├── pyproject.toml
-├── Data/
-│   └── ... (various data files)
-├── Figures/
-│   └── ... (various figures)
-├── docs/
-│   ├── Makefile
-│   ├── make.bat
-│   └── source/
-├── examples/
-│   └── ... (example scripts)
-├── notebooks/
-│   └── ... (Jupyter notebooks)
-├── outputs/
-│   └── ... (generated outputs)
-├── scripts/
-│   ├── Archive/
-│   └── ... (various scripts)
-├── src/
-│   └── bellman_filter_dfsv/
-│       ├── __init__.py
-│       ├── filters/
-│       ├── models/
-│       └── utils/
-├── tests/
-│   └── ... (test files)
-└── .venv/                # Or similar virtualenv
+├── src/bellman_filter_dfsv/     # Core package
+│   ├── core/                    # Main functionality
+│   │   ├── filters/            # Filtering algorithms
+│   │   ├── models/             # DFSV model definitions
+│   │   └── optimization/       # Parameter estimation
+│   └── utils/                  # Utility functions
+├── examples/                   # Usage examples
+├── tests/                     # Test suite
+├── docs/                      # Documentation
+├── thesis_artifacts/          # Research materials
+└── pyproject.toml            # Package configuration
 ```
 
-## Running Tests
+## 🧪 Testing
 
-Tests are implemented using `pytest` and are located in the `tests/` directory. Ensure your virtual environment is active and dependencies are installed.
+Run the comprehensive test suite:
 
 ```bash
-pytest .
+# Run all tests
+uv run pytest
+
+# Run with coverage
+uv run pytest --cov=bellman_filter_dfsv
+
+# Run specific test
+uv run pytest tests/test_unified_filters.py
 ```
 
-To run tests with coverage:
+## 📚 Documentation
+
+**📖 [Full Documentation](https://givani30.github.io/BellmanFilterDFSV/)** - Complete API reference, tutorials, and examples
+
+**Local Documentation Build:**
 
 ```bash
-coverage run -m pytest .
-coverage report -m
+cd docs/
+make html
+# Open docs/build/html/index.html
 ```
 
-(Requires `coverage` package: `pip install coverage`)
+## 🤝 Contributing
 
-## Contributing
+Contributions are welcome! Please see our [Contributing Guide](docs/source/contributing.rst) for details.
 
-Contributions are welcome! If you find a bug, have a suggestion, or want to contribute code, please follow these guidelines:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes with tests
+4. Submit a pull request
 
-1.  **Issues:** Check the existing issues on the repository. If your issue isn't listed, please open a new one describing the bug or feature request.
-2.  **Pull Requests:** For code contributions, please fork the repository, create a new branch for your feature or fix, and submit a pull request. Ensure your code adheres to the project's style and includes tests where appropriate.
-3.  **Questions:** Feel free to open an issue for questions about the code or methodology.
+## 📄 License
 
-## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-This project is currently distributed without an explicit license. It is highly recommended to add a `LICENSE` file to the repository. If the intention is to follow the previous mention, the [MIT License](https://opensource.org/licenses/MIT) would be a suitable choice.
+## 🔬 Research
 
-## Refactoring and Project Simplification Suggestions
+This package was developed as part of a quantitative finance thesis on Dynamic Factor Stochastic Volatility models. The research materials and thesis-specific code are archived in the `thesis_artifacts/` directory.
 
-1.  **Dependency Management:**
-    *   Remove the `requirements.txt` file as it appears redundant with `pyproject.toml`, which should be considered the single source of truth for project dependencies. This simplifies dependency management and avoids potential conflicts.
+## 📞 Contact
 
-2.  **Code Organization:**
-    *   **`scripts/` Directory:** Conduct a thorough review of the `scripts/` directory, particularly the `Archive/` subfolder. Identify and remove any obsolete or experimental scripts that are no longer relevant to the project's core goals. For the remaining essential scripts, consider organizing them into more descriptive subdirectories (e.g., `simulation_studies`, `empirical_analysis`, `data_processing`, `utility_scripts`). Furthermore, any reusable utility functions currently within scripts should be migrated to the main `src/bellman_filter_dfsv/utils/` module to promote code reuse and maintainability.
-    *   **`examples/` vs. `scripts/`:** Clarify the distinction between the `examples/` and `scripts/` directories. `examples/` should ideally contain minimal, focused code snippets demonstrating specific functionalities or how to use a particular module of the `bellman_filter_dfsv` package. `scripts/` can then be reserved for more complex workflows, such as running full simulation studies, batch processing, or manuscript-specific analyses.
-    *   **`notebooks/` Directory:** Review the Jupyter notebooks in `notebooks/`. Archive or delete outdated experimental notebooks. If any notebooks contain code that has proven to be stable and useful for ongoing tasks or defines key methodologies, consider refactoring this code into Python scripts within `scripts/` or integrating it into the `src/` package for better version control and reusability.
+- **Author**: Givani Boekestijn
+- **Email**: givaniboek@hotmail.com
+- **GitHub**: [@givani30](https://github.com/givani30)
 
-3.  **Documentation:**
-    *   **Sphinx Documentation:** Ensure that the Sphinx documentation located in the `docs/` directory is comprehensive, up-to-date with the current codebase, and easy to navigate. Include clear instructions on how to build the documentation locally. Add a prominent link to the generated documentation (e.g., on ReadTheDocs or a self-hosted site) from the main README.
+---
 
-4.  **Data Management:**
-    *   **Data Directory (`Data/`):** Create a `README.md` file within the `Data/` directory (i.e., `Data/README.md`). This file should clearly describe the contents of the `Data/` directory, including the source of each dataset, its structure (e.g., columns, format), and how it is used by the project's scripts or examples. If data files are too large to be hosted directly in the repository, provide download links and instructions.
-
-5.  **License File:**
-    *   **Add `LICENSE` File:** Reiterate the recommendation from the main 'License' section: add a `LICENSE` file (e.g., containing the MIT License text) to the root of the repository to clearly define the terms under which the software can be used, modified, and distributed.
+**Citation**: If you use this package in your research, please cite the original thesis and this software package.
