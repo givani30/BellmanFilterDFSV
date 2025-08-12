@@ -191,7 +191,19 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🔬 Research
 
-This package was developed as part of a quantitative finance thesis on Dynamic Factor Stochastic Volatility models. The research materials and thesis-specific code are archived in the `thesis_artifacts/` directory.
+This package was developed as part of a quantitative finance thesis on Dynamic Factor Stochastic Volatility models.
+
+**📚 [Complete Research Materials](https://github.com/givani30/BellmanFilterDFSV-ThesisResearch)**
+
+All thesis research materials, simulation studies, and experimental code are available in the dedicated research repository. This includes:
+
+- 🎯 Monte Carlo simulation studies
+- 📊 Empirical analysis with real financial data
+- 🔬 Experimental implementations and prototypes
+- 📈 Complete thesis results and figures
+- 📝 Research notes and development logs
+
+See [THESIS_RESEARCH.md](THESIS_RESEARCH.md) for detailed information.
 
 ## 📞 Contact
 
@@ -201,4 +213,14 @@ This package was developed as part of a quantitative finance thesis on Dynamic F
 
 ---
 
-**Citation**: If you use this package in your research, please cite the original thesis and this software package.
+**Citation**: If you use this package in your research, please cite:
+
+```bibtex
+@software{boekestijn2025bellman,
+  title={BellmanFilterDFSV: JAX Implementation of Bellman Filter for Dynamic Factor Stochastic Volatility Models},
+  author={Boekestijn, Givani},
+  year={2025},
+  url={https://github.com/givani30/BellmanFilterDFSV},
+  note={Research materials: https://github.com/givani30/BellmanFilterDFSV-ThesisResearch}
+}
+```

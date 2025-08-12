@@ -1,5 +1,0 @@
-Metric,BIF (Mean ± Std),PF-1000 (Mean ± Std),PF-5000 (Mean ± Std)
-Risk Premium RMSE,0.016600 ± 0.014853,0.429085 ± 0.122462,0.430986 ± 0.119212
-State Transition Matrix Rel. Frob. Diff,0.322634 ± 0.122202,0.347905 ± 0.108526,0.299504 ± 0.007636
-Volatility Covar. LogDet Diff,-0.178743 ± 0.095729,0.439307 ± 0.106789,0.391072 ± 0.002238
-Volatility Trans. Matrix Rel. Frob. Diff,0.036634 ± 0.007507,0.154290 ± 0.196445,0.093215 ± 0.077087

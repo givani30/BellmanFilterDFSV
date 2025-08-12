@@ -1,8 +1,0 @@
-Test,Initial Pass Rate,Post-GARCH Pass Rate
-Ljung-Box Sq (Lag 5),0.0737,0.9368
-Ljung-Box Sq (Lag 10),0.0947,0.9263
-Ljung-Box Sq (Lag 15),0.1053,0.9368
-Ljung-Box Sq (Lag 20),0.1263,0.9474
-ARCH-LM (Lag 5),0.0947,0.9263
-ARCH-LM (Lag 10),0.1158,0.9474
-Jarque-Bera,0.0211,0.0947

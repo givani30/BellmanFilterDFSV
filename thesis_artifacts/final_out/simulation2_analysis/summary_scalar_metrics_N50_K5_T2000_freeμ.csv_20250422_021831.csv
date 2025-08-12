@@ -1,5 +1,0 @@
-Metric,PF-1000 (Mean ± Std),PF-5000 (Mean ± Std)
-Factor State Correlation,0.680344 ± 0.019460,0.745208 ± 0.011645
-Volatility State Correlation,0.596352 ± 0.052889,0.642752 ± 0.019699
-Computation Time (s),153.099152 ± 39.545389,683.857936 ± 142.621140
-Optimization Steps,160.000000 ± 34.000000,186.000000 ± 27.000000
