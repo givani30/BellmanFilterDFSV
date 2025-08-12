@@ -264,7 +264,7 @@ def log_prior_density(
         Normal prior parameters for Φ_f (different mean on diagonal vs off‑diag).
     prior_phi_h_mean, prior_phi_h_diag_mean, prior_phi_h_var : float
         Normal prior parameters for Φ_h (different mean on diagonal vs off‑diag).
-    **kwargs
+    kwargs : dict
         Optional overrides (e.g. provided via a dict and expanded with ``**priors``).
 
     Priors
