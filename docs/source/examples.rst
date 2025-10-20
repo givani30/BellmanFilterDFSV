@@ -34,16 +34,15 @@ This example shows how to simulate data from a DFSV model and examine its proper
    # Define model parameters for 5 series, 2 factors
    params = DFSVParamsDataclass(
        N=5, K=2,
-       Lambda=jnp.array([
-           [0.8, 0.2], [0.7, 0.3], [0.9, 0.1], 
+       lambda_r=jnp.array([
+           [0.8, 0.2], [0.7, 0.3], [0.9, 0.1],
            [0.6, 0.4], [0.8, 0.2]
-       ]),
-       phi_f=jnp.array([[0.7, 0.1], [0.1, 0.6]]),
-       phi_h=jnp.array([0.95, 0.92]),
-       sigma_f=jnp.array([1.0, 1.0]),
-       sigma_h=jnp.array([0.1, 0.12]),
-       sigma_eps=jnp.array([0.3, 0.25, 0.35, 0.28, 0.32]),
-       mu=jnp.array([-1.2, -1.0])
+       ]),  # Factor loadings (N×K)
+       Phi_f=jnp.array([[0.7, 0.1], [0.1, 0.6]]),  # Factor AR matrix (K×K)
+       Phi_h=jnp.array([[0.95, 0.0], [0.0, 0.92]]),  # Log-vol AR matrix (K×K)
+       mu=jnp.array([-1.2, -1.0]),  # Long-run mean of log-vols (K,)
+       sigma2=jnp.array([0.3, 0.25, 0.35, 0.28, 0.32]),  # Idiosyncratic variances (N,)
+       Q_h=jnp.array([[0.01, 0.0], [0.0, 0.0144]])  # Log-vol innovation cov (K×K)
    )
    
    # Simulate 1000 time periods
@@ -142,13 +141,12 @@ This example demonstrates maximum likelihood parameter estimation.
    # Generate synthetic data with known parameters
    true_params = DFSVParamsDataclass(
        N=3, K=1,
-       Lambda=jnp.array([[0.8], [0.7], [0.9]]),
-       phi_f=jnp.array([[0.7]]),
-       phi_h=jnp.array([0.95]),
-       sigma_f=jnp.array([1.0]),
-       sigma_h=jnp.array([0.1]),
-       sigma_eps=jnp.array([0.3, 0.25, 0.35]),
-       mu=jnp.array([-1.2])
+       lambda_r=jnp.array([[0.8], [0.7], [0.9]]),  # Factor loadings (N×K)
+       Phi_f=jnp.array([[0.7]]),  # Factor AR matrix (K×K)
+       Phi_h=jnp.array([[0.95]]),  # Log-vol AR matrix (K×K)
+       mu=jnp.array([-1.2]),  # Long-run mean of log-vols (K,)
+       sigma2=jnp.array([0.3, 0.25, 0.35]),  # Idiosyncratic variances (N,)
+       Q_h=jnp.array([[0.01]])  # Log-vol innovation cov (K×K)
    )
    
    returns, _, _ = simulate_DFSV(true_params, T=1000, key=42)
@@ -156,13 +154,12 @@ This example demonstrates maximum likelihood parameter estimation.
    # Create initial guess (perturbed true parameters)
    initial_params = DFSVParamsDataclass(
        N=3, K=1,
-       Lambda=jnp.array([[0.5], [0.5], [0.5]]),
-       phi_f=jnp.array([[0.5]]),
-       phi_h=jnp.array([0.9]),
-       sigma_f=jnp.array([1.2]),
-       sigma_h=jnp.array([0.15]),
-       sigma_eps=jnp.array([0.4, 0.4, 0.4]),
-       mu=jnp.array([-1.0])
+       lambda_r=jnp.array([[0.5], [0.5], [0.5]]),  # Factor loadings (N×K)
+       Phi_f=jnp.array([[0.5]]),  # Factor AR matrix (K×K)
+       Phi_h=jnp.array([[0.9]]),  # Log-vol AR matrix (K×K)
+       mu=jnp.array([-1.0]),  # Long-run mean of log-vols (K,)
+       sigma2=jnp.array([0.4, 0.4, 0.4]),  # Idiosyncratic variances (N,)
+       Q_h=jnp.array([[0.0225]])  # Log-vol innovation cov (K×K)
    )
    
    # Run optimization
@@ -185,8 +182,8 @@ This example demonstrates maximum likelihood parameter estimation.
    # Compare estimated vs true parameters
    estimated_params = result.final_params
    print(f"\nParameter Comparison:")
-   print(f"True Lambda: {true_params.Lambda.flatten()}")
-   print(f"Est. Lambda: {estimated_params.Lambda.flatten()}")
+   print(f"True lambda_r: {true_params.lambda_r.flatten()}")
+   print(f"Est. lambda_r: {estimated_params.lambda_r.flatten()}")
 
 Example 4: Real Data Application
 --------------------------------
@@ -234,13 +231,12 @@ This example shows how to apply the filters to real financial data.
    # Set up initial parameters for 4 series, 2 factors
    initial_params = DFSVParamsDataclass(
        N=4, K=2,
-       Lambda=jnp.ones((4, 2)) * 0.5,
-       phi_f=jnp.eye(2) * 0.6,
-       phi_h=jnp.array([0.95, 0.93]),
-       sigma_f=jnp.ones(2),
-       sigma_h=jnp.array([0.1, 0.12]),
-       sigma_eps=jnp.ones(4) * 0.3,
-       mu=jnp.array([-1.5, -1.3])
+       lambda_r=jnp.ones((4, 2)) * 0.5,  # Factor loadings (N×K)
+       Phi_f=jnp.eye(2) * 0.6,  # Factor AR matrix (K×K)
+       Phi_h=jnp.eye(2) * jnp.array([0.95, 0.93]),  # Log-vol AR matrix (K×K)
+       mu=jnp.array([-1.5, -1.3]),  # Long-run mean of log-vols (K,)
+       sigma2=jnp.ones(4) * 0.3,  # Idiosyncratic variances (N,)
+       Q_h=jnp.diag(jnp.array([0.01, 0.0144]))  # Log-vol innovation cov (K×K)
    )
    
    # Estimate parameters
@@ -256,7 +252,7 @@ This example shows how to apply the filters to real financial data.
    # Analyze results
    if result.converged:
        print("\nEstimated Factor Loadings:")
-       loadings = result.final_params.Lambda
+       loadings = result.final_params.lambda_r
        for i, stock in enumerate(returns_df.columns):
            print(f"{stock}: Factor 1 = {loadings[i,0]:.3f}, Factor 2 = {loadings[i,1]:.3f}")
    

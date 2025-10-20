@@ -10,18 +10,37 @@ Basic Concepts
 
 **Dynamic Factor Stochastic Volatility (DFSV) Model**
 
-The DFSV model represents observed returns as:
+The DFSV model consists of three key equations:
+
+**Observation Equation:**
 
 .. math::
 
-   y_t = \Lambda f_t + \epsilon_t
+   r_t = \lambda_r f_t + e_t, \quad e_t \sim \mathcal{N}(0, \Sigma)
+
+**Factor Dynamics:**
+
+.. math::
+
+   f_t = \Phi_f f_{t-1} + \text{diag}(\exp(h_t/2)) \varepsilon_t, \quad \varepsilon_t \sim \mathcal{N}(0, I_K)
+
+**Log-Volatility Dynamics:**
+
+.. math::
+
+   h_t = \mu + \Phi_h (h_{t-1} - \mu) + \eta_t, \quad \eta_t \sim \mathcal{N}(0, Q_h)
 
 where:
 
-* :math:`y_t` are observed returns (N×1)
-* :math:`f_t` are latent factors (K×1)
-* :math:`\Lambda` is the factor loading matrix (N×K)
-* :math:`\epsilon_t` are idiosyncratic errors with stochastic volatility
+* :math:`r_t` are observed returns (N×1)
+* :math:`f_t` are latent factors with stochastic volatility (K×1)
+* :math:`h_t` are log-volatilities of factors (K×1)
+* :math:`\lambda_r` is the factor loading matrix (N×K)
+* :math:`\Phi_f` is the factor autoregression matrix (K×K)
+* :math:`\Phi_h` is the log-volatility autoregression matrix (K×K)
+* :math:`\mu` is the long-run mean of log-volatilities (K×1)
+* :math:`\Sigma` is the idiosyncratic error covariance (N×N)
+* :math:`Q_h` is the log-volatility innovation covariance (K×K)
 
 **Filtering Algorithms**
 
@@ -45,14 +64,13 @@ Basic Usage
    params = DFSVParamsDataclass(
        N=5,  # Number of observed series
        K=2,  # Number of factors
-       Lambda=jnp.array([[0.8, 0.2], [0.7, 0.3], [0.9, 0.1],
-                        [0.6, 0.4], [0.8, 0.2]]),
-       phi_f=jnp.array([[0.7, 0.1], [0.1, 0.6]]),  # Factor AR coefficients
-       phi_h=jnp.array([0.95, 0.92]),  # Log-vol persistence
-       sigma_f=jnp.array([1.0, 1.0]),  # Factor innovation std
-       sigma_h=jnp.array([0.1, 0.12]),  # Log-vol innovation std
-       sigma_eps=jnp.array([0.3, 0.25, 0.35, 0.28, 0.32]),  # Idiosyncratic std
-       mu=jnp.array([-1.2, -1.0])  # Log-vol means
+       lambda_r=jnp.array([[0.8, 0.2], [0.7, 0.3], [0.9, 0.1],
+                           [0.6, 0.4], [0.8, 0.2]]),  # Factor loadings (N×K)
+       Phi_f=jnp.array([[0.7, 0.1], [0.1, 0.6]]),  # Factor AR matrix (K×K)
+       Phi_h=jnp.array([[0.95, 0.0], [0.0, 0.92]]),  # Log-vol AR matrix (K×K)
+       mu=jnp.array([-1.2, -1.0]),  # Long-run mean of log-vols (K,)
+       sigma2=jnp.array([0.3, 0.25, 0.35, 0.28, 0.32]),  # Idiosyncratic variances (N,)
+       Q_h=jnp.array([[0.01, 0.0], [0.0, 0.0144]])  # Log-vol innovation cov (K×K)
    )
 
    # Simulate data
@@ -116,13 +134,12 @@ Parameter Estimation
    # Create initial parameter guess
    initial_params = DFSVParamsDataclass(
        N=5, K=2,
-       Lambda=jnp.ones((5, 2)) * 0.5,
-       phi_f=jnp.eye(2) * 0.5,
-       phi_h=jnp.array([0.9, 0.9]),
-       sigma_f=jnp.ones(2),
-       sigma_h=jnp.array([0.15, 0.15]),
-       sigma_eps=jnp.ones(5) * 0.3,
-       mu=jnp.array([-1.0, -1.0])
+       lambda_r=jnp.ones((5, 2)) * 0.5,  # Factor loadings (N×K)
+       Phi_f=jnp.eye(2) * 0.5,  # Factor AR matrix (K×K)
+       Phi_h=jnp.eye(2) * 0.9,  # Log-vol AR matrix (K×K)
+       mu=jnp.array([-1.0, -1.0]),  # Long-run mean of log-vols (K,)
+       sigma2=jnp.ones(5) * 0.3,  # Idiosyncratic variances (N,)
+       Q_h=jnp.eye(2) * 0.0225  # Log-vol innovation cov (K×K)
    )
 
    # Run optimization using BIF
