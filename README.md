@@ -74,13 +74,12 @@ from bellman_filter_dfsv.core.filters import DFSVBellmanInformationFilter
 params = DFSVParamsDataclass(
     N=3,  # Number of observed series
     K=1,  # Number of factors
-    Lambda=jnp.array([[0.8], [0.7], [0.9]]),
-    phi_f=jnp.array([[0.7]]),
-    phi_h=jnp.array([0.95]),
-    sigma_f=jnp.array([1.0]),
-    sigma_h=jnp.array([0.1]),
-    sigma_eps=jnp.array([0.3, 0.25, 0.35]),
-    mu=jnp.array([-1.2])
+    lambda_r=jnp.array([[0.8], [0.7], [0.9]]),  # Factor loadings (N×K)
+    Phi_f=jnp.array([[0.7]]),  # Factor AR matrix (K×K)
+    Phi_h=jnp.array([[0.95]]),  # Log-vol AR matrix (K×K)
+    mu=jnp.array([-1.2]),  # Long-run mean of log-vols (K,)
+    sigma2=jnp.array([0.3, 0.25, 0.35]),  # Idiosyncratic variances (N,)
+    Q_h=jnp.array([[0.01]])  # Log-vol innovation covariance (K×K)
 )
 
 # Simulate data
@@ -114,17 +113,33 @@ python examples/03_parameter_optimization.py
 
 ### DFSV Model
 
-The Dynamic Factor Stochastic Volatility model represents observed returns as:
+The Dynamic Factor Stochastic Volatility model consists of three key equations:
 
+**Observation Equation:**
 ```
-y_t = Λf_t + ε_t
+r_t = λ_r f_t + e_t,  where e_t ~ N(0, Σ)
+```
+
+**Factor Dynamics:**
+```
+f_t = Φ_f f_{t-1} + diag(exp(h_t/2)) ε_t,  where ε_t ~ N(0, I_K)
+```
+
+**Log-Volatility Dynamics:**
+```
+h_t = μ + Φ_h (h_{t-1} - μ) + η_t,  where η_t ~ N(0, Q_h)
 ```
 
 Where:
-- `y_t`: Observed returns (N×1)
-- `f_t`: Latent factors (K×1)
-- `Λ`: Factor loading matrix (N×K)
-- `ε_t`: Idiosyncratic errors with stochastic volatility
+- `r_t`: Observed returns (N×1)
+- `f_t`: Latent factors with stochastic volatility (K×1)
+- `h_t`: Log-volatilities of factors (K×1)
+- `λ_r`: Factor loading matrix (N×K)
+- `Φ_f`: Factor autoregression matrix (K×K)
+- `Φ_h`: Log-volatility autoregression matrix (K×K)
+- `μ`: Long-run mean of log-volatilities (K×1)
+- `Σ`: Idiosyncratic error covariance (N×N)
+- `Q_h`: Log-volatility innovation covariance (K×K)
 
 ### Filtering Algorithms
 
