@@ -719,8 +719,6 @@ class DFSVBellmanFilter(DFSVFilter):
                 - updated_cov: Updated covariance P_{t|t} (JAX array, shape (state_dim, state_dim)).
                 - log_lik_contrib: Log-likelihood contribution log p(y_t|F_{t-1}) (JAX scalar).
         """
-        K = self.K
-        N = self.N
         lambda_r = params.lambda_r
         sigma2 = params.sigma2  # Assumed 1D JAX array
 
@@ -1000,7 +998,6 @@ class DFSVBellmanFilter(DFSVFilter):
         params_jax = self._process_params(
             params
         )  # Ensure correct format (contains JAX arrays)
-        T = observations.shape[0]
 
         # Initialization (get initial state/cov as JAX arrays)
         initial_state_jax, initial_cov_jax = self.initialize_state(params_jax)
@@ -1178,8 +1175,6 @@ class DFSVBellmanFilter(DFSVFilter):
         Returns:
             Total log-likelihood (as JAX scalar). Returns -inf if NaN/Inf encountered.
         """
-        T = observations.shape[0]
-
         # Initialization (use JAX arrays)
         initial_state_jax, initial_cov_jax = self.initialize_state(params)
         # Ensure initial_state_jax is a flat vector

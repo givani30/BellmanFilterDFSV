@@ -131,8 +131,6 @@ def observed_fim_impl(
     ----------
     Lange (2024); Boekestijn (2025).
     """
-    N = lambda_r.shape[0]
-
     alpha = alpha.flatten()
     observation = observation.flatten()
 
@@ -226,7 +224,6 @@ def expected_fim_impl(
         The Expected Fisher Information matrix J (state_dim, state_dim), which is
         the expectation of the negative Hessian of the log-likelihood.
     """
-    N = lambda_r.shape[0]
     state_dim = 2 * K
 
     # (Checks for alpha, h, exp_h remain the same)
@@ -329,7 +326,6 @@ def log_posterior_impl(
     Returns:
         The log posterior value log p(y_t | alpha_t) (scalar float).
     """
-    N = lambda_r.shape[0]
     alpha = alpha.flatten()
     observation = observation.flatten()
 

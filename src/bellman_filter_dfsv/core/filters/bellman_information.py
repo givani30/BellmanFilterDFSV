@@ -373,7 +373,6 @@ class DFSVBellmanInformationFilter(DFSVFilter):
             predicted_info: Predicted information Ω_{t|t-1} (state_dim, state_dim).
         """
         K = self.K
-        state_dim = self.state_dim
         jitter = 1e-8 # Small jitter for numerical stability
 
         # --- State Prediction ---
@@ -479,8 +478,6 @@ class DFSVBellmanInformationFilter(DFSVFilter):
             updated_info: Updated information Ω_{t|t} (state_dim, state_dim).
             log_lik_contrib: Pseudo log-likelihood contribution.
         """
-        K = self.K
-        N = self.N
         state_dim = self.state_dim
         lambda_r = params.lambda_r
         sigma2 = params.sigma2 # Assumed 1D JAX array
@@ -1170,7 +1167,7 @@ class DFSVBellmanInformationFilter(DFSVFilter):
             (total_lik, fit_sum, penalty_sum) if return_components is True.
             Returns -inf components if NaN/Inf encountered.
         """
-        T = observations.shape[0]
+        observations.shape[0]
 
         # Initialization (use BIF JAX arrays)
         initial_state_jax, initial_info_jax = self.initialize_state(params)

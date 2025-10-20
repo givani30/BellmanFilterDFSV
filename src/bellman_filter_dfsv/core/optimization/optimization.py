@@ -127,10 +127,13 @@ def generate_parameter_history(
     # Generate a sequence of parameters from initial to final
     alphas = jnp.linspace(0.0, 1.0, num_points)
 
-    for alpha in alphas:
+    for alpha_val in alphas:
         # Interpolate between initial and final parameters
+        # Use a helper function to avoid capturing loop variable in lambda
+        def interpolate(i, f, a=alpha_val):
+            return i + a * (f - i)
         current_params = jax.tree_util.tree_map(
-            lambda i, f: i + alpha * (f - i), initial_params, final_params
+            interpolate, initial_params, final_params
         )
 
         # Apply transformations if needed

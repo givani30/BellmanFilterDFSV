@@ -27,7 +27,7 @@ except ImportError:
 
     def tqdm(iterable, **kwargs):
         """Fallback tqdm iterator if tqdm is not installed."""
-        warnings.warn("tqdm not installed. Progress bars will not be shown.")
+        warnings.warn("tqdm not installed. Progress bars will not be shown.", stacklevel=2)
         return iterable
 
 
@@ -177,7 +177,7 @@ class DFSVFilter:
                 dataclass_params = {k: params[k] for k in required_keys}
                 params_dc = DFSVParamsDataclass(N=N, K=K, **dataclass_params)
             except TypeError as e:  # Catch potential issues during dataclass creation
-                raise TypeError(f"Error creating DFSVParamsDataclass from dict: {e}")
+                raise TypeError(f"Error creating DFSVParamsDataclass from dict: {e}") from e
 
         elif isinstance(params, DFSVParamsDataclass):
             if params.N != self.N or params.K != self.K:
@@ -205,10 +205,6 @@ class DFSVFilter:
         for field_name, expected_shape in expected_shapes.items():
             current_value = getattr(params_dc, field_name)
             is_jax_array = isinstance(current_value, jnp.ndarray)
-            # Check dtype compatibility, allowing for different float/int types initially
-            correct_dtype = is_jax_array and jnp.issubdtype(
-                current_value.dtype, jnp.number
-            )
             correct_shape = is_jax_array and current_value.shape == expected_shape
 
             # Convert if not JAX array, wrong dtype (target float64), or wrong shape
@@ -248,7 +244,7 @@ class DFSVFilter:
                 except (TypeError, ValueError) as e:
                     raise ValueError(
                         f"Could not convert/validate parameter '{field_name}': {e}"
-                    )
+                    ) from e
 
         if changed:
             # Create a new dataclass instance with the updated JAX arrays
@@ -588,7 +584,7 @@ class DFSVFilter:
 
         T = self.filtered_states.shape[0]
         if T <= 0:  # Handle empty case
-            warnings.warn("Cannot smooth with T=0 observations.")
+            warnings.warn("Cannot smooth with T=0 observations.", stacklevel=2)
             empty_states = np.empty((0, self.state_dim))
             empty_covs = np.empty((0, self.state_dim, self.state_dim))
             self.smoothed_states = empty_states
@@ -608,7 +604,7 @@ class DFSVFilter:
         try:
             params_jax = self._process_params(params)
         except (TypeError, KeyError, ValueError) as e:
-            raise ValueError(f"Parameter processing failed during smoothing: {e}")
+            raise ValueError(f"Parameter processing failed during smoothing: {e}") from e
 
         # Convert filtered results to JAX arrays
         # Ensure states are (T, state_dim) and covs are (T, state_dim, state_dim)
@@ -627,7 +623,6 @@ class DFSVFilter:
         # Define the JAX smoother step function
         # Note: Using instance methods like _predict_jax inside jit can cause issues
         # if the instance itself changes. Pass static info like K, state_dim explicitly.
-        K_static = self.K
         state_dim_static = self.state_dim
 
         @eqx.filter_jit
@@ -740,7 +735,6 @@ class DFSVFilter:
         # Let's compute P_{T,T-1|T} = P_{T|T} J_{T-1}' using the last filtered values.
 
         # Recompute J_{T-1} needed for P_{T,T-1|T}
-        state_T_minus_1_filt = filtered_states_jax[T - 2, :]  # Not needed anymore
         cov_T_minus_1_filt = filtered_covs_jax[T - 2, :, :]
         # Use the pre-computed predicted covariance P_{T|T-1}
         cov_T_pred = predicted_covs_jax[T - 1, :, :]  # This is P_{T|T-1}
@@ -789,6 +783,7 @@ class DFSVFilter:
         warnings.warn(
             "_get_transition_matrix_np might be deprecated if smoother is fully JAX.",
             DeprecationWarning,
+            stacklevel=2,
         )
         if params is None:
             raise AttributeError("params must be provided to _get_transition_matrix_np")
@@ -806,6 +801,7 @@ class DFSVFilter:
         warnings.warn(
             "_predict_with_matrix might be deprecated if smoother is fully JAX.",
             DeprecationWarning,
+            stacklevel=2,
         )
         if params is None:
             raise AttributeError("params must be provided to _predict_with_matrix")

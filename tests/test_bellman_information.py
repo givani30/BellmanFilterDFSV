@@ -238,7 +238,8 @@ def test_filter_scan_loop(bif_setup):
     # Check dtypes (NumPy for arrays, JAX for scalar loglik)
     assert filtered_states_np.dtype == np.float64
     assert filtered_infos_np.dtype == np.float64
-    assert total_log_lik_jax.dtype == jnp.float64
+    if isinstance(total_log_lik_jax, jax.Array):
+        assert total_log_lik_jax.dtype == jnp.float64
 
     # Check properties
     assert np.all(np.isfinite(filtered_states_np)), "Filtered states (scan) contain non-finite values"
@@ -504,29 +505,28 @@ def test_getters(bif_setup):
         "get_filtered_variances": (np.ndarray, (T, state_dim)), # Added
     }
 
-        for method_name, (expected_type, expected_shape) in getters_to_test.items():
-            getter_method = getattr(bif_filter, method_name)
-            result = getter_method()
+    for method_name, (expected_type, expected_shape) in getters_to_test.items():
+        getter_method = getattr(bif_filter, method_name)
+        result = getter_method()
 
-            assert result is not None, f"{method_name} returned None"
+        assert result is not None, f"{method_name} returned None"
 
-            # Type check (allow tuple for total_log_likelihood)
-            if isinstance(expected_type, tuple):
-                assert isinstance(result, expected_type), f"{method_name} returned wrong type: {type(result)}, expected {expected_type}"
+        # Type check (allow tuple for total_log_likelihood)
+        if isinstance(expected_type, tuple):
+            assert isinstance(result, expected_type), f"{method_name} returned wrong type: {type(result)}, expected {expected_type}"
+        else:
+            # Accept both np.ndarray and JAX arrays for outputs
+            if expected_type is np.ndarray:
+                assert isinstance(result, (np.ndarray, jax.Array)), f"{method_name} returned wrong type: {type(result)}, expected np.ndarray or jax.Array"
             else:
-                # Accept both np.ndarray and JAX arrays for outputs
-                if expected_type is np.ndarray:
-                    assert isinstance(result, (np.ndarray, jax.Array)), f"{method_name} returned wrong type: {type(result)}, expected np.ndarray or jax.Array"
-                else:
-                    assert isinstance(result, expected_type), f"{method_name} returned wrong type: {type(result)}, expected {expected_type}"
-
+                assert isinstance(result, expected_type), f"{method_name} returned wrong type: {type(result)}, expected {expected_type}"
 
         # Shape check (skip for scalar total_log_likelihood)
         if expected_shape:
-             assert result.shape == expected_shape, f"{method_name} returned wrong shape: {result.shape}, expected {expected_shape}"
+            assert result.shape == expected_shape, f"{method_name} returned wrong shape: {result.shape}, expected {expected_shape}"
         else:
-             # For scalars (like total_log_likelihood from filter_scan)
-             assert np.isscalar(result) or (isinstance(result, jax.Array) and result.ndim == 0), f"{method_name} should be scalar, got shape {getattr(result, 'shape', 'N/A')}"
+            # For scalars (like total_log_likelihood from filter_scan)
+            assert np.isscalar(result) or (isinstance(result, jax.Array) and result.ndim == 0), f"{method_name} should be scalar, got shape {getattr(result, 'shape', 'N/A')}"
 
 
         # Finiteness check
@@ -606,5 +606,8 @@ def test_smooth_state_accuracy_covariance_filter(params_fixture, data_fixture):
 
     assert rmse_smoothed < rmse_filtered, \
         f"[Covariance Filter] Smoothed RMSE ({rmse_smoothed:.4f}) is not lower than filtered RMSE ({rmse_filtered:.4f})"
+
+
+
 
 

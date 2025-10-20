@@ -150,7 +150,7 @@ def estimate_parameters(returns, K=1, filter_type=FilterType.BIF, max_steps=200)
     jax_returns = jnp.array(returns)
 
     # Create initial parameters
-    initial_params = create_initial_parameters(returns, K)
+    _ = create_initial_parameters(returns, K)  # For demonstration/testing
 
     print(f"Estimating parameters with {filter_type.name} filter...")
 
@@ -228,8 +228,6 @@ def analyze_filtered_states(filtered_states, dates, tickers, K):
     Returns:
         dict: Dictionary containing analysis results
     """
-    T = filtered_states.shape[0]
-
     # Extract factors and log-volatilities
     factors = np.array(filtered_states[:, :K])
     log_vols = np.array(filtered_states[:, K : 2 * K])
@@ -302,9 +300,6 @@ def plot_filtered_states(analysis, dates, tickers, K):
     factors = analysis["factors"]
     volatilities = analysis["volatilities"]
 
-    # Create time axis
-    time_axis = np.arange(len(dates))
-
     # Plot factors
     plt.figure(figsize=(12, 4 * K))
 
@@ -367,11 +362,11 @@ def plot_filtered_states(analysis, dates, tickers, K):
                         xy=(dates[idx], volatilities[idx, 0]),
                         xytext=(10, 30),
                         textcoords="offset points",
-                        arrowprops=dict(
-                            arrowstyle="->", connectionstyle="arc3,rad=0.2"
-                        ),
+                        arrowprops={
+                            "arrowstyle": "->", "connectionstyle": "arc3,rad=0.2"
+                        },
                     )
-                except:
+                except (KeyError, ValueError, IndexError):
                     pass  # Skip if event date is not in range
 
         plt.tight_layout()
@@ -398,11 +393,10 @@ def evaluate_model_performance(returns, filtered_states, params, K):
     log_vols = np.array(filtered_states[:, K : 2 * K])
 
     # Convert log-volatilities to volatilities
-    volatilities = np.exp(log_vols / 2)
+    _ = np.exp(log_vols / 2)  # volatilities computed but not used in this function
 
     # Calculate model-implied returns
     lambda_r = np.array(params.lambda_r)
-    sigma2 = np.array(params.sigma2)
 
     # Calculate model-implied returns (mean)
     implied_returns_mean = np.zeros((T, N))

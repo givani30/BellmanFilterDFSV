@@ -149,7 +149,7 @@ def run_parameter_optimization(true_params: DFSVParamsDataclass, returns: np.nda
     jax_returns = jnp.array(returns)
 
     # Create uninformed initial parameters
-    initial_params = create_uninformed_parameters(true_params)
+    _ = create_uninformed_parameters(true_params)  # For demonstration/testing
 
     # Run optimization with Bellman Filter
     print(

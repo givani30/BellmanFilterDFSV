@@ -33,7 +33,7 @@ except ImportError:
 
     def tqdm(iterable, **kwargs):
         """Fallback tqdm iterator if tqdm is not installed."""
-        warnings.warn("tqdm not installed. Progress bars will not be shown.")
+        warnings.warn("tqdm not installed. Progress bars will not be shown.", stacklevel=2)
         return iterable
 
 # Precision should be controlled by the calling script, not set globally here.
@@ -175,7 +175,7 @@ class DFSVParticleFilter(DFSVFilter):
                 except (TypeError, ValueError) as e:
                     raise ValueError(
                         f"Could not convert parameter '{field_name}' to JAX array: {e}"
-                    )
+                    ) from e
 
         # If any arrays were converted, create a new instance with the JAX arrays
         if changed:
@@ -385,7 +385,7 @@ class DFSVParticleFilter(DFSVFilter):
                 - Corresponding normalized log weights (num_particles,).
                 - Effective Sample Size (ESS) calculated before resampling.
         """
-        num_particles = particles.shape[1]
+        particles.shape[1]
 
         # 1. Normalize log weights
         log_sum_weights = jax.scipy.special.logsumexp(unnormalized_log_weights)
@@ -498,7 +498,7 @@ class DFSVParticleFilter(DFSVFilter):
                 - final_state: The final PFScanState after the scan.
                 - scan_outputs: A tuple containing (filtered_means, filtered_covs, ess_history).
         """
-        T = observations.shape[0]
+        observations.shape[0]
         N = params.N
         K = params.K
 
@@ -638,7 +638,7 @@ class DFSVParticleFilter(DFSVFilter):
                 raise ValueError(
                     f"Observations dimension mismatch: expected {self.N} columns/rows, got {obs_jax.shape}"
                 )
-        T = obs_jax.shape[0]
+        obs_jax.shape[0]
 
         # --- Prepare parameters and derived values ---
         jax_params = self._ensure_params_are_jax(params)
@@ -668,7 +668,7 @@ class DFSVParticleFilter(DFSVFilter):
             # Ensure it's diagonal and extract variances
             if not jnp.allclose(sigma2_curr, jnp.diag(jnp.diag(sigma2_curr))):
                 warnings.warn(
-                    "sigma2 is 2D but not diagonal. Extracting diagonal for particle filter likelihood."
+                    "sigma2 is 2D but not diagonal. Extracting diagonal for particle filter likelihood.", stacklevel=2
                 )
             obs_noise_variances = jnp.diag(sigma2_curr)
         else:
