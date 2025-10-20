@@ -2,7 +2,6 @@
 Tests for the solver utilities in bellman_filter_dfsv.utils.solvers.
 """
 
-
 import jax
 import jax.numpy as jnp
 import pytest

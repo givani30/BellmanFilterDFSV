@@ -1,4 +1,3 @@
-
 import jax.random as jr  # Add jr
 import numpy as np
 import pytest
@@ -20,7 +19,6 @@ from bellman_filter_dfsv.core.optimization.transformations import (
 try:
     import jax
     import jax.numpy as jnp
-    from jax.nn import softplus  # Import softplus for boundary test check
 
     # Enable double precision for more accurate tests
     jax.config.update("jax_enable_x64", True)
@@ -125,7 +123,6 @@ def test_safe_arctanh_nan_inf():
     result = safe_arctanh(x)
     # Clipping NaN results in NaN. Clipping Inf results in 1-EPS. Clipping -Inf results in -1+EPS.
     # Then arctanh is applied.
-    expected_nan = jnp.nan
     expected_inf = jnp.arctanh(1.0 - EPS)
     expected_neg_inf = jnp.arctanh(-1.0 + EPS)
     assert jnp.isnan(result[0])
@@ -316,7 +313,7 @@ def test_boundary_values_hybrid(base_params):
     """Test transformation near boundary values with hybrid approach."""
     params = base_params
     K = params.K
-    N = params.N
+    _N = params.N
 
     # Create parameters with extreme values
     extreme_diag_f = jnp.array(
@@ -449,7 +446,9 @@ def test_gradient_compatibility(base_params):
     assert initial_treedef == gradient_treedef, "Gradient structure mismatch"
     assert len(initial_leaves) == len(gradient_leaves)
 
-    for i, (init_leaf, grad_leaf) in enumerate(zip(initial_leaves, gradient_leaves, strict=False)):
+    for i, (init_leaf, grad_leaf) in enumerate(
+        zip(initial_leaves, gradient_leaves, strict=False)
+    ):
         if isinstance(init_leaf, jax.Array):
             assert isinstance(grad_leaf, jax.Array), (
                 f"Gradient leaf {i} is not a JAX array"

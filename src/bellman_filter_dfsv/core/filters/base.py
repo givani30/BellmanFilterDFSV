@@ -27,7 +27,9 @@ except ImportError:
 
     def tqdm(iterable, **kwargs):
         """Fallback tqdm iterator if tqdm is not installed."""
-        warnings.warn("tqdm not installed. Progress bars will not be shown.", stacklevel=2)
+        warnings.warn(
+            "tqdm not installed. Progress bars will not be shown.", stacklevel=2
+        )
         return iterable
 
 
@@ -177,7 +179,9 @@ class DFSVFilter:
                 dataclass_params = {k: params[k] for k in required_keys}
                 params_dc = DFSVParamsDataclass(N=N, K=K, **dataclass_params)
             except TypeError as e:  # Catch potential issues during dataclass creation
-                raise TypeError(f"Error creating DFSVParamsDataclass from dict: {e}") from e
+                raise TypeError(
+                    f"Error creating DFSVParamsDataclass from dict: {e}"
+                ) from e
 
         elif isinstance(params, DFSVParamsDataclass):
             if params.N != self.N or params.K != self.K:
@@ -604,7 +608,9 @@ class DFSVFilter:
         try:
             params_jax = self._process_params(params)
         except (TypeError, KeyError, ValueError) as e:
-            raise ValueError(f"Parameter processing failed during smoothing: {e}") from e
+            raise ValueError(
+                f"Parameter processing failed during smoothing: {e}"
+            ) from e
 
         # Convert filtered results to JAX arrays
         # Ensure states are (T, state_dim) and covs are (T, state_dim, state_dim)

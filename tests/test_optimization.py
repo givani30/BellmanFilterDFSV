@@ -2,7 +2,6 @@
 Tests for the optimization utilities in bellman_filter_dfsv.utils.optimization.
 """
 
-
 import jax
 import jax.numpy as jnp
 import optimistix as optx

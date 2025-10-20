@@ -82,7 +82,7 @@ def compute_numerical_gradient(func, params_dict, eps=1e-6):
         Dictionary of numerical gradients
     """
     grad = {}
-    base_value = func(params_dict)
+    _base_value = func(params_dict)
 
     print("Computing numerical gradients for each parameter...")
     for key in params_dict:

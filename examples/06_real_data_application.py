@@ -363,7 +363,8 @@ def plot_filtered_states(analysis, dates, tickers, K):
                         xytext=(10, 30),
                         textcoords="offset points",
                         arrowprops={
-                            "arrowstyle": "->", "connectionstyle": "arc3,rad=0.2"
+                            "arrowstyle": "->",
+                            "connectionstyle": "arc3,rad=0.2",
                         },
                     )
                 except (KeyError, ValueError, IndexError):

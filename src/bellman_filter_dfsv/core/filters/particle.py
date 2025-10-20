@@ -33,7 +33,9 @@ except ImportError:
 
     def tqdm(iterable, **kwargs):
         """Fallback tqdm iterator if tqdm is not installed."""
-        warnings.warn("tqdm not installed. Progress bars will not be shown.", stacklevel=2)
+        warnings.warn(
+            "tqdm not installed. Progress bars will not be shown.", stacklevel=2
+        )
         return iterable
 
 # Precision should be controlled by the calling script, not set globally here.
@@ -668,7 +670,8 @@ class DFSVParticleFilter(DFSVFilter):
             # Ensure it's diagonal and extract variances
             if not jnp.allclose(sigma2_curr, jnp.diag(jnp.diag(sigma2_curr))):
                 warnings.warn(
-                    "sigma2 is 2D but not diagonal. Extracting diagonal for particle filter likelihood.", stacklevel=2
+                    "sigma2 is 2D but not diagonal. Extracting diagonal for particle filter likelihood.",
+                    stacklevel=2,
                 )
             obs_noise_variances = jnp.diag(sigma2_curr)
         else:

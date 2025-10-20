@@ -38,7 +38,7 @@ def test_particle_filter_estimation(
     pf: DFSVParticleFilter = filter_instances_fixture(params, num_particles=2000)[
         "particle"
     ]
-    T = sim_data["T"]
+    _T = sim_data["T"]
 
     # Act: Run filter
     # The filter method in PF returns (filtered_states, filtered_weights, log_likelihoods)
@@ -255,7 +255,7 @@ def _create_pf_visual_comparison(
     # Extract data
     true_factors = np.asarray(sim_data["true_factors"])
     true_log_vols = np.asarray(sim_data["true_log_vols"])
-    T = sim_data["T"]
+    _T = sim_data["T"]
 
     # Get filtered estimates
     filtered_factors = pf.get_filtered_factors()

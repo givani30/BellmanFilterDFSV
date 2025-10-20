@@ -6,7 +6,7 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 import pytest
-from jaxtyping import Array, Float, PyTree
+from jaxtyping import PyTree
 
 from bellman_filter_dfsv.core.filters.base import DFSVFilter
 from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
@@ -39,7 +39,7 @@ def test_filter_stability(
     params: DFSVParamsDataclass = params_fixture()
     # Use default T=100, seed=42 for data
     sim_data: dict[str, Any] = data_fixture(params)
-    observations: Float[Array, "T N"] = sim_data["observations"]
+    observations = sim_data["observations"]  # Float[Array, "T N"]
     # Use default num_particles=1000 for PF
     filters: dict[str, PyTree] = filter_instances_fixture(params)
     filter_instance: DFSVFilter = filters[filter_name]
@@ -93,7 +93,7 @@ def test_log_likelihood_wrt_params(
     # Arrange
     params: DFSVParamsDataclass = params_fixture()
     sim_data: dict[str, Any] = data_fixture(params)
-    observations: Float[Array, "T N"] = sim_data["observations"]
+    observations = sim_data["observations"]  # Float[Array, "T N"]
     filters: dict[str, PyTree] = filter_instances_fixture(params)
     filter_instance: DFSVFilter = filters[filter_name]
 

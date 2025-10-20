@@ -1,16 +1,12 @@
 """Pytest configuration and common fixtures for DFSV model testing."""
 
+from collections.abc import Callable
+from typing import Any
+
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import pytest
-
-# Configure JAX to use CPU for tests to avoid GPU memory issues
-jax.config.update("jax_platform_name", "cpu")
-jax.config.update("jax_enable_x64", True)
-from collections.abc import Callable
-from typing import Any
-
 from jaxtyping import PyTree
 
 from bellman_filter_dfsv.core.filters.bellman import DFSVBellmanFilter
@@ -20,6 +16,10 @@ from bellman_filter_dfsv.core.filters.bellman_information import (
 from bellman_filter_dfsv.core.filters.particle import DFSVParticleFilter
 from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
+
+# Configure JAX to use CPU for tests to avoid GPU memory issues
+jax.config.update("jax_platform_name", "cpu")
+jax.config.update("jax_enable_x64", True)
 
 
 @pytest.fixture(scope="session")
@@ -90,7 +90,6 @@ def data_fixture() -> Callable[..., dict[str, Any]]:
         params: DFSVParamsDataclass, T: int = 100, seed: int = 42
     ) -> dict[str, Any]:
         """Simulates DFSV data for given parameters, T, and seed."""
-        key = jr.PRNGKey(seed)
         # Assuming simulate_DFSV takes DFSVParamsDataclass directly
         observations_np, true_factors_np, true_log_vols_np = simulate_DFSV(
             params=params,

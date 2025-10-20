@@ -132,6 +132,7 @@ def generate_parameter_history(
         # Use a helper function to avoid capturing loop variable in lambda
         def interpolate(i, f, a=alpha_val):
             return i + a * (f - i)
+
         current_params = jax.tree_util.tree_map(
             interpolate, initial_params, final_params
         )

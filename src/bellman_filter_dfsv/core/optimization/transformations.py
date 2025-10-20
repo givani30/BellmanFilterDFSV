@@ -79,11 +79,15 @@ def transform_params(params: DFSVParamsDataclass) -> DFSVParamsDataclass:
     # --- Phi_f and Phi_h Transformation (Diagonal safe_arctanh) ---
     diag_phi_f = jnp.diag(params.Phi_f)
     transformed_diag_phi_f = safe_arctanh(diag_phi_f)
-    transformed_phi_f = params.Phi_f.at[jnp.diag_indices_from(params.Phi_f)].set(transformed_diag_phi_f)
+    transformed_phi_f = params.Phi_f.at[jnp.diag_indices_from(params.Phi_f)].set(
+        transformed_diag_phi_f
+    )
 
     diag_phi_h = jnp.diag(params.Phi_h)
     transformed_diag_phi_h = safe_arctanh(diag_phi_h)
-    transformed_phi_h = params.Phi_h.at[jnp.diag_indices_from(params.Phi_h)].set(transformed_diag_phi_h)
+    transformed_phi_h = params.Phi_h.at[jnp.diag_indices_from(params.Phi_h)].set(
+        transformed_diag_phi_h
+    )
 
     # --- Variance/Covariance Transformations ---
     if params.sigma2.ndim > 1:
@@ -123,10 +127,14 @@ def untransform_params(transformed_params: DFSVParamsDataclass) -> DFSVParamsDat
     """
     # --- Phi_f and Phi_h Untransformation (Diagonal tanh) ---
     diag_phi_f = jnp.diag(transformed_params.Phi_f)
-    phi_f_original = transformed_params.Phi_f.at[jnp.diag_indices_from(transformed_params.Phi_f)].set(jnp.tanh(diag_phi_f))
+    phi_f_original = transformed_params.Phi_f.at[
+        jnp.diag_indices_from(transformed_params.Phi_f)
+    ].set(jnp.tanh(diag_phi_f))
 
     diag_phi_h = jnp.diag(transformed_params.Phi_h)
-    phi_h_original = transformed_params.Phi_h.at[jnp.diag_indices_from(transformed_params.Phi_h)].set(jnp.tanh(diag_phi_h))
+    phi_h_original = transformed_params.Phi_h.at[
+        jnp.diag_indices_from(transformed_params.Phi_h)
+    ].set(jnp.tanh(diag_phi_h))
 
     # --- Variance/Covariance Untransformations ---
     if transformed_params.sigma2.ndim > 1:
@@ -144,6 +152,7 @@ def untransform_params(transformed_params: DFSVParamsDataclass) -> DFSVParamsDat
         sigma2=sigma2_original,
         Q_h=q_h_original,
     )
+
 
 def apply_identification_constraint(params: DFSVParamsDataclass) -> DFSVParamsDataclass:
     """Applies lower-triangular constraint with diagonal fixed to 1 to lambda_r.

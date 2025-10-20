@@ -40,7 +40,6 @@ class TestDFSVModels(unittest.TestCase):
     def test_jax_dataclass_initialization(self):
         """Test initialization of the JAX-compatible dataclass."""
         try:
-            import jax
             import jax.numpy as jnp
 
             # Removed creation of np_params and conversion via from_dfsv_params
@@ -68,7 +67,6 @@ class TestDFSVModels(unittest.TestCase):
     def test_jax_replace(self):
         """Test the replace method of the JAX dataclass."""
         try:
-            import jax
             import jax.numpy as jnp
 
             # Create JAX params
@@ -112,7 +110,6 @@ class TestDFSVModels(unittest.TestCase):
     def test_to_from_dict(self):
         """Test conversion to and from dictionary representation."""
         try:
-            import jax
             import jax.numpy as jnp
 
             # Create JAX params
@@ -159,7 +156,6 @@ class TestDFSVModels(unittest.TestCase):
     def test_dfsv_params_to_dict_function(self):
         """Test the utility function for converting to dictionary."""
         try:
-            import jax
             import jax.numpy as jnp
 
             # Create JAX params
