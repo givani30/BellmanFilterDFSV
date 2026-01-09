@@ -96,3 +96,40 @@ class EMSufficientStats(NamedTuple):
     sum_hprev_hprev: Float[Array, "K K"]
 
     T: int
+
+
+class RBParticleState(NamedTuple):
+    """
+    State for Rao-Blackwellized Particle Filter.
+    """
+
+    # h-particles (K, num_particles)
+    h_particles: Float[Array, "K P"]
+
+    # Conditional f-statistics (for each particle)
+    # Mean f_{t|t} (K, num_particles)
+    f_means: Float[Array, "K P"]
+    # Covariance P_{t|t} (K, K, num_particles) - batched covariance
+    f_covs: Float[Array, "K K P"]
+
+    # Weights
+    log_weights: Float[Array, "P"]
+
+
+class RBPSResult(NamedTuple):
+    """
+    Result of Rao-Blackwellized Particle Smoothing.
+    Contains M sampled trajectories and their conditional f-statistics.
+    """
+
+    # Sampled h trajectories (M, T, K)
+    h_samples: Float[Array, "M T K"]
+
+    # Conditional f smoothed means (M, T, K)
+    f_smooth_means: Float[Array, "M T K"]
+
+    # Conditional f smoothed covariances (M, T, K, K)
+    f_smooth_covs: Float[Array, "M T K K"]
+
+    # Conditional f smoothed lag-1 covariances (M, T-1, K, K)
+    f_smooth_lag1_covs: Float[Array, "M T_minus_1 K K"]

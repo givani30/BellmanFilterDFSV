@@ -1,47 +1,104 @@
 import jax
 import jax.numpy as jnp
 import equinox as eqx
-from jaxtyping import Float, Array
-from typing import NamedTuple
+from jax import Array
+from jaxtyping import Float
 
-from .types import DFSVParams
-
-
-class RBParticleState(NamedTuple):
-    """
-    State for Rao-Blackwellized Particle Filter.
-    """
-
-    # h-particles (K, num_particles)
-    h_particles: Float[Array, "K P"]
-
-    # Conditional f-statistics (for each particle)
-    # Mean f_{t|t} (K, num_particles)
-    f_means: Float[Array, "K P"]
-    # Covariance P_{t|t} (K, K, num_particles) - batched covariance
-    f_covs: Float[Array, "K K P"]
-
-    # Weights
-    log_weights: Float[Array, "P"]
+from .types import DFSVParams, BIFState, RBParticleState, RBPSResult
+from ._bellman_math import predict_info_step, invert_info_matrix
 
 
-class RBPSResult(NamedTuple):
-    """
-    Result of Rao-Blackwellized Particle Smoothing.
-    Contains M sampled trajectories and their conditional f-statistics.
-    """
+class SmootherResult(eqx.Module):
+    """Result container for RTS smoother."""
 
-    # Sampled h trajectories (M, T, K)
-    h_samples: Float[Array, "M T K"]
+    smoothed_means: Float[Array, "T 2K"]
+    smoothed_covs: Float[Array, "T 2K 2K"]
+    smoothed_lag1_covs: Float[Array, "T 2K 2K"]
 
-    # Conditional f smoothed means (M, T, K)
-    f_smooth_means: Float[Array, "M T K"]
 
-    # Conditional f smoothed covariances (M, T, K, K)
-    f_smooth_covs: Float[Array, "M T K K"]
+def rts_smoother(
+    params: DFSVParams,
+    filter_means: Float[Array, "T 2K"],
+    filter_infos: Float[Array, "T 2K 2K"],
+) -> SmootherResult:
+    """Runs the Rauch-Tung-Striebel (RTS) smoother adapted for information filter results."""
+    T, state_dim = filter_means.shape
+    K = params.lambda_r.shape[1]
 
-    # Conditional f smoothed lag-1 covariances (M, T-1, K, K)
-    f_smooth_lag1_covs: Float[Array, "M T_minus_1 K K"]
+    # Pre-calculate covariances from information matrices
+    vmap_invert = jax.vmap(invert_info_matrix)
+    filter_covs = vmap_invert(filter_infos)
+
+    # Re-run prediction step to get predicted statistics
+    # Note: We could cache this from the forward pass if memory allows,
+    # but re-computing is often cheaper than storing.
+    filtered_states_bif = BIFState(mean=filter_means, info=filter_infos)
+
+    predicted_states = jax.vmap(lambda s: predict_info_step(params, s))(
+        filtered_states_bif
+    )
+
+    pred_means = predicted_states.mean
+    pred_infos = predicted_states.info
+    pred_covs = vmap_invert(pred_infos)
+
+    F = jnp.block(
+        [[params.Phi_f, jnp.zeros((K, K))], [jnp.zeros((K, K)), params.Phi_h]]
+    )
+
+    # Initialize backward pass with the final state
+    init_carry = (filter_means[-1], filter_covs[-1])
+
+    # Inputs for the backward scan (reversed in time implicitly by scan behavior or indices)
+    # We need t=0...T-2 for the backward steps.
+    xs = (
+        filter_means[:-1],
+        filter_covs[:-1],
+        pred_means[:-1],
+        pred_infos[:-1],
+        pred_covs[:-1],
+    )
+
+    def backward_step(carry, x):
+        smooth_mean_tp1, smooth_cov_tp1 = carry
+        filt_mean_t, filt_cov_t, pred_mean_tp1, pred_info_tp1, pred_cov_tp1 = x
+
+        # RTS Gain: J_t = P_{t|t} F^T P_{t+1|t}^-1
+        # In info form: J_t = P_{t|t} F^T \Omega_{t+1|t} (approx, but we have P and Info)
+        # Actually J_t = P_{t|t} F^T P_{t+1|t}^-1
+        # P_{t+1|t}^-1 is exactly pred_info_tp1.
+        J_t = filt_cov_t @ F.T @ pred_info_tp1
+
+        smooth_mean_t = filt_mean_t + J_t @ (smooth_mean_tp1 - pred_mean_tp1)
+
+        cov_diff = smooth_cov_tp1 - pred_cov_tp1
+        smooth_cov_t = filt_cov_t + J_t @ cov_diff @ J_t.T
+        smooth_cov_t = 0.5 * (smooth_cov_t + smooth_cov_t.T)
+
+        lag1_cov = smooth_cov_tp1 @ J_t.T
+
+        return (smooth_mean_t, smooth_cov_t), (smooth_mean_t, smooth_cov_t, lag1_cov)
+
+    _, (means_rev, covs_rev, lag1_rev) = jax.lax.scan(
+        backward_step, init_carry, xs, reverse=True
+    )
+
+    full_means = jnp.concatenate([means_rev, init_carry[0][None, :]], axis=0)
+    full_covs = jnp.concatenate([covs_rev, init_carry[1][None, :, :]], axis=0)
+
+    # Lag-1 covariances are for t=0...T-1.
+    # The last element is somewhat undefined or can be padded.
+    pad_lag1 = jnp.zeros((1, state_dim, state_dim))
+    full_lag1 = jnp.concatenate([lag1_rev, pad_lag1], axis=0)
+
+    return SmootherResult(
+        smoothed_means=full_means,
+        smoothed_covs=full_covs,
+        smoothed_lag1_covs=full_lag1,
+    )
+
+
+# --- RBPS Logic ---
 
 
 def _predict_rbpf(

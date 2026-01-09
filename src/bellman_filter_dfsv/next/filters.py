@@ -12,8 +12,8 @@ from .types import (
     ParticleState,
     ParticleFilterResult,
 )
-from .kernels import predict_info_step, update_info_step, invert_info_matrix
-from .particle_kernels import (
+from ._bellman_math import predict_info_step, update_info_step, invert_info_matrix
+from ._particle_math import (
     initialize_particles,
     predict_particles,
     compute_log_likelihood_particles,
