@@ -815,20 +815,13 @@ class DFSVParticleFilter(DFSVFilter):
 
         return predicted_state_mean_col, predicted_cov
 
-    def smooth(self, params: DFSVParamsDataclass) -> tuple[np.ndarray, np.ndarray]:
+    def smooth(
+        self, params: DFSVParamsDataclass
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Runs the Rauch-Tung-Striebel (RTS) smoother using base implementation.
 
-         Relies on filtered_states and filtered_covs computed during the filter pass.
-
-         Returns:
-             A tuple containing:
-                 - smoothed_states: Smoothed state estimates (T, state_dim) as NumPy array.
-                 - smoothed_covs: Smoothed state covariances (T, state_dim, state_dim)
-                   as NumPy array.
-
-        Raises:
-            RuntimeError: If the filter has not been run yet (results are None) or
-                          if parameters from the last filter run were not stored.
+        Returns:
+            (smoothed_states, smoothed_covs, smoothed_lag1_covs)
         """
         # Check if filter results (NumPy arrays) are available
         if (
@@ -847,14 +840,10 @@ class DFSVParticleFilter(DFSVFilter):
             # This should ideally not happen if filter was run correctly
             self.params = self.last_filter_params
 
-        # Call the base class implementation which expects NumPy arrays and now params
-        # Base class returns 3 values: states, covs, lag1_covs
-        smoothed_states_np, smoothed_covs_np, _ = super().smooth(params)
-
-        # Note: self.smoothed_states and self.smoothed_covariances are set
-        #       by the base class smoother (as NumPy arrays).
-
-        return smoothed_states_np, smoothed_covs_np
+        smoothed_states_np, smoothed_covs_np, smoothed_lag1_covs_np = super().smooth(
+            params
+        )
+        return smoothed_states_np, smoothed_covs_np, smoothed_lag1_covs_np
 
         # --- Log-Likelihood for Parameter Optimization ---
         # NOTE: The log_likelihood_of_params and _jit_filter_scan_for_likelihood methods below

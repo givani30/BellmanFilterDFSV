@@ -128,7 +128,7 @@ def test_smooth(
     # Act: Run smoother
     try:
         # Pass params to the smooth method
-        smoothed_states, smoothed_covs = bf.smooth(params)
+        smoothed_states, smoothed_covs, smoothed_lag1_covs = bf.smooth(params)
     except Exception as e:
         pytest.fail(f"Smoother raised an unexpected exception: {e}")
 

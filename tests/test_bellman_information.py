@@ -561,7 +561,7 @@ def test_smooth_basic_properties(bif_setup):
     # Run the smoother
     try:
         # Pass params to the smooth method
-        smoothed_states, smoothed_covs = bif_filter.smooth(params)
+        smoothed_states, smoothed_covs, smoothed_lag1_covs = bif_filter.smooth(params)
     except Exception as e:
         pytest.fail(f"Smoother raised an unexpected exception: {e}")
 
@@ -735,7 +735,7 @@ def test_smooth_state_accuracy_covariance_filter(params_fixture, data_fixture):
         assert filtered_states_np.shape == (T, state_dim)
 
         # Run smoother (uses internally computed filtered_covs)
-        smoothed_states_np, _ = bf_filter.smooth(params)
+        smoothed_states_np, _, _ = bf_filter.smooth(params)
         assert smoothed_states_np.shape == (T, state_dim)
 
     except Exception as e:

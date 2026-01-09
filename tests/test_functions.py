@@ -299,7 +299,7 @@ class TestDFSVBellmanFilter(unittest.TestCase):
         # Run the smoother
         try:
             # Pass params to the smooth method
-            smoothed_states, smoothed_covs = self.bf.smooth(self.params)
+            smoothed_states, smoothed_covs, _ = self.bf.smooth(self.params)
         except Exception as e:
             self.fail(f"Smoother raised an unexpected exception: {e}")
 

@@ -1085,20 +1085,13 @@ class DFSVBellmanFilter(DFSVFilter):
         )
 
     # --- Smoothing Method ---
-    def smooth(self, params: DFSVParamsDataclass) -> tuple[np.ndarray, np.ndarray]:
+    def smooth(
+        self, params: DFSVParamsDataclass
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Performs Rauch-Tung-Striebel (RTS) smoothing.
 
-        Requires the filter to have been run first. Uses the base class
-        implementation which relies on stored filtered and predicted results.
-
         Returns:
-            A tuple containing:
-                - smoothed_states: Smoothed states (T, state_dim) as NumPy array.
-                - smoothed_covs: Smoothed covariances (T, state_dim, state_dim)
-                  as NumPy array.
-
-        Raises:
-            RuntimeError: If the filter has not been run yet (results are None).
+            (smoothed_states, smoothed_covs, smoothed_lag1_covs)
         """
         # Check if filter results (JAX arrays) are available
         if (
@@ -1116,13 +1109,10 @@ class DFSVBellmanFilter(DFSVFilter):
         self.filtered_covs = np.asarray(self.filtered_covs)
         self.is_filtered = True  # Ensure base class knows filter was run
 
-        # Call the base class implementation which expects NumPy arrays and now params
-        smoothed_states_np, smoothed_covs_np, _ = super().smooth(params)
-
-        # Note: self.smoothed_states and self.smoothed_covariances are set
-        #       by the base class smoother (as NumPy arrays).
-
-        return smoothed_states_np, smoothed_covs_np
+        smoothed_states_np, smoothed_covs_np, smoothed_lag1_covs_np = super().smooth(
+            params
+        )
+        return smoothed_states_np, smoothed_covs_np, smoothed_lag1_covs_np
 
     # --- Log-Likelihood Methods ---
     def log_likelihood_wrt_params(

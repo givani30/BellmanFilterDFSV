@@ -909,7 +909,9 @@ class DFSVBellmanInformationFilter(DFSVFilter):
         )
 
     # --- Smoothing Method ---
-    def smooth(self, params: DFSVParamsDataclass) -> tuple[np.ndarray, np.ndarray]:
+    def smooth(
+        self, params: DFSVParamsDataclass
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Performs Rauch-Tung-Striebel (RTS) smoothing for the Dynamic Factor SV model.
 
         Given filtered estimates from the BIF, this method performs backward smoothing
@@ -929,6 +931,9 @@ class DFSVBellmanInformationFilter(DFSVFilter):
                - F_{t+1} is the state transition matrix at t+1
                - J_t is the smoothing gain
 
+            3. Lag-1 Cross-Covariance (for EM algorithm):
+               P_{t+1,t|T} = P_{t+1|T} @ J_t.T
+
         Implementation Notes:
             1. Uses Cholesky for stable matrix inversions
             2. Enforces matrix symmetry throughout
@@ -936,8 +941,11 @@ class DFSVBellmanInformationFilter(DFSVFilter):
             4. Returns NumPy arrays for consistency
 
         Returns:
-            smoothed_states: State estimates α_{t|T} (T, state_dim)
-            smoothed_covariances: State covariances P_{t|T} (T, state_dim, state_dim)
+            A tuple containing:
+                - smoothed_states: State estimates α_{t|T} (T, state_dim)
+                - smoothed_covs: State covariances P_{t|T} (T, state_dim, state_dim)
+                - smoothed_lag1_covs: Lag-1 cross-covariances P_{t+1,t|T}
+                  (T, state_dim, state_dim). Index t holds P_{t+1,t|T}.
 
         Raises:
             RuntimeError: If filter hasn't been run or covariance computation fails.
@@ -976,13 +984,12 @@ class DFSVBellmanInformationFilter(DFSVFilter):
 
         # Call the base class implementation which expects NumPy arrays and now params
         # Base class smooth returns 3 values: states, covs, lag1_covs
-        smoothed_states, smoothed_covs, smoothed_lag1_covs_np = super().smooth(params)
+        smoothed_states, smoothed_covs, smoothed_lag1_covs = super().smooth(params)
 
         # Note: self.smoothed_states, self.smoothed_covs, and self.smoothed_lag1_covs are set
         #       by the base class smoother (as NumPy arrays).
 
-        # Return only states and covs to match the method's type hint/docstring
-        return smoothed_states, smoothed_covs
+        return smoothed_states, smoothed_covs, smoothed_lag1_covs
 
     # --- Getter Methods (Adapted for Information Filter) ---
     # Convert internal JAX arrays to NumPy for external use
