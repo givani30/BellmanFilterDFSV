@@ -9,6 +9,7 @@ This section contains the auto-generated API reference documentation for the ``b
    :maxdepth: 1
    :caption: Modules:
 
+   next
    core
    models
    utils
