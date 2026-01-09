@@ -3,293 +3,330 @@
 Examples
 ========
 
-This section provides complete, runnable examples demonstrating the key features of BellmanFilterDFSV.
+This section provides complete, runnable examples demonstrating the key features of BellmanFilterDFSV. All examples use the current API and are located in the ``examples/`` directory.
 
-Example 1: Basic DFSV Simulation
+Example 1: DFSV Model Simulation
 ---------------------------------
 
-This example shows how to simulate data from a DFSV model and examine its properties.
+Demonstrates how to create and simulate data from a DFSV model.
 
 **File**: ``examples/01_dfsv_simulation.py``
 
+**What it demonstrates:**
+
+* Creating model parameters using ``DFSVParams``
+* Simulating returns, factors, and log-volatilities with ``simulate_dfsv()``
+* Visualizing time series properties
+
+**Key Code:**
+
 .. code-block:: python
 
-   """
-   Basic DFSV Model Simulation Example
-   
-   This example demonstrates:
-   1. Creating DFSV model parameters
-   2. Simulating returns, factors, and log-volatilities
-   3. Analyzing simulation statistics
-   """
-   
    import jax.numpy as jnp
-   import jax.random as jr
-   import matplotlib.pyplot as plt
-   from bellman_filter_dfsv.core.models import DFSVParamsDataclass, simulate_DFSV
-   
-   # Set random seed for reproducibility
-   key = jr.PRNGKey(42)
-   
-   # Define model parameters for 5 series, 2 factors
-   params = DFSVParamsDataclass(
-       N=5, K=2,
-       lambda_r=jnp.array([
-           [0.8, 0.2], [0.7, 0.3], [0.9, 0.1],
-           [0.6, 0.4], [0.8, 0.2]
-       ]),  # Factor loadings (N×K)
-       Phi_f=jnp.array([[0.7, 0.1], [0.1, 0.6]]),  # Factor AR matrix (K×K)
-       Phi_h=jnp.array([[0.95, 0.0], [0.0, 0.92]]),  # Log-vol AR matrix (K×K)
-       mu=jnp.array([-1.2, -1.0]),  # Long-run mean of log-vols (K,)
-       sigma2=jnp.array([0.3, 0.25, 0.35, 0.28, 0.32]),  # Idiosyncratic variances (N,)
-       Q_h=jnp.array([[0.01, 0.0], [0.0, 0.0144]])  # Log-vol innovation cov (K×K)
+   from bellman_filter_dfsv import DFSVParams, simulate_dfsv
+
+   # Create model parameters (3 series, 1 factor)
+   params = DFSVParams(
+       lambda_r=jnp.array([[0.8], [0.7], [0.9]]),  # Factor loadings
+       Phi_f=jnp.array([[0.7]]),  # Factor persistence
+       Phi_h=jnp.array([[0.95]]),  # Volatility persistence
+       mu=jnp.array([-1.2]),  # Long-run log-vol mean
+       sigma2=jnp.array([0.3, 0.25, 0.35]),  # Idiosyncratic variances
+       Q_h=jnp.array([[0.01]])  # Log-vol innovation variance
    )
-   
+
    # Simulate 1000 time periods
-   returns, factors, log_vols = simulate_DFSV(params, T=1000, key=key)
-   
-   # Analyze results
-   print("DFSV Model Simulation Results")
-   print("=" * 40)
-   print(f"Returns shape: {returns.shape}")
-   print(f"Returns mean: {jnp.mean(returns, axis=0)}")
-   print(f"Returns std: {jnp.std(returns, axis=0)}")
-   print(f"Return correlations:\n{jnp.corrcoef(returns.T)}")
+   returns, factors, log_vols = simulate_dfsv(params, T=1000, key=42)
 
-Example 2: Filter Comparison
-----------------------------
-
-This example compares the performance of different filtering algorithms.
-
-**File**: ``examples/02_basic_filtering.py``
-
-.. code-block:: python
-
-   """
-   Filter Comparison Example
-   
-   This example demonstrates:
-   1. Using different filtering algorithms
-   2. Comparing computational performance
-   3. Analyzing filtering accuracy
-   """
-   
-   import time
-   import jax.numpy as jnp
-   from bellman_filter_dfsv.core.models import DFSVParamsDataclass, simulate_DFSV
-   from bellman_filter_dfsv.core.filters import (
-       DFSVBellmanInformationFilter,
-       DFSVBellmanFilter, 
-       DFSVParticleFilter
-   )
-   
-   # Simulate data (same as Example 1)
-   params = DFSVParamsDataclass(N=3, K=1, ...)  # Simplified for speed
-   returns, _, _ = simulate_DFSV(params, T=500, key=42)
-   
-   # Initialize filters
-   filters = {
-       "Bellman Information Filter": DFSVBellmanInformationFilter(N=3, K=1),
-       "Bellman Filter": DFSVBellmanFilter(N=3, K=1),
-       "Particle Filter": DFSVParticleFilter(N=3, K=1, num_particles=1000)
-   }
-   
-   # Compare performance
-   results = {}
-   for name, filter_obj in filters.items():
-       print(f"\nRunning {name}...")
-       start_time = time.time()
-       
-       states, covs, loglik = filter_obj.filter(params, returns)
-       
-       elapsed = time.time() - start_time
-       results[name] = {
-           'loglik': loglik,
-           'time': elapsed,
-           'states': states
-       }
-       
-       print(f"  Log-likelihood: {loglik:.2f}")
-       print(f"  Time: {elapsed:.3f}s")
-   
-   # Find best performing filter
-   best_filter = max(results.keys(), key=lambda k: results[k]['loglik'])
-   print(f"\nBest filter by log-likelihood: {best_filter}")
-
-Example 3: Parameter Estimation
--------------------------------
-
-This example demonstrates maximum likelihood parameter estimation.
-
-**File**: ``examples/03_parameter_optimization.py``
-
-.. code-block:: python
-
-   """
-   Parameter Estimation Example
-   
-   This example demonstrates:
-   1. Setting up parameter estimation
-   2. Using different optimizers
-   3. Analyzing convergence
-   """
-   
-   import jax.numpy as jnp
-   from bellman_filter_dfsv.core.models import DFSVParamsDataclass, simulate_DFSV
-   from bellman_filter_dfsv.core.optimization import run_optimization, FilterType
-   
-   # Generate synthetic data with known parameters
-   true_params = DFSVParamsDataclass(
-       N=3, K=1,
-       lambda_r=jnp.array([[0.8], [0.7], [0.9]]),  # Factor loadings (N×K)
-       Phi_f=jnp.array([[0.7]]),  # Factor AR matrix (K×K)
-       Phi_h=jnp.array([[0.95]]),  # Log-vol AR matrix (K×K)
-       mu=jnp.array([-1.2]),  # Long-run mean of log-vols (K,)
-       sigma2=jnp.array([0.3, 0.25, 0.35]),  # Idiosyncratic variances (N,)
-       Q_h=jnp.array([[0.01]])  # Log-vol innovation cov (K×K)
-   )
-   
-   returns, _, _ = simulate_DFSV(true_params, T=1000, key=42)
-   
-   # Create initial guess (perturbed true parameters)
-   initial_params = DFSVParamsDataclass(
-       N=3, K=1,
-       lambda_r=jnp.array([[0.5], [0.5], [0.5]]),  # Factor loadings (N×K)
-       Phi_f=jnp.array([[0.5]]),  # Factor AR matrix (K×K)
-       Phi_h=jnp.array([[0.9]]),  # Log-vol AR matrix (K×K)
-       mu=jnp.array([-1.0]),  # Long-run mean of log-vols (K,)
-       sigma2=jnp.array([0.4, 0.4, 0.4]),  # Idiosyncratic variances (N,)
-       Q_h=jnp.array([[0.0225]])  # Log-vol innovation cov (K×K)
-   )
-   
-   # Run optimization
-   result = run_optimization(
-       filter_type=FilterType.BELLMAN_INFORMATION,
-       returns=returns,
-       initial_params=initial_params,
-       fix_mu=True,
-       use_transformations=True,
-       optimizer_name="BFGS",
-       max_steps=500,
-       verbose=True
-   )
-   
-   print(f"\nOptimization Results:")
-   print(f"Converged: {result.converged}")
-   print(f"Final log-likelihood: {result.final_loglik:.2f}")
-   print(f"Iterations: {result.num_iterations}")
-   
-   # Compare estimated vs true parameters
-   estimated_params = result.final_params
-   print(f"\nParameter Comparison:")
-   print(f"True lambda_r: {true_params.lambda_r.flatten()}")
-   print(f"Est. lambda_r: {estimated_params.lambda_r.flatten()}")
-
-Example 4: Real Data Application
---------------------------------
-
-This example shows how to apply the filters to real financial data.
-
-**File**: ``examples/04_real_data_application.py``
-
-.. code-block:: python
-
-   """
-   Real Data Application Example
-   
-   This example demonstrates:
-   1. Loading and preprocessing real financial data
-   2. Estimating DFSV model parameters
-   3. Analyzing results and factor loadings
-   """
-   
-   import pandas as pd
-   import jax.numpy as jnp
-   import matplotlib.pyplot as plt
-   from bellman_filter_dfsv.core.models import DFSVParamsDataclass
-   from bellman_filter_dfsv.core.optimization import run_optimization, FilterType
-   
-   # Load real data (example with synthetic data)
-   # In practice, load from CSV or financial data API
-   dates = pd.date_range('2020-01-01', periods=500, freq='D')
-   
-   # Simulate realistic financial returns
-   np.random.seed(42)
-   returns_df = pd.DataFrame({
-       'AAPL': np.random.normal(0.001, 0.02, 500),
-       'GOOGL': np.random.normal(0.0008, 0.025, 500),
-       'MSFT': np.random.normal(0.0012, 0.022, 500),
-       'TSLA': np.random.normal(0.002, 0.04, 500),
-   }, index=dates)
-   
-   # Convert to JAX arrays
-   returns = jnp.array(returns_df.values)
-   
-   print(f"Data shape: {returns.shape}")
-   print(f"Date range: {dates[0]} to {dates[-1]}")
-   
-   # Set up initial parameters for 4 series, 2 factors
-   initial_params = DFSVParamsDataclass(
-       N=4, K=2,
-       lambda_r=jnp.ones((4, 2)) * 0.5,  # Factor loadings (N×K)
-       Phi_f=jnp.eye(2) * 0.6,  # Factor AR matrix (K×K)
-       Phi_h=jnp.eye(2) * jnp.array([0.95, 0.93]),  # Log-vol AR matrix (K×K)
-       mu=jnp.array([-1.5, -1.3]),  # Long-run mean of log-vols (K,)
-       sigma2=jnp.ones(4) * 0.3,  # Idiosyncratic variances (N,)
-       Q_h=jnp.diag(jnp.array([0.01, 0.0144]))  # Log-vol innovation cov (K×K)
-   )
-   
-   # Estimate parameters
-   result = run_optimization(
-       filter_type=FilterType.BELLMAN_INFORMATION,
-       returns=returns,
-       initial_params=initial_params,
-       fix_mu=True,
-       max_steps=300,
-       verbose=True
-   )
-   
-   # Analyze results
-   if result.converged:
-       print("\nEstimated Factor Loadings:")
-       loadings = result.final_params.lambda_r
-       for i, stock in enumerate(returns_df.columns):
-           print(f"{stock}: Factor 1 = {loadings[i,0]:.3f}, Factor 2 = {loadings[i,1]:.3f}")
-   
-   # Plot factor loadings
-   plt.figure(figsize=(10, 6))
-   plt.bar(range(len(returns_df.columns)), loadings[:, 0], alpha=0.7, label='Factor 1')
-   plt.bar(range(len(returns_df.columns)), loadings[:, 1], alpha=0.7, label='Factor 2')
-   plt.xlabel('Stocks')
-   plt.ylabel('Factor Loading')
-   plt.title('Estimated Factor Loadings')
-   plt.xticks(range(len(returns_df.columns)), returns_df.columns)
-   plt.legend()
-   plt.show()
-
-Running the Examples
---------------------
-
-All examples are located in the ``examples/`` directory and can be run directly:
-
-.. code-block:: bash
-
-   # Run basic simulation
-   python examples/01_dfsv_simulation.py
-   
-   # Run filter comparison
-   python examples/02_basic_filtering.py
-   
-   # Run parameter estimation
-   python examples/03_parameter_optimization.py
-   
-   # Run real data application
-   python examples/04_real_data_application.py
-
-Or using uv:
+**Running:**
 
 .. code-block:: bash
 
    uv run python examples/01_dfsv_simulation.py
 
-Each example includes detailed comments explaining the code and expected outputs.
+Example 2: Basic Filtering
+---------------------------
+
+Compares the Bellman Information Filter and Particle Filter.
+
+**File**: ``examples/02_basic_filtering.py``
+
+**What it demonstrates:**
+
+* Running ``BellmanFilter`` for fast approximate inference
+* Running ``ParticleFilter`` for more flexible inference
+* Comparing log-likelihoods and computation times
+* Evaluating filtering accuracy against true latent states
+
+**Key Code:**
+
+.. code-block:: python
+
+   from bellman_filter_dfsv import BellmanFilter, ParticleFilter
+
+   # Bellman Information Filter
+   bf = BellmanFilter(params)
+   bf_result = bf.filter(returns)
+   print(f"BIF Log-likelihood: {bf_result.log_likelihood:.2f}")
+
+   # Particle Filter (1000 particles)
+   pf = ParticleFilter(params, num_particles=1000)
+   pf_result = pf.filter(returns)
+   print(f"PF Log-likelihood: {pf_result.log_likelihood:.2f}")
+
+**Output:**
+
+* Comparison table showing log-likelihood and time
+* Plots comparing filtered estimates to true states
+* Filter accuracy metrics (RMSE, correlation)
+
+**Running:**
+
+.. code-block:: bash
+
+   uv run python examples/02_basic_filtering.py
+
+Example 3: Parameter Estimation (MLE)
+--------------------------------------
+
+Maximum likelihood estimation using gradient-based optimization.
+
+**File**: ``examples/03_parameter_optimization.py``
+
+**What it demonstrates:**
+
+* Creating initial parameter guesses
+* Using ``fit_mle()`` for gradient-based MLE
+* Tracking optimization progress
+* Comparing estimated vs. true parameters
+
+**Key Code:**
+
+.. code-block:: python
+
+   from bellman_filter_dfsv import fit_mle
+
+   # Initial guess
+   initial_guess = DFSVParams(
+       lambda_r=jnp.ones((3, 1)) * 0.5,
+       Phi_f=jnp.array([[0.5]]),
+       Phi_h=jnp.array([[0.9]]),
+       mu=jnp.array([-1.0]),
+       sigma2=jnp.ones(3) * 0.3,
+       Q_h=jnp.array([[0.02]])
+   )
+
+   # Run MLE (100 gradient steps)
+   estimated_params, loss_history = fit_mle(
+       start_params=initial_guess,
+       observations=returns,
+       num_steps=100,
+       learning_rate=0.01,
+   )
+
+**Output:**
+
+* Optimization convergence plot
+* Parameter comparison table (true vs. estimated)
+* Final log-likelihood
+
+**Running:**
+
+.. code-block:: bash
+
+   uv run python examples/03_parameter_optimization.py
+
+Example 4: EM Algorithm
+-----------------------
+
+Expectation-Maximization algorithm using Rao-Blackwellized Particle Smoother.
+
+**File**: ``examples/04_em_algorithm.py``
+
+**What it demonstrates:**
+
+* Using ``fit_em()`` for EM-based parameter estimation
+* Rao-Blackwellized Particle Smoother (RBPS) for E-step
+* Comparing EM vs. MLE approaches
+* Analyzing sufficient statistics
+
+**Key Code:**
+
+.. code-block:: python
+
+   from bellman_filter_dfsv import fit_em
+
+   # Run EM algorithm (10 iterations)
+   estimated_params = fit_em(
+       start_params=initial_guess,
+       observations=returns,
+       num_em_steps=10,
+       num_particles=500,
+       num_trajectories=50,
+   )
+
+**Output:**
+
+* EM convergence trajectory
+* Parameter evolution across iterations
+* Comparison with MLE results
+
+**Running:**
+
+.. code-block:: bash
+
+   uv run python examples/04_em_algorithm.py
+
+**Note:** EM is slower but often more robust than gradient-based MLE, especially with poor initial guesses.
+
+Example 5: Particle Cloud Visualization
+----------------------------------------
+
+Visualizes the "uncertainty collapse" phenomenon in particle smoothing.
+
+**File**: ``examples/05_particle_cloud.py``
+
+**What it demonstrates:**
+
+* Running ``run_rbps()`` for Rao-Blackwellized Particle Smoother
+* Visualizing particle distributions over time
+* Showing how uncertainty collapses after informative observations
+* Demonstrating the effect of volatility shocks
+
+**Key Code:**
+
+.. code-block:: python
+
+   from bellman_filter_dfsv import run_rbps
+
+   # Run RBPS to get sampled trajectories
+   rbps_result = run_rbps(
+       params=params,
+       observations=returns,
+       num_particles=500,
+       num_trajectories=100,
+       seed=42,
+   )
+
+   # Access sampled log-volatility paths
+   h_samples = rbps_result.h_samples  # (num_trajectories, T, K)
+
+**Output:**
+
+* ``particle_cloud_visualization.png`` showing:
+  * Particle spread over time
+  * Uncertainty collapse after large shocks
+  * Comparison with forward filter estimates
+
+**Running:**
+
+.. code-block:: bash
+
+   uv run python examples/05_particle_cloud.py
+
+Running All Examples
+--------------------
+
+Run all examples sequentially:
+
+.. code-block:: bash
+
+   cd examples/
+   for script in *.py; do
+       echo "Running $script..."
+       uv run python "$script"
+   done
+
+Or individually:
+
+.. code-block:: bash
+
+   uv run python examples/01_dfsv_simulation.py
+   uv run python examples/02_basic_filtering.py
+   uv run python examples/03_parameter_optimization.py
+   uv run python examples/04_em_algorithm.py
+   uv run python examples/05_particle_cloud.py
+
+Dependencies for Examples
+--------------------------
+
+Examples require additional visualization dependencies:
+
+.. code-block:: bash
+
+   uv pip install matplotlib numpy
+
+Or install all optional dependencies:
+
+.. code-block:: bash
+
+   uv sync --extra examples
+
+Example Output
+--------------
+
+Each example produces:
+
+* **Console output**: Statistics, log-likelihoods, parameter estimates
+* **Plots** (saved as PNG files): Visualizations of results
+* **Timing information**: Performance benchmarks
+
+Expected run times (on modern CPU):
+
+* Example 1 (Simulation): ~1 second
+* Example 2 (Filtering): ~5 seconds
+* Example 3 (MLE): ~30 seconds
+* Example 4 (EM): ~2 minutes
+* Example 5 (RBPS): ~1 minute
+
+Customizing Examples
+--------------------
+
+All examples are designed to be easily modified. Common modifications:
+
+**Change model dimensions:**
+
+.. code-block:: python
+
+   # More series and factors
+   params = DFSVParams(
+       lambda_r=jnp.ones((10, 3)),  # 10 series, 3 factors
+       Phi_f=jnp.eye(3) * 0.7,
+       Phi_h=jnp.eye(3) * 0.95,
+       mu=jnp.ones(3) * -1.0,
+       sigma2=jnp.ones(10) * 0.2,
+       Q_h=jnp.eye(3) * 0.01
+   )
+
+**Increase time series length:**
+
+.. code-block:: python
+
+   # Simulate longer series
+   returns, _, _ = simulate_dfsv(params, T=5000, key=42)
+
+**Adjust optimization settings:**
+
+.. code-block:: python
+
+   # More iterations, slower learning
+   estimated_params, _ = fit_mle(
+       start_params=initial_guess,
+       observations=returns,
+       num_steps=500,  # More steps
+       learning_rate=0.005,  # Slower learning rate
+   )
+
+**More particles for better accuracy:**
+
+.. code-block:: python
+
+   pf = ParticleFilter(params, num_particles=10000)
+
+See Also
+--------
+
+* :ref:`usage` - Detailed usage guide
+* :ref:`api_reference` - Complete API documentation
+* `README.md <https://github.com/givani30/BellmanFilterDFSV/blob/main/README.md>`_ - Quick start guide
+* `ALGORITHMS.md <https://github.com/givani30/BellmanFilterDFSV/blob/main/ALGORITHMS.md>`_ - Mathematical specifications

@@ -39,16 +39,15 @@ where:
 * :math:`\Phi_f` is the factor autoregression matrix (K×K)
 * :math:`\Phi_h` is the log-volatility autoregression matrix (K×K)
 * :math:`\mu` is the long-run mean of log-volatilities (K×1)
-* :math:`\Sigma` is the idiosyncratic error covariance (N×N)
+* :math:`\Sigma` is the idiosyncratic error covariance (N×N, diagonal)
 * :math:`Q_h` is the log-volatility innovation covariance (K×K)
 
 **Filtering Algorithms**
 
-The package provides three filtering algorithms:
+The package provides two main filtering algorithms:
 
 1. **Bellman Information Filter (BIF)**: Information-form implementation for numerical stability
-2. **Bellman Filter**: Traditional covariance-form implementation
-3. **Particle Filter**: Bootstrap particle filter for non-linear/non-Gaussian cases
+2. **Particle Filter**: Bootstrap particle filter with systematic resampling
 
 Basic Usage
 -----------
@@ -58,220 +57,262 @@ Basic Usage
 .. code-block:: python
 
    import jax.numpy as jnp
-   from bellman_filter_dfsv.core.models import DFSVParamsDataclass, simulate_DFSV
+   from bellman_filter_dfsv import DFSVParams, simulate_dfsv
 
    # Define model parameters
-   params = DFSVParamsDataclass(
-       N=5,  # Number of observed series
-       K=2,  # Number of factors
-       lambda_r=jnp.array([[0.8, 0.2], [0.7, 0.3], [0.9, 0.1],
-                           [0.6, 0.4], [0.8, 0.2]]),  # Factor loadings (N×K)
-       Phi_f=jnp.array([[0.7, 0.1], [0.1, 0.6]]),  # Factor AR matrix (K×K)
-       Phi_h=jnp.array([[0.95, 0.0], [0.0, 0.92]]),  # Log-vol AR matrix (K×K)
-       mu=jnp.array([-1.2, -1.0]),  # Long-run mean of log-vols (K,)
-       sigma2=jnp.array([0.3, 0.25, 0.35, 0.28, 0.32]),  # Idiosyncratic variances (N,)
-       Q_h=jnp.array([[0.01, 0.0], [0.0, 0.0144]])  # Log-vol innovation cov (K×K)
+   params = DFSVParams(
+       lambda_r=jnp.array([[0.8], [0.7], [0.9]]),  # Factor loadings (N×K)
+       Phi_f=jnp.array([[0.7]]),  # Factor AR matrix (K×K)
+       Phi_h=jnp.array([[0.95]]),  # Log-vol AR matrix (K×K)
+       mu=jnp.array([-1.2]),  # Long-run mean of log-vols (K,)
+       sigma2=jnp.array([0.3, 0.25, 0.35]),  # Idiosyncratic variances (N,)
+       Q_h=jnp.array([[0.01]])  # Log-vol innovation covariance (K×K)
    )
 
-   # Simulate data
-   returns, factors, log_vols = simulate_DFSV(params, T=1000, key=42)
+   # Simulate data (T=1000 time periods)
+   returns, factors, log_vols = simulate_dfsv(params, T=1000, key=42)
    print(f"Simulated {returns.shape[0]} time periods for {returns.shape[1]} series")
 
 **2. Filtering with Bellman Information Filter**
 
 .. code-block:: python
 
-   from bellman_filter_dfsv.core.filters import DFSVBellmanInformationFilter
+   from bellman_filter_dfsv import BellmanFilter
 
-   # Create filter
-   bif = DFSVBellmanInformationFilter(N=5, K=2)
+   # Create filter (params embedded in filter)
+   bf = BellmanFilter(params)
 
    # Run filtering
-   states, covs, loglik = bif.filter(params, returns)
+   result = bf.filter(returns)
 
-   print(f"Log-likelihood: {loglik:.2f}")
-   print(f"Filtered states shape: {states.shape}")  # (T, 2*K)
-   print(f"Filtered covariances shape: {covs.shape}")  # (T, 2*K, 2*K)
+   print(f"Log-likelihood: {result.log_likelihood:.2f}")
+   print(f"Filtered states shape: {result.means.shape}")  # (T, 2*K)
+   print(f"Information matrices shape: {result.infos.shape}")  # (T, 2*K, 2*K)
 
-**3. Comparing Filter Performance**
+**3. Filtering with Particle Filter**
 
 .. code-block:: python
 
-   from bellman_filter_dfsv.core.filters import (
-       DFSVBellmanInformationFilter,
-       DFSVBellmanFilter,
-       DFSVParticleFilter
-   )
-   import time
+   from bellman_filter_dfsv import ParticleFilter
 
-   # Initialize filters
-   bif = DFSVBellmanInformationFilter(N=5, K=2)
-   bf = DFSVBellmanFilter(N=5, K=2)
-   pf = DFSVParticleFilter(N=5, K=2, num_particles=1000)
+   # Create particle filter with 1000 particles
+   pf = ParticleFilter(params, num_particles=1000)
 
-   filters = [("BIF", bif), ("Bellman", bf), ("Particle", pf)]
+   # Run filtering
+   result = pf.filter(returns)
 
-   # Compare performance
-   for name, filter_obj in filters:
-       start_time = time.time()
-       states, covs, loglik = filter_obj.filter(params, returns)
-       elapsed = time.time() - start_time
-
-       print(f"{name} Filter:")
-       print(f"  Log-likelihood: {loglik:.2f}")
-       print(f"  Time: {elapsed:.3f}s")
-       print()
+   print(f"Log-likelihood: {result.log_likelihood:.2f}")
+   print(f"Filtered means shape: {result.means.shape}")  # (T, 2*K)
+   print(f"Filtered covariances shape: {result.covs.shape}")  # (T, 2*K, 2*K)
 
 Parameter Estimation
 --------------------
 
-**1. Maximum Likelihood Estimation**
+**1. Maximum Likelihood Estimation with Gradient Descent**
 
 .. code-block:: python
 
-   from bellman_filter_dfsv.core.optimization import run_optimization, FilterType
+   from bellman_filter_dfsv import fit_mle
 
    # Create initial parameter guess
-   initial_params = DFSVParamsDataclass(
-       N=5, K=2,
-       lambda_r=jnp.ones((5, 2)) * 0.5,  # Factor loadings (N×K)
-       Phi_f=jnp.eye(2) * 0.5,  # Factor AR matrix (K×K)
-       Phi_h=jnp.eye(2) * 0.9,  # Log-vol AR matrix (K×K)
-       mu=jnp.array([-1.0, -1.0]),  # Long-run mean of log-vols (K,)
-       sigma2=jnp.ones(5) * 0.3,  # Idiosyncratic variances (N,)
-       Q_h=jnp.eye(2) * 0.0225  # Log-vol innovation cov (K×K)
+   initial_guess = DFSVParams(
+       lambda_r=jnp.ones((3, 1)) * 0.5,
+       Phi_f=jnp.array([[0.5]]),
+       Phi_h=jnp.array([[0.9]]),
+       mu=jnp.array([-1.0]),
+       sigma2=jnp.ones(3) * 0.3,
+       Q_h=jnp.array([[0.02]])
    )
 
-   # Run optimization using BIF
-   result = run_optimization(
-       filter_type=FilterType.BELLMAN_INFORMATION,
-       returns=returns,
-       initial_params=initial_params,
-       fix_mu=True,  # Fix log-vol means for identification
-       use_transformations=True,  # Use parameter transformations
-       optimizer_name="BFGS",
-       max_steps=500,
-       verbose=True
+   # Run MLE optimization
+   estimated_params, loss_history = fit_mle(
+       start_params=initial_guess,
+       observations=returns,
+       num_steps=100,
+       learning_rate=0.01,
    )
 
-   print(f"Optimization converged: {result.converged}")
-   print(f"Final log-likelihood: {result.final_loglik:.2f}")
-   print(f"Number of iterations: {result.num_iterations}")
+   print(f"Final negative log-likelihood: {loss_history[-1]:.2f}")
+   print(f"Estimated factor loadings:\n{estimated_params.lambda_r}")
 
-**2. Parameter Transformations**
+**2. Expectation-Maximization Algorithm**
 
 .. code-block:: python
 
-   from bellman_filter_dfsv.core.optimization.transformations import (
-       transform_params, untransform_params
+   from bellman_filter_dfsv import fit_em
+
+   # Run EM algorithm (uses Rao-Blackwellized Particle Smoother)
+   estimated_params = fit_em(
+       start_params=initial_guess,
+       observations=returns,
+       num_em_steps=10,
+       num_particles=500,
+       num_trajectories=50,
    )
 
-   # Transform parameters to unconstrained space
-   transformed_params = transform_params(params)
-
-   # Untransform back to constrained space
-   original_params = untransform_params(transformed_params)
-
-   print("Parameter transformations ensure:")
-   print("- Positive variances (log transformation)")
-   print("- Stationary AR coefficients (tanh transformation)")
-   print("- Proper identification constraints")
+   print(f"EM estimated parameters:")
+   print(f"  Lambda_r:\n{estimated_params.lambda_r}")
+   print(f"  Phi_f: {estimated_params.Phi_f}")
+   print(f"  Phi_h: {estimated_params.Phi_h}")
 
 Advanced Usage
 --------------
 
-**1. Custom Optimization Configuration**
+**1. Smoothing with RTS Smoother**
 
 .. code-block:: python
 
-   # Advanced optimization with custom settings
-   result = run_optimization(
-       filter_type=FilterType.BELLMAN_INFORMATION,
-       returns=returns,
-       initial_params=initial_params,
-       optimizer_name="BFGS",
-       learning_rate=1e-3,
-       max_steps=1000,
-       rtol=1e-6,
-       atol=1e-6,
-       scheduler_type="warmup_cosine",
-       max_learning_rate=1e-2,
-       min_learning_rate=1e-6,
-       warmup_steps=100,
-       log_params=True,  # Log parameter evolution
-       verbose=True
+   from bellman_filter_dfsv import BellmanFilter, rts_smoother
+
+   # First run the forward filter
+   bf = BellmanFilter(params)
+   filter_result = bf.filter(returns)
+
+   # Then run backward smoother
+   smooth_means, smooth_infos = rts_smoother(
+       filter_means=filter_result.means,
+       filter_infos=filter_result.infos,
+       params=params
    )
 
-**2. Particle Filter Configuration**
+   print(f"Smoothed states shape: {smooth_means.shape}")
+
+**2. Rao-Blackwellized Particle Smoother**
 
 .. code-block:: python
 
-   # Particle filter with custom settings
-   pf = DFSVParticleFilter(
-       N=5, K=2,
-       num_particles=5000,  # More particles for better accuracy
-       resampling_threshold=0.5,  # ESS threshold for resampling
-       seed=42  # Reproducible results
+   from bellman_filter_dfsv import run_rbps
+
+   # Run RBPS (marginalizes out linear states analytically)
+   rbps_result = run_rbps(
+       params=params,
+       observations=returns,
+       num_particles=500,
+       num_trajectories=100,
+       seed=42
    )
 
-   states, weights, loglik = pf.filter(params, returns)
-   print(f"Effective sample size: {pf.effective_sample_size(weights[-1])}")
+   # Access sampled trajectories
+   h_samples = rbps_result.h_samples  # (num_trajectories, T, K)
+   f_means = rbps_result.f_smooth_means  # (num_trajectories, T, K)
 
-**3. Numerical Stability Features**
+   print(f"Sampled log-vol paths: {h_samples.shape}")
+   print(f"Conditional factor means: {f_means.shape}")
+
+**3. Custom Optimization with Optax**
 
 .. code-block:: python
 
-   # BIF automatically handles numerical stability through:
-   # - Information form propagation
-   # - Joseph form covariance updates
-   # - Regularization techniques
-   # - Robust matrix operations
+   import optax
+   from bellman_filter_dfsv import fit_mle
 
-   # Access stability diagnostics
-   bif = DFSVBellmanInformationFilter(N=5, K=2)
-   states, covs, loglik = bif.filter(params, returns)
+   # Use custom optimizer (e.g., Adam with learning rate schedule)
+   schedule = optax.exponential_decay(
+       init_value=0.01,
+       transition_steps=50,
+       decay_rate=0.9
+   )
+   optimizer = optax.adam(learning_rate=schedule)
 
-   # Check for numerical issues
-   if hasattr(bif, 'stability_warnings'):
-       print(f"Stability warnings: {bif.stability_warnings}")
+   # Run MLE with custom optimizer
+   estimated_params, loss_history = fit_mle(
+       start_params=initial_guess,
+       observations=returns,
+       num_steps=200,
+       optimizer=optimizer
+   )
 
 Performance Tips
 ----------------
 
-**1. JAX Compilation**
+**1. JAX Configuration**
 
 .. code-block:: python
 
    import jax
-
+   
    # Enable 64-bit precision for numerical stability
    jax.config.update("jax_enable_x64", True)
-
-   # Use CPU for development, GPU for production
+   
+   # Use CPU for development, GPU for large-scale work
    jax.config.update("jax_platform_name", "cpu")  # or "gpu"
 
-**2. Memory Management**
+**2. JIT Compilation**
+
+All filtering and estimation functions are JIT-compatible:
 
 .. code-block:: python
 
-   # For large datasets, process in chunks
-   chunk_size = 1000
-   total_loglik = 0.0
+   import jax
+   from bellman_filter_dfsv import BellmanFilter
+   
+   # JIT-compile the filter for speed
+   bf = BellmanFilter(params)
+   jitted_filter = jax.jit(bf.filter)
+   
+   # First call compiles, subsequent calls are fast
+   result = jitted_filter(returns)
 
+**3. Particle Filter Configuration**
+
+.. code-block:: python
+
+   from bellman_filter_dfsv import ParticleFilter
+   
+   # More particles = better accuracy but slower
+   pf = ParticleFilter(
+       params,
+       num_particles=5000,  # Increase for better estimates
+   )
+   
+   result = pf.filter(returns)
+
+**4. Memory-Efficient Processing**
+
+For very long time series, consider chunking:
+
+.. code-block:: python
+
+   chunk_size = 1000
+   
    for i in range(0, len(returns), chunk_size):
        chunk = returns[i:i+chunk_size]
-       _, _, chunk_loglik = bif.filter(params, chunk)
-       total_loglik += chunk_loglik
+       result = bf.filter(chunk)
+       # Process result...
 
-**3. Batch Processing**
+Troubleshooting
+---------------
 
-.. code-block:: python
+**Numerical Stability Issues**
 
-   # Process multiple datasets efficiently
-   datasets = [returns1, returns2, returns3]
+If you encounter numerical issues:
 
-   # Vectorized processing using JAX
-   def batch_filter(params, datasets):
-       return jax.vmap(lambda data: bif.filter(params, data))(datasets)
+1. Enable 64-bit precision: ``jax.config.update("jax_enable_x64", True)``
+2. Use BellmanFilter (information form) instead of ParticleFilter
+3. Check parameter constraints (stationarity, positive variances)
+4. Reduce learning rate in ``fit_mle()``
 
-   # Note: Requires careful memory management for large batches
+**Optimization Not Converging**
+
+If MLE doesn't converge:
+
+1. Try different initial parameter values
+2. Increase ``num_steps`` in ``fit_mle()``
+3. Reduce ``learning_rate``
+4. Use EM algorithm (``fit_em()``) instead - more robust but slower
+5. Check that data has sufficient variation
+
+**Memory Issues with Particle Filter**
+
+If running out of memory:
+
+1. Reduce ``num_particles``
+2. Process data in chunks
+3. Use BellmanFilter instead (much more memory-efficient)
+
+See Also
+--------
+
+* :ref:`examples` - Complete runnable examples
+* :ref:`api_reference` - Full API documentation
+* `ALGORITHMS.md <https://github.com/givani30/BellmanFilterDFSV/blob/main/ALGORITHMS.md>`_ - Mathematical specifications
