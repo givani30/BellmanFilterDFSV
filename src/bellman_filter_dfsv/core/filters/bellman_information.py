@@ -908,37 +908,39 @@ class DFSVBellmanInformationFilter(DFSVFilter):
             self.get_total_log_likelihood(),
         )
 
-    # --- Smoothing Method ---
+    # --- Smoothing Method (Direct Information Form) ---
     def smooth(
         self, params: DFSVParamsDataclass
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Performs Rauch-Tung-Striebel (RTS) smoothing for the Dynamic Factor SV model.
+        """Performs RTS smoothing using direct information-form gain computation.
 
-        Given filtered estimates from the BIF, this method performs backward smoothing
-        using the standard RTS recursions adapted for our state space model:
+        This implementation AVOIDS the double-inversion instability of the standard
+        RTS smoother when used with information filters. The standard approach computes:
+
+            J_t = P_{t|t} @ F^T @ inv(P_{t+1|t})
+
+        where P_{t+1|t} = inv(Ω_{t+1|t}). This causes instability for log-volatility
+        states where Ω can be small (high uncertainty), leading to:
+        - Massive P_{t+1|t} from the first inversion
+        - Garbage inv(P_{t+1|t}) from the second inversion (floating point noise)
+
+        Direct Information-Form Fix:
+            J_t = P_{t|t} @ F^T @ Ω_{t+1|t}
+
+        This uses the predicted information matrix directly, avoiding double inversion.
+        The standard covariance update then proceeds:
+            α_{t|T} = α_{t|t} + J_t(α_{t+1|T} - α_{t+1|t})
+            P_{t|T} = P_{t|t} + J_t(P_{t+1|T} - P_{t+1|t})J_t'
+
+        But we compute P_{t+1|t} only ONCE (for the covariance difference), never
+        inverting it.
 
         Mathematical Details:
-            1. Convert Information to Covariance Form:
-               P_{t|t} = Ω_{t|t}^{-1}
-               P_{t|t-1} = Ω_{t|t-1}^{-1}
+            The key insight is that:
+                J_t = P_{t|t} @ F^T @ P_{t+1|t}^{-1}
+                    = P_{t|t} @ F^T @ Ω_{t+1|t}  (by definition)
 
-            2. RTS Recursions (t = T-1,...,1):
-               J_t = P_{t|t}·F_{t+1}'·P_{t+1|t}^{-1}
-               α_{t|T} = α_{t|t} + J_t(α_{t+1|T} - α_{t+1|t})
-               P_{t|T} = P_{t|t} + J_t(P_{t+1|T} - P_{t+1|t})J_t'
-
-               where:
-               - F_{t+1} is the state transition matrix at t+1
-               - J_t is the smoothing gain
-
-            3. Lag-1 Cross-Covariance (for EM algorithm):
-               P_{t+1,t|T} = P_{t+1|T} @ J_t.T
-
-        Implementation Notes:
-            1. Uses Cholesky for stable matrix inversions
-            2. Enforces matrix symmetry throughout
-            3. Maintains numerics via jitter terms
-            4. Returns NumPy arrays for consistency
+            So we skip the intermediate P_{t+1|t} inversion entirely for the gain.
 
         Returns:
             A tuple containing:
@@ -948,48 +950,182 @@ class DFSVBellmanInformationFilter(DFSVFilter):
                   (T, state_dim, state_dim). Index t holds P_{t+1,t|T}.
 
         Raises:
-            RuntimeError: If filter hasn't been run or covariance computation fails.
+            RuntimeError: If filter hasn't been run or required data is unavailable.
         """
         # Check if filter results (JAX arrays) are available
         if (
             getattr(self, "filtered_states", None) is None
             or getattr(self, "filtered_infos", None) is None
+            or getattr(self, "predicted_infos", None) is None
+            or getattr(self, "predicted_states", None) is None
         ):
             raise RuntimeError(
                 "Filter must be run successfully (e.g., using filter_scan) "
-                "before smoothing."
+                "before smoothing. Required: filtered_states, filtered_infos, "
+                "predicted_states, predicted_infos."
             )
 
-        # Compute filtered covariances (P_t|t) from information matrices (Omega_t|t)
-        # get_filtered_covariances() handles JAX->NumPy conversion and stores in self.filtered_covs
-        filtered_covs_np = self.get_filtered_covariances()
-        if filtered_covs_np is None:
-            raise RuntimeError(
-                "Failed to compute filtered covariances needed for smoothing."
+        T = self.filtered_states.shape[0]
+        if T <= 0:
+            import warnings
+
+            warnings.warn("Cannot smooth with T=0 observations.", stacklevel=2)
+            empty_states = np.empty((0, self.state_dim))
+            empty_covs = np.empty((0, self.state_dim, self.state_dim))
+            self.smoothed_states = empty_states
+            self.smoothed_covs = empty_covs
+            self.smoothed_lag1_covs = empty_covs
+            self.is_smoothed = True
+            return empty_states, empty_covs, empty_covs
+
+        # Process parameters
+        params_jax = self._process_params(params)
+
+        # Get transition matrix (constant for DFSV)
+        F_t = self._get_transition_matrix(params_jax, self.K)
+
+        # Convert filtered states and infos to JAX arrays
+        filtered_states_jax = jnp.asarray(self.filtered_states)  # (T, state_dim)
+        filtered_infos_jax = jnp.asarray(
+            self.filtered_infos
+        )  # (T, state_dim, state_dim)
+        predicted_states_jax = jnp.asarray(
+            self.predicted_states
+        )  # (T, state_dim) or (T, state_dim, 1)
+        predicted_infos_jax = jnp.asarray(
+            self.predicted_infos
+        )  # (T, state_dim, state_dim)
+
+        # Flatten predicted states if needed
+        if predicted_states_jax.ndim == 3:
+            predicted_states_jax = predicted_states_jax.reshape(T, self.state_dim)
+
+        # Compute filtered covariances P_{t|t} = inv(Ω_{t|t}) - we need these anyway
+        vmapped_inverter = eqx.filter_jit(jax.vmap(self._invert_info_matrix, in_axes=0))
+        filtered_covs_jax = vmapped_inverter(
+            filtered_infos_jax
+        )  # (T, state_dim, state_dim)
+
+        # Compute predicted covariances P_{t|t-1} = inv(Ω_{t|t-1}) for covariance update only
+        # (NOT for gain computation - that uses Ω directly)
+        predicted_covs_jax = vmapped_inverter(
+            predicted_infos_jax
+        )  # (T, state_dim, state_dim)
+
+        # Handle T=1 case
+        if T == 1:
+            self.smoothed_states = np.asarray(filtered_states_jax)
+            self.smoothed_covs = np.asarray(filtered_covs_jax)
+            self.smoothed_lag1_covs = np.zeros_like(self.smoothed_covs)
+            self.is_smoothed = True
+            return self.smoothed_states, self.smoothed_covs, self.smoothed_lag1_covs
+
+        # Define the direct information-form RTS smoother step
+        state_dim_static = self.state_dim
+
+        @eqx.filter_jit
+        def _rts_info_smoother_step(carry, xs_t):
+            """RTS backward step using direct information-form gain.
+
+            Key difference from standard RTS:
+                J_t = P_{t|t} @ F^T @ Ω_{t+1|t}  (direct, no double inversion)
+            instead of:
+                J_t = P_{t|t} @ F^T @ inv(P_{t+1|t})  (double inversion)
+            """
+            state_tp1_smooth, cov_tp1_smooth = carry
+
+            # Unpack inputs for time t
+            state_t_filt, cov_t_filt, info_tp1_pred, state_tp1_pred, cov_tp1_pred = xs_t
+
+            # Flatten states
+            state_t_filt = state_t_filt.flatten()
+            state_tp1_pred = state_tp1_pred.flatten()
+
+            # === DIRECT INFORMATION-FORM GAIN ===
+            # J_t = P_{t|t} @ F^T @ Ω_{t+1|t}
+            # This avoids: J_t = P_{t|t} @ F^T @ inv(inv(Ω_{t+1|t}))
+            smoother_gain = cov_t_filt @ F_t.T @ info_tp1_pred
+
+            # Update smoothed state: α_{t|T} = α_{t|t} + J_t(α_{t+1|T} - α_{t+1|t})
+            state_diff = state_tp1_smooth - state_tp1_pred
+            state_t_smooth = state_t_filt + smoother_gain @ state_diff
+
+            # Update smoothed covariance: P_{t|T} = P_{t|t} + J_t(P_{t+1|T} - P_{t+1|t})J_t'
+            # Note: We use cov_tp1_pred here (the inverted version), NOT info_tp1_pred
+            cov_diff = cov_tp1_smooth - cov_tp1_pred
+            cov_t_smooth = cov_t_filt + smoother_gain @ cov_diff @ smoother_gain.T
+            # Ensure symmetry
+            cov_t_smooth = (cov_t_smooth + cov_t_smooth.T) / 2.0
+
+            # Compute smoothed lag-1 covariance: P_{t+1,t|T} = P_{t+1|T} @ J_t'
+            cov_tp1_t_smooth = cov_tp1_smooth @ smoother_gain.T
+
+            # New carry for next step
+            carry_new = (state_t_smooth.flatten(), cov_t_smooth)
+
+            # Result for this step
+            from bellman_filter_dfsv.core.filters.base import SmootherResults
+
+            result_t = SmootherResults(
+                smoothed_states=state_t_smooth,
+                smoothed_covs=cov_t_smooth,
+                smoothed_lag1_covs=cov_tp1_t_smooth,
             )
 
-        # Compute predicted covariances (P_t|t-1) from information matrices (Omega_t|t-1)
-        predicted_covs_np = self.get_predicted_covariances()
-        if predicted_covs_np is None:
-            raise RuntimeError(
-                "Failed to compute predicted covariances needed for smoothing."
-            )
+            return carry_new, result_t
 
-        # Overwrite attributes temporarily with NumPy versions for the base class call
-        self.predicted_covs = predicted_covs_np
-        self.filtered_covs = (
-            filtered_covs_np  # This is already set by get_filtered_covariances
+        # Initial carry: smoothed state/cov at T-1 equals filtered state/cov at T-1
+        init_carry = (
+            filtered_states_jax[T - 1, :].flatten(),
+            filtered_covs_jax[T - 1, :, :],
         )
-        self.is_filtered = True  # Ensure base class knows filter was run
 
-        # Call the base class implementation which expects NumPy arrays and now params
-        # Base class smooth returns 3 values: states, covs, lag1_covs
-        smoothed_states, smoothed_covs, smoothed_lag1_covs = super().smooth(params)
+        # Prepare scan inputs for t = T-2 down to 0
+        # xs_t = (state_{t|t}, cov_{t|t}, Ω_{t+1|t}, state_{t+1|t}, cov_{t+1|t})
+        xs = (
+            filtered_states_jax[:-1, :],  # state_{t|t} for t=0..T-2
+            filtered_covs_jax[:-1, :, :],  # cov_{t|t} for t=0..T-2
+            predicted_infos_jax[
+                1:, :, :
+            ],  # Ω_{t+1|t} for t=0..T-2 (index 1 corresponds to t=0)
+            predicted_states_jax[1:, :],  # state_{t+1|t} for t=0..T-2
+            predicted_covs_jax[1:, :, :],  # cov_{t+1|t} for t=0..T-2
+        )
 
-        # Note: self.smoothed_states, self.smoothed_covs, and self.smoothed_lag1_covs are set
-        #       by the base class smoother (as NumPy arrays).
+        # Run the backward scan
+        _, results_scan = jax.lax.scan(
+            _rts_info_smoother_step, init_carry, xs, reverse=True
+        )
 
-        return smoothed_states, smoothed_covs, smoothed_lag1_covs
+        # Unpack results
+        smoothed_states_scan = results_scan.smoothed_states  # (T-1, state_dim)
+        smoothed_covs_scan = results_scan.smoothed_covs  # (T-1, state_dim, state_dim)
+        smoothed_lag1_covs_scan = (
+            results_scan.smoothed_lag1_covs
+        )  # (T-1, state_dim, state_dim)
+
+        # Combine with final time step
+        final_smoothed_states = jnp.vstack(
+            [smoothed_states_scan, init_carry[0][jnp.newaxis, :]]
+        )
+        final_smoothed_covs = jnp.vstack(
+            [smoothed_covs_scan, init_carry[1][jnp.newaxis, :, :]]
+        )
+
+        # Pad lag-1 covariances with zeros for the last time step (no P_{T+1,T|T})
+        padding = jnp.zeros((1, state_dim_static, state_dim_static), dtype=jnp.float64)
+        final_smoothed_lag1_covs = jnp.vstack([smoothed_lag1_covs_scan, padding])
+
+        # Convert to NumPy and store
+        self.smoothed_states = np.asarray(final_smoothed_states)
+        self.smoothed_covs = np.asarray(final_smoothed_covs)
+        self.smoothed_lag1_covs = np.asarray(final_smoothed_lag1_covs)
+        self.is_smoothed = True
+
+        # Also store filtered_covs for compatibility
+        self.filtered_covs = np.asarray(filtered_covs_jax)
+
+        return self.smoothed_states, self.smoothed_covs, self.smoothed_lag1_covs
 
     # --- Getter Methods (Adapted for Information Filter) ---
     # Convert internal JAX arrays to NumPy for external use

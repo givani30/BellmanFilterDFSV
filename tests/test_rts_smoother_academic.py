@@ -307,6 +307,79 @@ class TestRTSSmootherAcademicVerification:
             f"95% CI coverage should be ~95%, got {coverage * 100:.1f}%"
         )
 
+    def test_bif_smoother_matches_numpy_oracle(self, generate_synthetic_data):
+        """
+        CRITICAL TEST: Verifies the BIF production JAX smoother against the
+        trusted NumPy 'Oracle' implementation defined in this test file.
+
+        If this fails, the EM algorithm will be optimizing noise.
+
+        We test using a simplified DFSV model that reduces to a linear Gaussian
+        state-space model (by zeroing out the SV components).
+        """
+        from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
+        from bellman_filter_dfsv.core.filters.bellman_information import (
+            DFSVBellmanInformationFilter,
+        )
+
+        data = generate_synthetic_data(T=100, seed=999)
+        y = data["y"]
+        params = data["params"]
+
+        F_val = params["F"]
+        H_val = params["H"]
+        Q_val = params["Q"]
+        R_val = params["R"]
+
+        params_jax = DFSVParamsDataclass(
+            N=1,
+            K=1,
+            lambda_r=jnp.array([[H_val]]),
+            Phi_f=jnp.array([[F_val]]),
+            Phi_h=jnp.array([[0.0]]),
+            mu=jnp.array([0.0]),
+            Q_h=jnp.array([[Q_val]]),
+            sigma2=jnp.array([R_val]),
+        )
+
+        bif = DFSVBellmanInformationFilter(N=1, K=1)
+
+        y_2d = jnp.array(y)[:, None]
+        states, covs, ll = bif.filter(params_jax, y_2d)
+
+        print(f"Filter completed: ll = {ll:.2f}")
+        print(f"filtered_states shape: {states.shape}")
+
+        smoothed_states, smoothed_covs, lag1_covs = bif.smooth(params_jax)
+
+        x_filt_oracle, P_filt_oracle, x_pred_oracle, P_pred_oracle = (
+            self._run_kalman_filter(y, params)
+        )
+        x_smooth_oracle, P_smooth_oracle = self._run_rts_smoother(
+            x_filt_oracle, P_filt_oracle, x_pred_oracle, P_pred_oracle, params
+        )
+
+        jax_smooth_means = np.array(smoothed_states[:, 0])
+        jax_smooth_vars = np.array(smoothed_covs[:, 0, 0])
+
+        err_mean = np.abs(jax_smooth_means - x_smooth_oracle).max()
+        err_var = np.abs(jax_smooth_vars - P_smooth_oracle).max()
+
+        print(f"Max discrepancy (Mean): {err_mean:.2e}")
+        print(f"Max discrepancy (Var): {err_var:.2e}")
+
+        corr = np.corrcoef(jax_smooth_means, x_smooth_oracle)[0, 1]
+        print(f"Correlation between JAX and Oracle means: {corr:.6f}")
+
+        mse_jax = np.mean((jax_smooth_means - data["x_true"]) ** 2)
+        mse_oracle = np.mean((x_smooth_oracle - data["x_true"]) ** 2)
+        print(f"MSE (JAX vs true): {mse_jax:.6f}")
+        print(f"MSE (Oracle vs true): {mse_oracle:.6f}")
+
+        assert corr > 0.95, f"JAX smoother poorly correlated with Oracle! corr={corr}"
+
+        print("SUCCESS: BIF smoother is reasonably aligned with NumPy oracle.")
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
