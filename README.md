@@ -175,6 +175,8 @@ Where:
 3. **RTS Smoother**: Rauch-Tung-Striebel smoother (Direct Information Form)
 4. **Rao-Blackwellized Particle Smoother (RBPS)**: Marginalizes out linear states analytically
 
+**📐 [Mathematical Details](ALGORITHMS.md)** - Complete mathematical specifications of all algorithms
+
 ## 📁 Project Structure
 
 ```text
