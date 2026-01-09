@@ -124,3 +124,39 @@ def update_Phi_f(stats: EMSufficientStats) -> Float[Array, "K K"]:
     )
     phi_f_diag = jnp.clip(phi_f_diag, -0.999, 0.999)
     return jnp.diag(phi_f_diag)
+
+
+def m_step_full(
+    stats: EMSufficientStats,
+    n_mu_phi_iters: int = 3,
+) -> tuple[
+    Float[Array, "N K"],
+    Float[Array, "N"],
+    Float[Array, "K K"],
+    Float[Array, "K"],
+    Float[Array, "K K"],
+    Float[Array, "K K"],
+]:
+    """
+    Full M-step: update all parameters from sufficient statistics.
+
+    Handles the μ/Φ_h coupling via a few iterations of alternating updates.
+
+    Returns:
+        (lambda_r, sigma2, Phi_f, mu, Phi_h, Q_h)
+    """
+    lambda_r = update_lambda_r(stats)
+    sigma2 = update_sigma2(stats, lambda_r)
+    Phi_f = update_Phi_f(stats)
+
+    K = stats.sum_h.shape[0]
+    mu = stats.sum_h / (stats.T - 1)
+    Phi_h = jnp.eye(K) * 0.9
+
+    for _ in range(n_mu_phi_iters):
+        Phi_h = update_Phi_h(stats, mu)
+        mu = update_mu(stats, Phi_h)
+
+    Q_h = update_Q_h(stats, mu, Phi_h)
+
+    return lambda_r, sigma2, Phi_f, mu, Phi_h, Q_h
