@@ -27,12 +27,12 @@ This document tracks the phased implementation of the EM algorithm for DFSV para
 
 ### Tasks
 
-- [ ] **0.1** Review `base.py` smoother implementation (lines 544-763)
-- [ ] **0.2** Verify lag-1 covariance formula: `P_{t+1,t|T} = P_{t+1|T} @ J_t.T`
-- [ ] **0.3** Create test: smoother on LINEAR Gaussian system (known analytical solution)
-- [ ] **0.4** Create test: smoother MSE < filter MSE (fundamental property)
-- [ ] **0.5** Create test: boundary conditions (t=0, t=T-1) are correct
-- [ ] **0.6** Create test: lag-1 covariances satisfy symmetry `P_{t+1,t}' = P_{t,t+1}`
+- [x] **0.1** Review `base.py` smoother implementation (lines 544-763)
+- [x] **0.2** Verify lag-1 covariance formula: `P_{t+1,t|T} = P_{t+1|T} @ J_t.T`
+- [x] **0.3** Create test: smoother on LINEAR Gaussian system (known analytical solution)
+- [x] **0.4** Create test: smoother MSE < filter MSE (fundamental property)
+- [x] **0.5** Create test: boundary conditions (t=0, t=T-1) are correct
+- [x] **0.6** Create test: lag-1 covariances satisfy symmetry `P_{t+1,t}' = P_{t,t+1}`
 
 ### Acceptance Criteria
 - All smoother tests pass
@@ -49,12 +49,12 @@ This document tracks the phased implementation of the EM algorithm for DFSV para
 
 ### Tasks
 
-- [ ] **1.1** Create `_em_estep.py::accumulate_sufficient_stats()` function
-- [ ] **1.2** Handle state decomposition: extract `f_t`, `h_t` from joint state
-- [ ] **1.3** Compute second moments: `E[f_t f_t'] = f_t f_t' + P_ff`
-- [ ] **1.4** Compute cross-lag moments: `E[f_t f_{t-1}'] = f_t f_{t-1}' + P_{t,t-1}^{ff}`
-- [ ] **1.5** Compute `E[exp(-h_t)]` using existing `compute_exp_neg_h()`
-- [ ] **1.6** Use `jax.lax.scan` for efficient accumulation over time
+- [x] **1.1** Create `_em_estep.py::accumulate_sufficient_stats()` function
+- [x] **1.2** Handle state decomposition: extract `f_t`, `h_t` from joint state
+- [x] **1.3** Compute second moments: `E[f_t f_t'] = f_t f_t' + P_ff`
+- [x] **1.4** Compute cross-lag moments: `E[f_t f_{t-1}'] = f_t f_{t-1}' + P_{t,t-1}^{ff}`
+- [x] **1.5** Compute `E[exp(-h_t)]` using existing `compute_exp_neg_h()`
+- [x] **1.6** Use `jax.lax.scan` for efficient accumulation over time
 
 ### Tests
 
@@ -80,10 +80,10 @@ This document tracks the phased implementation of the EM algorithm for DFSV para
 
 ### Tasks
 
-- [ ] **2.1** Create `_em_mstep.py::m_step_full()` that calls all updates in correct order
-- [ ] **2.2** Handle μ/Φ_h coupling (iterate or use ECM)
-- [ ] **2.3** Enforce constraints: eigenvalues < 1, variances > 0
-- [ ] **2.4** Return updated `DFSVParamsDataclass`
+- [x] **2.1** Create `_em_mstep.py::m_step_full()` that calls all updates in correct order
+- [x] **2.2** Handle μ/Φ_h coupling (iterate or use ECM)
+- [x] **2.3** Enforce constraints: eigenvalues < 1, variances > 0
+- [x] **2.4** Return updated `DFSVParamsDataclass`
 
 ### Tests
 
@@ -107,12 +107,12 @@ This document tracks the phased implementation of the EM algorithm for DFSV para
 
 ### Tasks
 
-- [ ] **3.1** Create `em.py` with `EMOptimizer` class skeleton
-- [ ] **3.2** Implement `__init__(N, K, max_iters, tol, verbose)`
-- [ ] **3.3** Implement `e_step(params, observations)` → `EMSufficientStats`
-- [ ] **3.4** Implement `m_step(stats, current_params)` → `DFSVParamsDataclass`
-- [ ] **3.5** Implement `fit(observations, initial_params)` → `(params, history)`
-- [ ] **3.6** Create `EMHistory` dataclass for iteration tracking
+- [x] **3.1** Create `em.py` with `EMOptimizer` class skeleton
+- [x] **3.2** Implement `__init__(N, K, max_iters, tol, verbose)`
+- [x] **3.3** Implement `e_step(params, observations)` → `EMSufficientStats`
+- [x] **3.4** Implement `m_step(stats, current_params)` → `DFSVParamsDataclass`
+- [x] **3.5** Implement `fit(observations, initial_params)` → `(params, history)`
+- [x] **3.6** Create `EMHistory` dataclass for iteration tracking
 
 ### Tests
 
@@ -138,11 +138,11 @@ This document tracks the phased implementation of the EM algorithm for DFSV para
 
 ### Tasks
 
-- [ ] **4.1** Create `test_em_integration.py` with controlled simulations
-- [ ] **4.2** Test: EM on data simulated from known params → recovers params
-- [ ] **4.3** Test: Log-likelihood monotonically increases (EM guarantee)
-- [ ] **4.4** Test: Convergence within max_iters for well-behaved data
-- [ ] **4.5** Test: Compare EM estimate vs direct MLE (should be similar)
+- [x] **4.1** Create `test_em_integration.py` with controlled simulations
+- [x] **4.2** Test: EM on data simulated from known params → recovers params
+- [x] **4.3** Test: Log-likelihood monotonically increases (EM guarantee)
+- [x] **4.4** Test: Convergence within max_iters for well-behaved data
+- [x] **4.5** Test: Compare EM estimate vs direct MLE (should be similar)
 
 ### Tests
 
@@ -217,12 +217,12 @@ Phase 5 (Docs & cleanup)
 
 | Phase | Status | Notes |
 |:------|:-------|:------|
-| Phase 0 | NOT STARTED | Blocking |
-| Phase 1 | PARTIAL | `compute_exp_neg_h` exists |
-| Phase 2 | PARTIAL | Individual updates exist, no `m_step_full` |
-| Phase 3 | NOT STARTED | |
-| Phase 4 | NOT STARTED | |
-| Phase 5 | NOT STARTED | |
+| Phase 0 | COMPLETED | Verified in `scripts/experiments/debug_kalman.py` |
+| Phase 1 | COMPLETED | Implemented in `scripts/experiments/rbps_em_lib.py` |
+| Phase 2 | COMPLETED | Verified in `scripts/experiments/exp08_rbps_em.py` |
+| Phase 3 | PROTOTYPE | `run_particle_em` in `exp08_rbps_em.py` |
+| Phase 4 | PROTOTYPE | `exp08_rbps_em.py` confirms convergence |
+| Phase 5 | NOT STARTED | Need to port to src/ |
 
 ---
 

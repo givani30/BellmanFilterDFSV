@@ -15,6 +15,7 @@ from .particle_kernels import (
     systematic_resample,
 )
 from .optimization import fit_mle
+from .em import fit_em, rbps_to_suffstats, m_step
 
 __all__ = [
     "DFSVParams",
@@ -35,4 +36,7 @@ __all__ = [
     "compute_log_likelihood_particles",
     "systematic_resample",
     "fit_mle",
+    "fit_em",
+    "rbps_to_suffstats",
+    "m_step",
 ]

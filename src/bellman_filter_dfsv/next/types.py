@@ -74,3 +74,25 @@ class ParticleFilterResult(NamedTuple):
     means: Float[Array, "T 2K"]
     covs: Float[Array, "T 2K 2K"]
     log_likelihood: Float[Array, ""]
+
+
+class EMSufficientStats(NamedTuple):
+    """Sufficient statistics for EM Algorithm (M-step)."""
+
+    sum_r_f: Float[Array, "N K"]
+    sum_f_f: Float[Array, "K K"]
+    sum_r_r_diag: Float[Array, "N"]
+
+    sum_f_fprev: Float[Array, "K K"]
+    sum_fprev_fprev: Float[Array, "K K"]
+    sum_exp_neg_h: Float[Array, "K"]
+    sum_exp_neg_h_f_fprev_diag: Float[Array, "K"]
+    sum_exp_neg_h_fprev_sq: Float[Array, "K"]
+
+    sum_h: Float[Array, "K"]
+    sum_hprev: Float[Array, "K"]
+    sum_h_h: Float[Array, "K K"]
+    sum_h_hprev: Float[Array, "K K"]
+    sum_hprev_hprev: Float[Array, "K K"]
+
+    T: int
