@@ -8,16 +8,20 @@
 
 **High-performance JAX-based filtering for Dynamic Factor Stochastic Volatility (DFSV) models**
 
+> **Note**: v2.0.0 is a complete rewrite with breaking changes. See [examples/README.md](examples/README.md) for migration guide.
+
 BellmanFilterDFSV is a Python package that provides efficient implementations of filtering algorithms for Dynamic Factor Stochastic Volatility models using JAX for automatic differentiation and JIT compilation.
 
-## 🚀 Key Features
+## 🚀 Key Features (v2.0.0)
 
-- **Multiple Filtering Algorithms**: Bellman Information Filter (BIF), Bellman Filter, and Particle Filter
+- **Functional Architecture**: Built with Equinox for clean, composable JAX code
+- **Multiple Filtering Algorithms**: Bellman Information Filter and Particle Filter
+- **Advanced Smoothing**: RTS Smoother and Rao-Blackwellized Particle Smoother
+- **Parameter Estimation**: MLE (via gradient descent) and EM algorithm
 - **JAX-Powered Performance**: Automatic differentiation, JIT compilation, and vectorization
+- **Full Type Safety**: Complete `jaxtyping` annotations for all array operations
 - **Numerical Stability**: Advanced techniques for robust parameter estimation
-- **Clean API**: Intuitive interface for research and applications
-- **Extensible Design**: Easy to adapt for other state-space models
-- **Comprehensive Testing**: Full test suite with 76+ tests
+- **Comprehensive Testing**: 93% test coverage with 69 tests including property-based tests
 
 ## 📦 Installation
 
@@ -63,17 +67,14 @@ uv sync
 uv run pytest  # Run tests
 ```
 
-## 🚀 Quick Start
+## 🚀 Quick Start (v2.0.0)
 
 ```python
 import jax.numpy as jnp
-from bellman_filter_dfsv.core.models import DFSVParamsDataclass, simulate_DFSV
-from bellman_filter_dfsv.core.filters import DFSVBellmanInformationFilter
+from bellman_filter_dfsv import DFSVParams, BellmanFilter, simulate_dfsv
 
 # Define model parameters
-params = DFSVParamsDataclass(
-    N=3,  # Number of observed series
-    K=1,  # Number of factors
+params = DFSVParams(
     lambda_r=jnp.array([[0.8], [0.7], [0.9]]),  # Factor loadings (N×K)
     Phi_f=jnp.array([[0.7]]),  # Factor AR matrix (K×K)
     Phi_h=jnp.array([[0.95]]),  # Log-vol AR matrix (K×K)
@@ -83,31 +84,59 @@ params = DFSVParamsDataclass(
 )
 
 # Simulate data
-returns, factors, log_vols = simulate_DFSV(params, T=500, key=42)
+returns, factors, log_vols = simulate_dfsv(params, T=500, key=42)
 
 # Create and run filter
-bif = DFSVBellmanInformationFilter(N=3, K=1)
-states, covs, loglik = bif.filter(params, returns)
+bf = BellmanFilter(params)
+result = bf.filter(returns)
 
-print(f"Log-likelihood: {loglik:.2f}")
-print(f"Filtered states shape: {states.shape}")
+print(f"Log-likelihood: {result.log_likelihood:.2f}")
+print(f"Filtered states shape: {result.means.shape}")  # (T, 2K)
+```
+
+### Parameter Estimation
+
+```python
+from bellman_filter_dfsv import fit_mle
+
+# Estimate parameters using MLE
+estimated_params, loss_history = fit_mle(
+    start_params=initial_guess,
+    observations=returns,
+    num_steps=100,
+    learning_rate=0.01,
+)
+
+# Or use EM algorithm
+from bellman_filter_dfsv import fit_em
+
+estimated_params = fit_em(
+    start_params=initial_guess,
+    observations=returns,
+    num_em_steps=10,
+    num_particles=500,
+    num_trajectories=50,
+)
 ```
 
 ## 📊 Examples
 
-The package includes several comprehensive examples:
+The `examples/` directory contains 5 comprehensive examples demonstrating v2.0.0 features:
 
-- **Basic Simulation**: Simulate DFSV models and analyze properties
-- **Filter Comparison**: Compare BIF, Bellman, and Particle filters
-- **Parameter Estimation**: Maximum likelihood estimation with optimization
-- **Real Data Application**: Apply to financial time series
+1. **01_dfsv_simulation.py** - Simulate DFSV models and analyze properties
+2. **02_basic_filtering.py** - Compare BellmanFilter and ParticleFilter performance
+3. **03_parameter_optimization.py** - Maximum likelihood estimation with `fit_mle`
+4. **04_em_algorithm.py** - EM algorithm with Rao-Blackwellized Particle Smoother
+5. **05_particle_cloud.py** - Visualize "uncertainty collapse" phenomenon
 
 ```bash
 # Run examples
-python examples/01_dfsv_simulation.py
-python examples/02_basic_filtering.py
-python examples/03_parameter_optimization.py
+uv run python examples/01_dfsv_simulation.py
+uv run python examples/02_basic_filtering.py
+uv run python examples/03_parameter_optimization.py
 ```
+
+See [examples/README.md](examples/README.md) for detailed documentation and v1→v2 migration guide.
 
 ## 🏗️ Architecture
 
@@ -141,30 +170,32 @@ Where:
 - `Σ`: Idiosyncratic error covariance (N×N)
 - `Q_h`: Log-volatility innovation covariance (K×K)
 
-### Filtering Algorithms
+### Filtering & Smoothing Algorithms (v2.0.0)
 
-1. **Bellman Information Filter (BIF)**: Information-form implementation for numerical stability
-2. **Bellman Filter**: Traditional covariance-form implementation
-3. **Particle Filter**: Bootstrap particle filter for non-linear/non-Gaussian cases
+1. **Bellman Information Filter (BIF)**: Information-form Kalman filter for numerical stability
+2. **Particle Filter**: Bootstrap particle filter with systematic resampling
+3. **RTS Smoother**: Rauch-Tung-Striebel smoother (Direct Information Form)
+4. **Rao-Blackwellized Particle Smoother (RBPS)**: Marginalizes out linear states analytically
 
-## 📁 Project Structure
+## 📁 Project Structure (v2.0.0)
 
 ```text
 BellmanFilterDFSV/
-├── src/bellman_filter_dfsv/     # Core package
-│   ├── core/                    # Main functionality
-│   │   ├── filters/            # Filtering algorithms
-│   │   ├── models/             # DFSV model definitions
-│   │   └── optimization/       # Parameter estimation
+├── src/bellman_filter_dfsv/     # Core package (v2 architecture)
+│   ├── filters.py              # BellmanFilter, ParticleFilter (Equinox modules)
+│   ├── _bellman_math.py        # Pure math kernels for BIF
+│   ├── _particle_math.py       # Pure math kernels for PF
+│   ├── estimation.py           # fit_mle, fit_em
+│   ├── smoothing.py            # rts_smoother, run_rbps
+│   ├── simulation.py           # simulate_dfsv
+│   ├── types.py                # DFSVParams, FilterResult, etc. (NamedTuples)
 │   └── utils/                  # Utility functions
-├── examples/                   # Usage examples
-├── tests/                     # Test suite
-├── docs/                      # Documentation
-├── thesis_artifacts/          # Research materials
-└── pyproject.toml            # Package configuration
+├── examples/                   # 5 v2 examples
+├── tests/                      # 69 tests, 93% coverage
+└── pyproject.toml             # Package configuration
 ```
 
-## 🧪 Testing
+## 🧪 Testing (v2.0.0)
 
 Run the comprehensive test suite:
 
@@ -172,12 +203,23 @@ Run the comprehensive test suite:
 # Run all tests
 uv run pytest
 
-# Run with coverage
-uv run pytest --cov=bellman_filter_dfsv
+# Run with coverage (93% coverage achieved)
+uv run pytest --cov=bellman_filter_dfsv --cov-report=term-missing
 
-# Run specific test
-uv run pytest tests/test_unified_filters.py
+# Run specific module tests
+uv run pytest tests/test_filters.py
+uv run pytest tests/test_estimation.py
+uv run pytest tests/test_smoothing.py
+
+# Run property-based tests only
+uv run pytest -m property
 ```
+
+**Test Statistics (v2.0.0):**
+- 69 tests total (68 passing, 1 skipped)
+- 93% code coverage
+- 7 property-based tests using Hypothesis
+- All type checks passing (basedpyright: 0 errors)
 
 ## 📚 Documentation
 
