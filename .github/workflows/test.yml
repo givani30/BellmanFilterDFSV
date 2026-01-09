@@ -37,10 +37,9 @@ jobs:
         uv run ruff check .
         uv run ruff format --check .
 
-    # Temporarily disabled - requires comprehensive type annotation fixes
-    # - name: Run type checking
-    #   run: |
-    #     uv run mypy src/
+    - name: Run type checking
+      run: |
+        uv run basedpyright src/bellman_filter_dfsv/
 
     - name: Run tests
       run: |
