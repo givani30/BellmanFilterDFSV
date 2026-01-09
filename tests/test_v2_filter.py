@@ -1,9 +1,9 @@
 import jax
 import jax.numpy as jnp
 import pytest
-from bellman_filter_dfsv.next.filters import BellmanFilter
-from bellman_filter_dfsv.next.types import DFSVParams
-from bellman_filter_dfsv.next.smoothing import rts_smoother
+from bellman_filter_dfsv.filters import BellmanFilter
+from bellman_filter_dfsv.types import DFSVParams
+from bellman_filter_dfsv.smoothing import rts_smoother
 
 
 def test_bellman_filter_v2_shapes():
