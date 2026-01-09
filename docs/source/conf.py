@@ -16,8 +16,8 @@ sys.path.insert(0, os.path.abspath("../../src"))
 project = "BellmanFilterDFSV"
 copyright = "2025, Givani Boekestijn"
 author = "Givani Boekestijn"
-release = "1.0.0"
-version = "1.0.0"
+release = "2.0.0"
+version = "2.0.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
