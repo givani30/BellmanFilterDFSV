@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bellman-filter-dfsv"
-version = "1.0.1"
-description = "High-performance JAX-based filtering for Dynamic Factor Stochastic Volatility (DFSV) models"
+version = "2.0.0"
+description = "High-performance JAX-based filtering for Dynamic Factor Stochastic Volatility (DFSV) models with functional architecture"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
     {name = "Givani Boekestijn", email = "givaniboek@hotmail.com"}
 ]
-keywords = ["jax", "filtering", "stochastic-volatility", "dynamic-factors", "econometrics", "finance"]
+keywords = ["jax", "filtering", "stochastic-volatility", "dynamic-factors", "econometrics", "finance", "equinox"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
@@ -20,25 +20,22 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Mathematics",
     "Topic :: Office/Business :: Financial",
 ]
 dependencies = [
-    # Core JAX ecosystem
-    "jax",
-    "jaxlib",
-    "jax-dataclasses",
-    "jaxtyping",
-    "equinox",
-    # Optimization
-    "optimistix",
-    "optax",
+    # Core JAX ecosystem - v2 architecture requirements
+    "jax>=0.4.20",
+    "jaxlib>=0.4.20",
+    "jaxtyping>=0.2.25",
+    "equinox>=0.11.0",
+    # Optimization and numerical computing
+    "optimistix>=0.0.5",
+    "optax>=0.1.7",
     # Scientific computing
-    "numpy",
-    "scipy",
-    # Basic utilities
-    "matplotlib",  # For basic plotting in examples
-    "seaborn>=0.13.2",
+    "numpy>=1.24.0",
+    "scipy>=1.11.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -53,68 +50,37 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "-ra",
+    "--tb=short",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "property: marks property-based tests using Hypothesis",
 ]
-# Exclude thesis artifacts from test discovery
-norecursedirs = ["thesis_artifacts", "build", "dist", ".git", ".tox"]
+norecursedirs = [".git", ".tox", ".venv", "build", "dist"]
 
 [project.optional-dependencies]
-# Development tools
 dev = [
     "pytest>=8.3.5",
     "pytest-cov>=6.1.1",
-    "ruff",
-    "mypy",
+    "hypothesis>=6.92.0",
+    "ruff>=0.1.0",
+    "mypy>=1.8.0",
+]
+
+docs = [
     "sphinx>=8.2.3",
     "sphinx-rtd-theme>=3.0.2",
 ]
 
-# Data analysis and visualization
-analysis = [
-    "pandas",
-    "seaborn",
-    "plotly",
-    "altair",
-    "tabulate",
+examples = [
+    "matplotlib>=3.8.0",
+    "seaborn>=0.13.2",
+    "pandas>=2.1.0",
+    "yfinance>=0.2.0",
 ]
 
-# Cloud computing and batch processing
-cloud = [
-    "gcsfs",
-    "google-cloud-batch",
-    "cloudpickle",
-    "pyarrow",
-]
-
-# Notebook and interactive development
-notebooks = [
-    "jupyter",
-    "ipykernel",
-    "marimo",
-    "jupytext",
-    "notebook",
-]
-
-# Econometrics and financial modeling
-econometrics = [
-    "statsmodels",
-    "arch",
-    "mgarch",
-    "scikit-learn",
-]
-
-# Development environment
-devenv = [
-    "python-lsp-server",
-    "rich",
-    "tqdm",
-]
-
-# All optional dependencies for full functionality
 all = [
-    "bellman-filter-dfsv[analysis,cloud,notebooks,econometrics,devenv]"
+    "bellman-filter-dfsv[dev,docs,examples]"
 ]
 
 [tool.ruff]
@@ -149,26 +115,30 @@ line-ending = "auto"
 
 [tool.mypy]
 python_version = "3.11"
-warn_return_any = false
+warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-check_untyped_defs = false
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
 disallow_untyped_decorators = false
-no_implicit_optional = false
+no_implicit_optional = true
 warn_redundant_casts = true
-warn_unused_ignores = false
+warn_unused_ignores = true
 warn_no_return = true
-warn_unreachable = false
-strict_equality = false
-ignore_missing_imports = true
+warn_unreachable = true
+strict_equality = true
+ignore_missing_imports = false
 
 [[tool.mypy.overrides]]
-module = "bellman_filter_dfsv.*"
-ignore_errors = false
-disallow_untyped_calls = false
+module = [
+    "jax.*",
+    "equinox.*",
+    "optimistix.*",
+    "optax.*",
+]
+ignore_missing_imports = true
 
 [dependency-groups]
 dev = [
-    "sympy>=1.14.0",
+    "hypothesis>=6.92.0",
 ]
