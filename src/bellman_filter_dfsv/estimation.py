@@ -1,13 +1,15 @@
+from collections.abc import Callable
+
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import optax
-import equinox as eqx
-from typing import Callable, Tuple
-from jaxtyping import Float, Array
+from jax import Array
+from jaxtyping import Float
 
-from .types import DFSVParams, EMSufficientStats
 from .filters import BellmanFilter
-from .smoothing import run_rbps, RBPSResult
+from .smoothing import RBPSResult, run_rbps
+from .types import DFSVParams, EMSufficientStats
 
 
 def constrain_params_default(p_unc: DFSVParams) -> DFSVParams:
@@ -35,8 +37,9 @@ def unconstrain_params_default(p: DFSVParams) -> DFSVParams:
     def inv_softplus(y):
         return jnp.log(jnp.exp(y) - 1.0)
 
-    # Clip tanh inputs to avoid infinities
-    clip_tanh = lambda x: jnp.arctanh(jnp.clip(x, -0.999, 0.999))
+    def clip_tanh(x):
+        """Clip tanh inputs to avoid infinities."""
+        return jnp.arctanh(jnp.clip(x, -0.999, 0.999))
 
     return DFSVParams(
         lambda_r=p.lambda_r,
@@ -44,7 +47,7 @@ def unconstrain_params_default(p: DFSVParams) -> DFSVParams:
         Phi_h=clip_tanh(p.Phi_h),
         mu=p.mu,
         sigma2=inv_softplus(p.sigma2),
-        Q_h=jnp.diag(inv_softplus(jnp.diag(p.Q_h))),
+        Q_h=jnp.linalg.cholesky(p.Q_h),
     )
 
 
@@ -53,7 +56,7 @@ def fit_mle(
     observations: Float[Array, "T N"],
     learning_rate: float = 0.01,
     num_steps: int = 100,
-    optimizer: optax.GradientTransformation = None,
+    optimizer: optax.GradientTransformation | None = None,
     constrain_fn: Callable[[DFSVParams], DFSVParams] = constrain_params_default,
     unconstrain_fn: Callable[[DFSVParams], DFSVParams] = unconstrain_params_default,
     verbose: bool = True,
@@ -272,7 +275,7 @@ def update_Phi_f(stats: EMSufficientStats) -> Float[Array, "K K"]:
 
 def m_step(
     stats: EMSufficientStats, n_mu_phi_iters: int = 3
-) -> Tuple[Float[Array, "N K"], ...]:
+) -> tuple[Float[Array, "N K"], ...]:
     lambda_r = update_lambda_r(stats)
     sigma2 = update_sigma2(stats, lambda_r)
     Phi_f = update_Phi_f(stats)
@@ -297,7 +300,7 @@ def fit_em(
     num_trajectories: int = 20,
     max_iters: int = 50,
     verbose: bool = True,
-) -> Tuple[DFSVParams, list[DFSVParams]]:
+) -> tuple[DFSVParams, list[DFSVParams]]:
     """
     Fit DFSV model using Expectation-Maximization with RBPS.
     """

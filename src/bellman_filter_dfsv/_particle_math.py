@@ -8,7 +8,7 @@ from .types import DFSVParams, ParticleState
 
 
 def initialize_particles(
-    params: DFSVParams, num_particles: int, key: jax.random.PRNGKey
+    params: DFSVParams, num_particles: int, key: jax.Array
 ) -> ParticleState:
     """Initialize particles from the model's initial distribution.
 
@@ -50,8 +50,8 @@ def initialize_particles(
 
 
 def predict_particles(
-    params: DFSVParams, state: ParticleState, key: jax.random.PRNGKey
-) -> tuple[ParticleState, jax.random.PRNGKey]:
+    params: DFSVParams, state: ParticleState, key: jax.Array
+) -> tuple[ParticleState, jax.Array]:
     """Propagate particles one step forward."""
     K = params.lambda_r.shape[1]
     num_particles = state.particles.shape[1]
@@ -123,7 +123,7 @@ def compute_log_likelihood_particles(
 
 
 def systematic_resample(
-    key: jax.random.PRNGKey,
+    key: jax.Array,
     log_weights: Float[Array, "P"],
     particles: Float[Array, "2K P"],
 ) -> tuple[Float[Array, "2K P"], Float[Array, "P"]]:

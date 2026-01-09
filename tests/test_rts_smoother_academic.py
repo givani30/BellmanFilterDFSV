@@ -317,10 +317,10 @@ class TestRTSSmootherAcademicVerification:
         We test using a simplified DFSV model that reduces to a linear Gaussian
         state-space model (by zeroing out the SV components).
         """
-        from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
         from bellman_filter_dfsv.core.filters.bellman_information import (
             DFSVBellmanInformationFilter,
         )
+        from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
 
         data = generate_synthetic_data(T=100, seed=999)
         y = data["y"]

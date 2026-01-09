@@ -1,11 +1,11 @@
 import jax
 import jax.numpy as jnp
 import jax.scipy.linalg
+import optimistix as optx
 from jax import Array
 from jaxtyping import Float
-import optimistix as optx
 
-from .types import DFSVParams, BIFState
+from .types import BIFState, DFSVParams
 
 
 def build_covariance(
@@ -243,7 +243,7 @@ def update_h_bfgs(
     I_pred: Float[Array, "2K 2K"],
     observation: Float[Array, "N"],
     solver: optx.AbstractMinimiser,
-) -> tuple[Float[Array, "K"], bool]:
+) -> tuple[Float[Array, "K"], Float[Array, ""]]:
     """Updates log-volatilities h using BFGS."""
     K = h_init.shape[0]
 

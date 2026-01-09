@@ -1,11 +1,11 @@
+import equinox as eqx
 import jax
 import jax.numpy as jnp
-import equinox as eqx
 from jax import Array
 from jaxtyping import Float
 
-from .types import DFSVParams, BIFState, RBParticleState, RBPSResult
-from ._bellman_math import predict_info_step, invert_info_matrix
+from ._bellman_math import invert_info_matrix, predict_info_step
+from .types import BIFState, DFSVParams, RBParticleState, RBPSResult
 
 
 class SmootherResult(eqx.Module):

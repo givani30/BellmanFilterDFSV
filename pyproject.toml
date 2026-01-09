@@ -26,16 +26,16 @@ classifiers = [
 ]
 dependencies = [
     # Core JAX ecosystem - v2 architecture requirements
-    "jax>=0.4.20",
-    "jaxlib>=0.4.20",
-    "jaxtyping>=0.2.25",
-    "equinox>=0.11.0",
+    "jax>=0.4.35",
+    "jaxlib>=0.4.35",
+    "jaxtyping>=0.2.34",
+    "equinox>=0.11.8",
     # Optimization and numerical computing
-    "optimistix>=0.0.5",
-    "optax>=0.1.7",
+    "optimistix>=0.0.10",
+    "optax>=0.2.4",
     # Scientific computing
-    "numpy>=1.24.0",
-    "scipy>=1.11.0",
+    "numpy>=1.26.0",
+    "scipy>=1.14.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -63,8 +63,8 @@ dev = [
     "pytest>=8.3.5",
     "pytest-cov>=6.1.1",
     "hypothesis>=6.92.0",
-    "ruff>=0.1.0",
-    "mypy>=1.8.0",
+    "ruff>=0.8.0",
+    "basedpyright>=1.23.0",
 ]
 
 docs = [
@@ -102,6 +102,9 @@ ignore = [
     "B008", # do not perform function calls in argument defaults
     "C901", # too complex
     "UP038", # Use `X | Y` in `isinstance` call instead of `(X, Y)` - deprecated rule
+    "F722", # Syntax error in forward annotation - false positive for jaxtyping
+    "F821", # Undefined name - false positive for jaxtyping dimension variables
+    "F841", # Local variable assigned but never used - false positive for dimension extraction
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -113,30 +116,15 @@ indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
 
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = false
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-strict_equality = true
-ignore_missing_imports = false
-
-[[tool.mypy.overrides]]
-module = [
-    "jax.*",
-    "equinox.*",
-    "optimistix.*",
-    "optax.*",
-]
-ignore_missing_imports = true
+[tool.basedpyright]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+reportMissingTypeStubs = false
+reportUnknownParameterType = false
+reportUnknownArgumentType = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportMissingParameterType = false
 
 [dependency-groups]
 dev = [

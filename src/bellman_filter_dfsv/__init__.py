@@ -39,6 +39,9 @@ __version__ = "2.0.0"
 __author__ = "Givani Boekestijn"
 __email__ = "givaniboek@hotmail.com"
 
+from .estimation import fit_em, fit_mle
+from .filters import BellmanFilter, ParticleFilter
+from .smoothing import SmootherResult, rts_smoother, run_rbps
 from .types import (
     BIFState,
     DFSVParams,
@@ -48,9 +51,6 @@ from .types import (
     RBParticleState,
     RBPSResult,
 )
-from .filters import BellmanFilter, ParticleFilter
-from .smoothing import RBPSResult, SmootherResult, rts_smoother, run_rbps
-from .estimation import fit_em, fit_mle
 
 __all__ = [
     "__version__",

@@ -1,24 +1,24 @@
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 from jax import Array
 from jaxtyping import Float
-from typing import NamedTuple
 
-from .types import (
-    DFSVParams,
-    BIFState,
-    FilterResult,
-    ParticleState,
-    ParticleFilterResult,
-)
-from ._bellman_math import predict_info_step, update_info_step, invert_info_matrix
+from ._bellman_math import invert_info_matrix, predict_info_step, update_info_step
 from ._particle_math import (
+    calculate_ess,
+    compute_log_likelihood_particles,
     initialize_particles,
     predict_particles,
-    compute_log_likelihood_particles,
     systematic_resample,
-    calculate_ess,
+)
+from .types import (
+    BIFState,
+    DFSVParams,
+    FilterResult,
+    ParticleFilterResult,
+    ParticleState,
 )
 
 

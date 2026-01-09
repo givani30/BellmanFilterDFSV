@@ -1,7 +1,7 @@
 from typing import NamedTuple
+
 from jax import Array
 from jaxtyping import Float
-import jax.numpy as jnp
 
 
 class DFSVParams(NamedTuple):

@@ -11,7 +11,6 @@ Tests are organized by component:
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-import pytest
 
 jax.config.update("jax_platform_name", "cpu")
 jax.config.update("jax_enable_x64", True)
