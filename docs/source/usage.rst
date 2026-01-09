@@ -46,8 +46,8 @@ where:
 
 The package provides two main filtering algorithms:
 
-1. **Bellman Information Filter (BIF)**: Information-form implementation for numerical stability
-2. **Particle Filter**: Bootstrap particle filter with systematic resampling
+1. **Bellman Information Filter (BIF)**: Information-form implementation for numerical stability, using optimization for mode finding.
+2. **Particle Filter**: Bootstrap particle filter with systematic resampling.
 
 Basic Usage
 -----------
@@ -79,7 +79,7 @@ Basic Usage
 
    from bellman_filter_dfsv import BellmanFilter
 
-   # Create filter (params embedded in filter)
+   # Create filter (params embedded in filter module)
    bf = BellmanFilter(params)
 
    # Run filtering
@@ -128,7 +128,7 @@ Parameter Estimation
    estimated_params, loss_history = fit_mle(
        start_params=initial_guess,
        observations=returns,
-       num_steps=100,
+       num_steps=50,
        learning_rate=0.01,
    )
 
@@ -141,7 +141,7 @@ Parameter Estimation
 
    from bellman_filter_dfsv import fit_em
 
-   # Run EM algorithm (uses Rao-Blackwellized Particle Smoother)
+   # Run EM algorithm (uses Rao-Blackwellized Particle Smoother for the E-step)
    estimated_params = fit_em(
        start_params=initial_guess,
        observations=returns,
@@ -169,13 +169,14 @@ Advanced Usage
    filter_result = bf.filter(returns)
 
    # Then run backward smoother
-   smooth_means, smooth_infos = rts_smoother(
+   smoother_result = rts_smoother(
+       params=params,
        filter_means=filter_result.means,
-       filter_infos=filter_result.infos,
-       params=params
+       filter_infos=filter_result.infos
    )
 
-   print(f"Smoothed states shape: {smooth_means.shape}")
+   print(f"Smoothed states shape: {smoother_result.smoothed_means.shape}")
+   print(f"Smoothed covariances shape: {smoother_result.smoothed_covs.shape}")
 
 **2. Rao-Blackwellized Particle Smoother**
 
@@ -235,11 +236,12 @@ Performance Tips
    jax.config.update("jax_enable_x64", True)
    
    # Use CPU for development, GPU for large-scale work
-   jax.config.update("jax_platform_name", "cpu")  # or "gpu"
+   # jax.config.update("jax_platform_name", "cpu")
+ 
 
 **2. JIT Compilation**
 
-All filtering and estimation functions are JIT-compatible:
+All filtering and estimation functions are JIT-compatible. Equinox modules can be jitted directly:
 
 .. code-block:: python
 
@@ -314,5 +316,5 @@ See Also
 --------
 
 * :ref:`examples` - Complete runnable examples
-* :ref:`api_reference` - Full API documentation
+* :ref:`v2_api` - Full API documentation
 * `ALGORITHMS.md <https://github.com/givani30/BellmanFilterDFSV/blob/main/ALGORITHMS.md>`_ - Mathematical specifications

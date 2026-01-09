@@ -1,6 +1,6 @@
 # BellmanFilterDFSV
 
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![JAX](https://img.shields.io/badge/JAX-enabled-orange.svg)](https://jax.readthedocs.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Tests](https://github.com/givani30/BellmanFilterDFSV/workflows/Tests/badge.svg)](https://github.com/givani30/BellmanFilterDFSV/actions)
@@ -32,17 +32,14 @@ pip install bellman-filter-dfsv
 ### With Optional Dependencies
 
 ```bash
-# For data analysis and visualization
-pip install bellman-filter-dfsv[analysis]
+# For data analysis and visualization examples
+pip install bellman-filter-dfsv[examples]
 
-# For cloud computing and batch processing
-pip install bellman-filter-dfsv[cloud]
+# For development and testing
+pip install bellman-filter-dfsv[dev]
 
-# For notebook development
-pip install bellman-filter-dfsv[notebooks]
-
-# For econometric extensions
-pip install bellman-filter-dfsv[econometrics]
+# For building documentation
+pip install bellman-filter-dfsv[docs]
 
 # Everything
 pip install bellman-filter-dfsv[all]

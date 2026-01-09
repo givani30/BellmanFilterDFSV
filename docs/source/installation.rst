@@ -6,9 +6,10 @@ Installation
 Requirements
 ------------
 
-* Python 3.12 or higher
+* Python 3.11 or higher
 * JAX and JAXlib
 * NumPy and SciPy
+* Equinox (for functional architecture)
 
 Basic Installation
 ------------------
@@ -26,37 +27,13 @@ Optional Dependencies
 
 For additional functionality, you can install optional dependency groups:
 
-**Data Analysis and Visualization**
+**Data Analysis and Visualization Examples**
 
 .. code-block:: bash
 
-   pip install bellman-filter-dfsv[analysis]
+   pip install bellman-filter-dfsv[examples]
 
-Includes: pandas, seaborn, plotly, altair, tabulate
-
-**Cloud Computing and Batch Processing**
-
-.. code-block:: bash
-
-   pip install bellman-filter-dfsv[cloud]
-
-Includes: gcsfs, google-cloud-batch, cloudpickle, pyarrow
-
-**Notebook and Interactive Development**
-
-.. code-block:: bash
-
-   pip install bellman-filter-dfsv[notebooks]
-
-Includes: jupyter, ipykernel, marimo, jupytext, notebook
-
-**Econometrics and Financial Modeling**
-
-.. code-block:: bash
-
-   pip install bellman-filter-dfsv[econometrics]
-
-Includes: statsmodels, arch, mgarch, scikit-learn
+Includes: matplotlib, seaborn, pandas, yfinance (used in example scripts)
 
 **Development Tools**
 
@@ -64,7 +41,15 @@ Includes: statsmodels, arch, mgarch, scikit-learn
 
    pip install bellman-filter-dfsv[dev]
 
-Includes: pytest, pytest-cov, black, flake8, mypy
+Includes: pytest, pytest-cov, hypothesis, ruff, basedpyright
+
+**Documentation Tools**
+
+.. code-block:: bash
+
+   pip install bellman-filter-dfsv[docs]
+
+Includes: sphinx, sphinx-rtd-theme
 
 **All Optional Dependencies**
 
@@ -103,9 +88,18 @@ Verify your installation by running:
    print(f"BellmanFilterDFSV version: {bellman_filter_dfsv.__version__}")
 
    # Test core functionality
-   from bellman_filter_dfsv.core import DFSVParamsDataclass, simulate_DFSV
-   params = DFSVParamsDataclass(N=2, K=1)
-   returns, factors, log_vols = simulate_DFSV(params, T=100)
+   import jax.numpy as jnp
+   from bellman_filter_dfsv import DFSVParams, simulate_dfsv
+   
+   params = DFSVParams(
+       lambda_r=jnp.array([[0.8], [0.7]]),
+       Phi_f=jnp.array([[0.7]]),
+       Phi_h=jnp.array([[0.95]]),
+       mu=jnp.array([-1.2]),
+       sigma2=jnp.array([0.3, 0.25]),
+       Q_h=jnp.array([[0.01]])
+   )
+   returns, factors, log_vols = simulate_dfsv(params, T=100)
    print("✅ Installation successful!")
 
 Troubleshooting
@@ -113,7 +107,7 @@ Troubleshooting
 
 **JAX Installation Issues**
 
-If you encounter JAX-related errors, ensure you have the correct JAX version:
+If you encounter JAX-related errors, ensure you have the correct JAX version (>=0.4.35):
 
 .. code-block:: bash
 
@@ -121,7 +115,7 @@ If you encounter JAX-related errors, ensure you have the correct JAX version:
 
 **Import Errors**
 
-If you get import errors, make sure you've installed the package correctly:
+If you get import errors, make sure you've installed the package correctly and are using a supported Python version (>=3.11):
 
 .. code-block:: bash
 
@@ -133,4 +127,4 @@ The package uses CPU-only JAX by default for better compatibility. For GPU suppo
 
 .. code-block:: bash
 
-   pip install jax[cuda12_pip] -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+   pip install -U "jax[cuda12]"
