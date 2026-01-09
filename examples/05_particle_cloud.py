@@ -16,7 +16,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-from bellman_filter_dfsv import DFSVParams, run_rbps, simulate_dfsv
+from bellman_filter_dfsv import DFSVParams, run_rbps
 
 
 def simulate_with_shock(params, T, shock_time, shock_magnitude, key):
@@ -158,7 +158,7 @@ def main():
         "",
         xy=(quiet_t, h_mean[quiet_t] - spread / 2),
         xytext=(quiet_t, h_mean[quiet_t] + spread / 2),
-        arrowprops=dict(arrowstyle="<->", color="black", lw=1.5),
+        arrowprops={"arrowstyle": "<->", "color": "black", "lw": 1.5},
     )
     ax.text(
         quiet_t + 5,

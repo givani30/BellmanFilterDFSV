@@ -89,10 +89,10 @@ def main():
     print("Lambda_r (factor loadings):")
     print(f"  True: {np.array(true_params.lambda_r).flatten()}")
     print(f"  Est:  {np.array(estimated_params.lambda_r).flatten()}")
-    print(f"\nPhi_f (factor persistence):")
+    print("\nPhi_f (factor persistence):")
     print(f"  True: {np.diag(true_params.Phi_f)}")
     print(f"  Est:  {np.diag(estimated_params.Phi_f)}")
-    print(f"\nPhi_h (volatility persistence):")
+    print("\nPhi_h (volatility persistence):")
     print(f"  True: {np.diag(true_params.Phi_h)}")
     print(f"  Est:  {np.diag(estimated_params.Phi_h)}")
 

@@ -3,34 +3,63 @@ BellmanFilterDFSV Documentation
 
 **High-performance JAX-based filtering for Dynamic Factor Stochastic Volatility (DFSV) models**
 
+.. important::
+   **Version 2.0.0 - Breaking Changes**
+   
+   This is a complete rewrite with a functional architecture. The v1.x API has been removed.
+   See the :ref:`changelog` for migration guide.
+
 BellmanFilterDFSV is a Python package that provides efficient implementations of filtering algorithms for Dynamic Factor Stochastic Volatility models using JAX for automatic differentiation and JIT compilation.
 
-Key Features
-------------
+Key Features (v2.0.0)
+---------------------
 
-* **Multiple Filtering Algorithms**: Bellman Information Filter (BIF), Bellman Filter, and Particle Filter
-* **JAX-Powered Performance**: Automatic differentiation, JIT compilation, and vectorization
-* **Numerical Stability**: Advanced techniques for robust parameter estimation
-* **Clean API**: Intuitive interface for research and applications
-* **Extensible Design**: Easy to adapt for other state-space models
+* **Functional Architecture**: Built with Equinox for clean, composable JAX code
+* **Multiple Filtering Algorithms**: Bellman Information Filter and Particle Filter
+* **Advanced Smoothing**: RTS Smoother and Rao-Blackwellized Particle Smoother
+* **Parameter Estimation**: MLE (gradient descent) and EM algorithm
+* **Full Type Safety**: Complete jaxtyping annotations (0 type errors)
+* **93% Test Coverage**: Comprehensive test suite with property-based tests
+* **JIT Compilation**: Fully compatible with JAX transformations
 
-Quick Start
------------
+Quick Start (v2.0.0)
+--------------------
 
 .. code-block:: python
 
-   import bellman_filter_dfsv as bfdfsv
-   from bellman_filter_dfsv.core import DFSVParamsDataclass, simulate_DFSV
+   import jax.numpy as jnp
+   from bellman_filter_dfsv import DFSVParams, BellmanFilter, simulate_dfsv
 
    # Define model parameters
-   params = DFSVParamsDataclass(N=3, K=1, ...)
+   params = DFSVParams(
+       lambda_r=jnp.array([[0.8], [0.7], [0.9]]),
+       Phi_f=jnp.array([[0.7]]),
+       Phi_h=jnp.array([[0.95]]),
+       mu=jnp.array([-1.2]),
+       sigma2=jnp.array([0.3, 0.25, 0.35]),
+       Q_h=jnp.array([[0.01]])
+   )
 
    # Simulate data
-   returns, factors, log_vols = simulate_DFSV(params, T=500)
+   returns, factors, log_vols = simulate_dfsv(params, T=500, key=42)
 
    # Create and run filter
-   filter = bfdfsv.DFSVBellmanInformationFilter(N=3, K=1)
-   states, covs, loglik = filter.filter(params, returns)
+   bf = BellmanFilter(params)
+   result = bf.filter(returns)
+   print(f"Log-likelihood: {result.log_likelihood:.2f}")
+
+Installation
+------------
+
+.. code-block:: bash
+
+   pip install bellman-filter-dfsv
+
+Or with optional dependencies:
+
+.. code-block:: bash
+
+   pip install bellman-filter-dfsv[all]
 
 Documentation Contents
 ----------------------

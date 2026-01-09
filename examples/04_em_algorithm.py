@@ -8,7 +8,6 @@ v2.0.0 - Using fit_em with Rao-Blackwellized Particle Smoother.
 """
 
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
 import numpy as np
 
 from bellman_filter_dfsv import DFSVParams, fit_em, simulate_dfsv
@@ -73,7 +72,7 @@ def main():
     print("Lambda_r (factor loadings):")
     print(f"  True: {np.array(true_params.lambda_r).flatten()}")
     print(f"  Est:  {np.array(estimated_params.lambda_r).flatten()}")
-    print(f"\nSigma2 (idiosyncratic variances):")
+    print("\nSigma2 (idiosyncratic variances):")
     print(f"  True: {np.array(true_params.sigma2)}")
     print(f"  Est:  {np.array(estimated_params.sigma2)}")
 

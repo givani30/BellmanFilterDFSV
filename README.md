@@ -225,6 +225,18 @@ uv run pytest -m property
 
 **📖 [Full Documentation](https://givani30.github.io/BellmanFilterDFSV/)** - Complete API reference, tutorials, and examples
 
+### Quick API Reference (v2.0.0)
+
+| Component | Description | Key Classes/Functions |
+|-----------|-------------|----------------------|
+| **Types** | Core data structures | `DFSVParams`, `FilterResult`, `BIFState` |
+| **Filters** | State estimation | `BellmanFilter`, `ParticleFilter` |
+| **Smoothing** | Backward passes | `rts_smoother()`, `run_rbps()` |
+| **Estimation** | Parameter fitting | `fit_mle()`, `fit_em()` |
+| **Simulation** | Data generation | `simulate_dfsv()` |
+
+See the [v2.0.0 API Documentation](https://givani30.github.io/BellmanFilterDFSV/api/v2_api.html) for complete details.
+
 **Local Documentation Build:**
 
 ```bash
