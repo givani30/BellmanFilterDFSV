@@ -20,6 +20,7 @@ ENV/
 
 # IDE specific files
 .idea/
+.kiro/
 .vscode/
 *.swp
 *.swo
@@ -55,3 +56,4 @@ jax-trace/
 
 # Package specific
 thesis_artifacts/
+
