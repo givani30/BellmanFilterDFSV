@@ -41,7 +41,7 @@ __email__ = "givaniboek@hotmail.com"
 
 from .estimation import fit_em, fit_mle
 from .filters import BellmanFilter, ParticleFilter
-from .simulation import simulate_dfsv, simulate_DFSV
+from .simulation import simulate_DFSV, simulate_dfsv
 from .smoothing import SmootherResult, rts_smoother, run_rbps
 from .types import (
     BIFState,
