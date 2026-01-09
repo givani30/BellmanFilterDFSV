@@ -7,20 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.0.0] - 2026-01-09
 
-### 🚨 Breaking Changes
-
-v2.0.0 is a **complete rewrite** of the package with a new architecture. The v1.x API is not compatible.
-
-#### Migration Required
-
-- **Parameters**: `DFSVParamsDataclass(N, K, ...)` → `DFSVParams(lambda_r, ...)`
-- **Filters**: `DFSVBellmanInformationFilter(N, K)` → `BellmanFilter(params)`
-- **Filter Call**: `filter.filter(params, data)` → `filter.filter(data)`
-- **Simulation**: `simulate_DFSV(params, T, seed)` → `simulate_dfsv(params, T, key=seed)`
-- **Optimization**: `run_optimization(...)` → `fit_mle(...)` or `fit_em(...)`
-
-See `examples/README.md` for detailed migration guide.
-
 ### Added
 
 #### Core Architecture
@@ -40,12 +26,12 @@ See `examples/README.md` for detailed migration guide.
 - `types.py`: Strict type definitions for all data structures
 
 #### Examples
-- 5 new comprehensive examples showcasing v2.0.0 features
+- 5 new comprehensive examples showcasing package features
 - `05_particle_cloud.py`: Visualizes "uncertainty collapse" phenomenon
 - All examples updated with v2 API
 
 #### Testing
-- **93% test coverage** (up from ~50% in v1.x)
+- 93% test coverage
 - 69 tests (68 passing, 1 skipped)
 - 7 property-based tests using Hypothesis
 - Consolidated test suite from 16 files → 5 focused files
@@ -77,17 +63,6 @@ See `examples/README.md` for detailed migration guide.
   - NumPy: 1.26.0
   - SciPy: 1.14.0
 
-### Removed
-
-#### v1 Architecture
-- Removed entire `src/bellman_filter_dfsv/core/` directory
-- Removed OOP filter classes (`DFSVFilter`, `DFSVBellmanFilter`, etc.)
-- Removed v1 parameter classes (`DFSVParamsDataclass`)
-- Removed legacy optimization framework (`run_optimization`)
-
-#### Examples
-- Removed v1 examples (04-06) - replaced with v2 equivalents
-
 ### Fixed
 
 - **Type Safety**: Eliminated all type errors (0 errors with basedpyright)
@@ -96,29 +71,9 @@ See `examples/README.md` for detailed migration guide.
 
 ### Documentation
 
-- Updated README.md with v2 Quick Start and examples
-- Updated examples/README.md with comprehensive v2 usage guide
-- Added migration guide (v1 → v2)
-- Updated all docstrings to reflect v2 API
-
----
-
-## [1.x] - Legacy
-
-v1.x releases used OOP architecture with class-based filters. See git tags for historical versions.
-
-### v1 → v2 Migration Summary
-
-| Component | v1.x | v2.0.0 |
-|-----------|------|--------|
-| Architecture | OOP class hierarchy | Functional Core + Equinox |
-| Type System | Partial annotations | Full jaxtyping (0 errors) |
-| State Representation | Covariance form | Information form |
-| Parameters | Mutable dataclass | Immutable NamedTuple |
-| Optimization | Custom solvers | Optax integration |
-| Test Coverage | ~50% | 93% |
-
-For detailed migration instructions, see `examples/README.md`.
+- Updated README.md with Quick Start and examples
+- Updated examples/README.md with comprehensive usage guide
+- Updated all docstrings
 
 ---
 

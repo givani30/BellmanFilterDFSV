@@ -3,16 +3,10 @@ BellmanFilterDFSV Documentation
 
 **High-performance JAX-based filtering for Dynamic Factor Stochastic Volatility (DFSV) models**
 
-.. important::
-   **Version 2.0.0 - Breaking Changes**
-   
-   This is a complete rewrite with a functional architecture. The v1.x API has been removed.
-   See the :ref:`changelog` for migration guide.
-
 BellmanFilterDFSV is a Python package that provides efficient implementations of filtering algorithms for Dynamic Factor Stochastic Volatility models using JAX for automatic differentiation and JIT compilation.
 
-Key Features (v2.0.0)
----------------------
+Key Features
+------------
 
 * **Functional Architecture**: Built with Equinox for clean, composable JAX code
 * **Multiple Filtering Algorithms**: Bellman Information Filter and Particle Filter
@@ -22,8 +16,8 @@ Key Features (v2.0.0)
 * **93% Test Coverage**: Comprehensive test suite with property-based tests
 * **JIT Compilation**: Fully compatible with JAX transformations
 
-Quick Start (v2.0.0)
---------------------
+Quick Start
+-----------
 
 .. code-block:: python
 

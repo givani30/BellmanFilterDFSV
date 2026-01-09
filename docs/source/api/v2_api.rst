@@ -1,9 +1,9 @@
 .. _v2_api:
 
-v2.0.0 API Documentation
-========================
+API Documentation
+=================
 
-This page documents the v2.0.0 API with functional architecture using Equinox.
+This page documents the API with functional architecture using Equinox.
 
 Types
 -----

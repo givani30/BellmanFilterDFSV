@@ -1,8 +1,6 @@
-# BellmanFilterDFSV Examples (v2.0.0)
+# BellmanFilterDFSV Examples
 
-This directory contains example scripts demonstrating the v2.0.0 architecture of the BellmanFilterDFSV package.
-
-**Note**: v2.0.0 is a complete rewrite with breaking changes. These examples showcase the new Equinox-based functional architecture.
+This directory contains example scripts demonstrating the BellmanFilterDFSV package.
 
 ## Available Examples
 
@@ -130,45 +128,6 @@ Core dependencies (installed with the package):
 Visualization dependencies (install separately):
 ```bash
 uv pip install matplotlib numpy
-```
-
-## Key Differences from v1.x
-
-| Feature | v1.x (Old) | v2.0.0 (New) |
-|---------|------------|--------------|
-| **Architecture** | OOP class hierarchy | Functional Core + Equinox modules |
-| **Parameters** | `DFSVParamsDataclass(N, K, ...)` | `DFSVParams(lambda_r, ...)` (NamedTuple) |
-| **Filters** | `DFSVBellmanInformationFilter(N, K)` | `BellmanFilter(params)` |
-| **Filter Call** | `filter.filter(params, data)` | `filter.filter(data)` |
-| **Optimization** | `run_optimization(...)` | `fit_mle(...)` or `fit_em(...)` |
-| **Simulation** | `simulate_DFSV(params, T, seed)` | `simulate_dfsv(params, T, key=seed)` |
-| **Type Safety** | Partial | Full `jaxtyping` annotations |
-| **JIT Compatibility** | Limited | Full support |
-
-## Migration from v1.x
-
-If you have v1.x code, here's a quick migration guide:
-
-**Old (v1.x):**
-```python
-from bellman_filter_dfsv.core.models import DFSVParamsDataclass
-from bellman_filter_dfsv.core.filters import DFSVBellmanInformationFilter
-from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
-
-params = DFSVParamsDataclass(N=3, K=1, lambda_r=..., ...)
-bif = DFSVBellmanInformationFilter(N=3, K=1)
-states, covs, ll = bif.filter(params, returns)
-returns, factors, h = simulate_DFSV(params, T=500, seed=42)
-```
-
-**New (v2.0.0):**
-```python
-from bellman_filter_dfsv import DFSVParams, BellmanFilter, simulate_dfsv
-
-params = DFSVParams(lambda_r=..., Phi_f=..., Phi_h=..., mu=..., sigma2=..., Q_h=...)
-bf = BellmanFilter(params)
-result = bf.filter(returns)  # result.means, result.infos, result.log_likelihood
-returns, factors, h = simulate_dfsv(params, T=500, key=42)
 ```
 
 ## Further Reading

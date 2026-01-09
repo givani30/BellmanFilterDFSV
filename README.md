@@ -8,11 +8,9 @@
 
 **High-performance JAX-based filtering for Dynamic Factor Stochastic Volatility (DFSV) models**
 
-> **Note**: v2.0.0 is a complete rewrite with breaking changes. See [examples/README.md](examples/README.md) for migration guide.
-
 BellmanFilterDFSV is a Python package that provides efficient implementations of filtering algorithms for Dynamic Factor Stochastic Volatility models using JAX for automatic differentiation and JIT compilation.
 
-## 🚀 Key Features (v2.0.0)
+## 🚀 Key Features
 
 - **Functional Architecture**: Built with Equinox for clean, composable JAX code
 - **Multiple Filtering Algorithms**: Bellman Information Filter and Particle Filter
@@ -67,7 +65,7 @@ uv sync
 uv run pytest  # Run tests
 ```
 
-## 🚀 Quick Start (v2.0.0)
+## 🚀 Quick Start
 
 ```python
 import jax.numpy as jnp
@@ -121,7 +119,7 @@ estimated_params = fit_em(
 
 ## 📊 Examples
 
-The `examples/` directory contains 5 comprehensive examples demonstrating v2.0.0 features:
+The `examples/` directory contains 5 comprehensive examples:
 
 1. **01_dfsv_simulation.py** - Simulate DFSV models and analyze properties
 2. **02_basic_filtering.py** - Compare BellmanFilter and ParticleFilter performance
@@ -136,7 +134,7 @@ uv run python examples/02_basic_filtering.py
 uv run python examples/03_parameter_optimization.py
 ```
 
-See [examples/README.md](examples/README.md) for detailed documentation and v1→v2 migration guide.
+See [examples/README.md](examples/README.md) for detailed documentation.
 
 ## 🏗️ Architecture
 
@@ -170,18 +168,18 @@ Where:
 - `Σ`: Idiosyncratic error covariance (N×N)
 - `Q_h`: Log-volatility innovation covariance (K×K)
 
-### Filtering & Smoothing Algorithms (v2.0.0)
+### Filtering & Smoothing Algorithms
 
 1. **Bellman Information Filter (BIF)**: Information-form Kalman filter for numerical stability
 2. **Particle Filter**: Bootstrap particle filter with systematic resampling
 3. **RTS Smoother**: Rauch-Tung-Striebel smoother (Direct Information Form)
 4. **Rao-Blackwellized Particle Smoother (RBPS)**: Marginalizes out linear states analytically
 
-## 📁 Project Structure (v2.0.0)
+## 📁 Project Structure
 
 ```text
 BellmanFilterDFSV/
-├── src/bellman_filter_dfsv/     # Core package (v2 architecture)
+├── src/bellman_filter_dfsv/     # Core package
 │   ├── filters.py              # BellmanFilter, ParticleFilter (Equinox modules)
 │   ├── _bellman_math.py        # Pure math kernels for BIF
 │   ├── _particle_math.py       # Pure math kernels for PF
@@ -190,12 +188,12 @@ BellmanFilterDFSV/
 │   ├── simulation.py           # simulate_dfsv
 │   ├── types.py                # DFSVParams, FilterResult, etc. (NamedTuples)
 │   └── utils/                  # Utility functions
-├── examples/                   # 5 v2 examples
+├── examples/                   # 5 examples
 ├── tests/                      # 69 tests, 93% coverage
 └── pyproject.toml             # Package configuration
 ```
 
-## 🧪 Testing (v2.0.0)
+## 🧪 Testing
 
 Run the comprehensive test suite:
 
@@ -215,7 +213,7 @@ uv run pytest tests/test_smoothing.py
 uv run pytest -m property
 ```
 
-**Test Statistics (v2.0.0):**
+**Test Statistics:**
 - 69 tests total (68 passing, 1 skipped)
 - 93% code coverage
 - 7 property-based tests using Hypothesis
@@ -225,7 +223,7 @@ uv run pytest -m property
 
 **📖 [Full Documentation](https://givani30.github.io/BellmanFilterDFSV/)** - Complete API reference, tutorials, and examples
 
-### Quick API Reference (v2.0.0)
+### Quick API Reference
 
 | Component | Description | Key Classes/Functions |
 |-----------|-------------|----------------------|
@@ -235,7 +233,7 @@ uv run pytest -m property
 | **Estimation** | Parameter fitting | `fit_mle()`, `fit_em()` |
 | **Simulation** | Data generation | `simulate_dfsv()` |
 
-See the [v2.0.0 API Documentation](https://givani30.github.io/BellmanFilterDFSV/api/v2_api.html) for complete details.
+See the [API Documentation](https://givani30.github.io/BellmanFilterDFSV/api/v2_api.html) for complete details.
 
 **Local Documentation Build:**
 
