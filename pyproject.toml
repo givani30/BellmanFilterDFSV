@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bellman-filter-dfsv"
-version = "1.0.0"
+version = "1.0.1"
 description = "High-performance JAX-based filtering for Dynamic Factor Stochastic Volatility (DFSV) models"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -166,3 +166,8 @@ ignore_missing_imports = true
 module = "bellman_filter_dfsv.*"
 ignore_errors = false
 disallow_untyped_calls = false
+
+[dependency-groups]
+dev = [
+    "sympy>=1.14.0",
+]
