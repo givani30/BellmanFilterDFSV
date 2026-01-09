@@ -69,6 +69,8 @@ class EMOptimizer:
         lambda_r, sigma2, Phi_f, mu, Phi_h, Q_h = m_step_full(stats)
 
         return DFSVParamsDataclass(
+            N=self.N,
+            K=self.K,
             lambda_r=np.asarray(lambda_r),
             Phi_f=np.asarray(Phi_f),
             Phi_h=np.asarray(Phi_h),

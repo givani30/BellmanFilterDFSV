@@ -56,6 +56,9 @@ addopts = [
     "--strict-config",
     "-ra",
 ]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
 # Exclude thesis artifacts from test discovery
 norecursedirs = ["thesis_artifacts", "build", "dist", ".git", ".tox"]
 
