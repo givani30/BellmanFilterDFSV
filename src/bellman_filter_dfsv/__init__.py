@@ -41,6 +41,7 @@ __email__ = "givaniboek@hotmail.com"
 
 from .estimation import fit_em, fit_mle
 from .filters import BellmanFilter, ParticleFilter
+from .simulation import simulate_dfsv, simulate_DFSV
 from .smoothing import SmootherResult, rts_smoother, run_rbps
 from .types import (
     BIFState,
@@ -70,4 +71,6 @@ __all__ = [
     "run_rbps",
     "fit_mle",
     "fit_em",
+    "simulate_dfsv",
+    "simulate_DFSV",
 ]

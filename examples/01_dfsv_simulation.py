@@ -9,17 +9,15 @@ This example demonstrates how to:
 
 The DFSV model combines factor models with stochastic volatility, allowing
 for time-varying volatility in the latent factors that drive returns.
+
+v2.0.0 - Updated for new architecture using Equinox and functional patterns.
 """
 
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-from bellman_filter_dfsv.core.models.dfsv import DFSVParamsDataclass
-from bellman_filter_dfsv.core.models.simulation import simulate_DFSV
-
-# Set random seed for reproducibility
-np.random.seed(42)
+from bellman_filter_dfsv import DFSVParams, simulate_dfsv
 
 
 def create_simple_dfsv_model(N=3, K=1):
@@ -31,7 +29,7 @@ def create_simple_dfsv_model(N=3, K=1):
         K (int): Number of latent factors
 
     Returns:
-        DFSVParamsDataclass: Parameters for the DFSV model
+        DFSVParams: Parameters for the DFSV model
     """
     # Factor loadings - how each observed series is affected by the factors
     lambda_r = np.random.uniform(0.3, 0.9, size=(N, K))
@@ -52,9 +50,7 @@ def create_simple_dfsv_model(N=3, K=1):
     Q_h = np.eye(K) * 0.05  # Low volatility of volatility
 
     # Create parameter object using JAX arrays
-    params = DFSVParamsDataclass(
-        N=N,
-        K=K,
+    params = DFSVParams(
         lambda_r=jnp.array(lambda_r),
         Phi_f=jnp.array(Phi_f),
         Phi_h=jnp.array(Phi_h),
@@ -66,7 +62,7 @@ def create_simple_dfsv_model(N=3, K=1):
     return params
 
 
-def plot_simulation_results(returns, factors, log_vols, params):
+def plot_simulation_results(returns, factors, log_vols, N, K):
     """
     Plot the simulated data from a DFSV model.
 
@@ -74,7 +70,8 @@ def plot_simulation_results(returns, factors, log_vols, params):
         returns (np.ndarray): Simulated returns with shape (T, N)
         factors (np.ndarray): Simulated factors with shape (T, K)
         log_vols (np.ndarray): Simulated log-volatilities with shape (T, K)
-        params (DFSVParamsDataclass): Model parameters
+        N (int): Number of observed series
+        K (int): Number of factors
     """
     T = returns.shape[0]
     time_axis = np.arange(T)
@@ -84,7 +81,7 @@ def plot_simulation_results(returns, factors, log_vols, params):
 
     # Plot factors
     ax1 = fig.add_subplot(3, 1, 1)
-    for k in range(params.K):
+    for k in range(K):
         ax1.plot(time_axis, factors[:, k], label=f"Factor {k + 1}")
     ax1.set_title("Latent Factors")
     ax1.set_xlabel("Time")
@@ -94,7 +91,7 @@ def plot_simulation_results(returns, factors, log_vols, params):
 
     # Plot log-volatilities
     ax2 = fig.add_subplot(3, 1, 2)
-    for k in range(params.K):
+    for k in range(K):
         ax2.plot(time_axis, log_vols[:, k], label=f"Log-Vol {k + 1}")
     ax2.set_title("Log-Volatilities")
     ax2.set_xlabel("Time")
@@ -104,7 +101,7 @@ def plot_simulation_results(returns, factors, log_vols, params):
 
     # Plot returns
     ax3 = fig.add_subplot(3, 1, 3)
-    for n in range(min(params.N, 3)):  # Plot at most 3 return series to avoid clutter
+    for n in range(min(N, 3)):  # Plot at most 3 return series to avoid clutter
         ax3.plot(time_axis, returns[:, n], label=f"Returns {n + 1}", alpha=0.7)
     ax3.set_title("Observed Returns")
     ax3.set_xlabel("Time")
@@ -161,13 +158,13 @@ def analyze_simulation(returns, factors, log_vols):
 
 def main():
     """Run the DFSV simulation example."""
-    print("DFSV Model Simulation Example")
-    print("=============================")
+    print("DFSV Model Simulation Example (v2.0.0)")
+    print("=======================================")
 
     # Create model parameters
     N, K = 5, 2  # 5 observed series, 2 factors
     params = create_simple_dfsv_model(N, K)
-    print(f"Created DFSV model with {params.N} observed series and {params.K} factors")
+    print(f"Created DFSV model with {N} observed series and {K} factors")
 
     # Set simulation parameters
     T = 1000  # Number of time periods
@@ -175,14 +172,20 @@ def main():
 
     # Run simulation
     print(f"Simulating DFSV model for T={T} time periods...")
-    returns, factors, log_vols = simulate_DFSV(params=params, T=T, seed=seed)
+    returns, factors, log_vols = simulate_dfsv(params, T=T, key=seed)
+
+    # Convert to numpy for analysis/plotting
+    returns = np.array(returns)
+    factors = np.array(factors)
+    log_vols = np.array(log_vols)
+
     print("Simulation complete!")
 
     # Analyze simulation results
     analyze_simulation(returns, factors, log_vols)
 
     # Plot simulation results
-    plot_simulation_results(returns, factors, log_vols, params)
+    plot_simulation_results(returns, factors, log_vols, N, K)
 
     return returns, factors, log_vols, params
 
