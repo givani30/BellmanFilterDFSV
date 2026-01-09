@@ -30,17 +30,15 @@ dependencies = [
     "jax-dataclasses",
     "jaxtyping",
     "equinox",
-
     # Optimization
     "optimistix",
     "optax",
-
     # Scientific computing
     "numpy",
     "scipy",
-
     # Basic utilities
     "matplotlib",  # For basic plotting in examples
+    "seaborn>=0.13.2",
 ]
 
 [tool.setuptools.packages.find]

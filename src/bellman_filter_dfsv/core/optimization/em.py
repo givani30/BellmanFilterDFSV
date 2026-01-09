@@ -1,4 +1,12 @@
-"""EM Algorithm optimizer for DFSV models."""
+"""EM Algorithm optimizer for DFSV models.
+
+WARNING: The current implementation has known limitations that cause parameter
+divergence. The Gaussian E-step approximation fails for log-volatility states,
+leading to biased sufficient statistics and corrupted M-step updates.
+
+Use run_optimization() with direct MLE instead for production use.
+See docs/design/EM_ALGORITHM_DESIGN.md "Known Limitations" section for details.
+"""
 
 from dataclasses import dataclass, field
 

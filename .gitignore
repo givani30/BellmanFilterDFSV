@@ -57,3 +57,13 @@ jax-trace/
 # Package specific
 thesis_artifacts/
 
+# Personal archive and development artifacts
+.personal_archive/
+
+# Personal development files
+AGENTS.md
+oh-my-opencode.json
+
+# Experimental code
+scripts/
+

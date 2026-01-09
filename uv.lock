@@ -292,6 +292,7 @@ dependencies = [
     { name = "optax" },
     { name = "optimistix" },
     { name = "scipy" },
+    { name = "seaborn" },
 ]
 
 [package.optional-dependencies]
@@ -397,6 +398,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "scikit-learn", marker = "extra == 'econometrics'" },
     { name = "scipy" },
+    { name = "seaborn", specifier = ">=0.13.2" },
     { name = "seaborn", marker = "extra == 'analysis'" },
     { name = "sphinx", marker = "extra == 'dev'", specifier = ">=8.2.3" },
     { name = "sphinx-rtd-theme", marker = "extra == 'dev'", specifier = ">=3.0.2" },
