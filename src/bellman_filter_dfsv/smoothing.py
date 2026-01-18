@@ -4,7 +4,13 @@ import jax.numpy as jnp
 from jax import Array
 from jaxtyping import Float
 
-from ._bellman_math import invert_info_matrix, predict_info_step
+from ._bellman_math import (
+    K_CHOL_JITTER,
+    LOG_DIAG_FLOOR,
+    WOODBURY_DIAG_JITTER,
+    invert_info_matrix,
+    predict_info_step,
+)
 from .types import BIFState, DFSVParams, RBParticleState, RBPSResult
 
 
@@ -115,7 +121,7 @@ def _predict_rbpf(
     h_pred_mean = mu_col + params.Phi_h @ h_dev
 
     # Sample noise
-    L_Qh = jnp.linalg.cholesky(params.Q_h + 1e-6 * jnp.eye(K))
+    L_Qh = jnp.linalg.cholesky(params.Q_h + K_CHOL_JITTER * jnp.eye(K))
     noise = jax.random.normal(key, shape=(K, P))
     h_next = h_pred_mean + L_Qh @ noise
 
@@ -145,63 +151,55 @@ def _predict_rbpf(
     )
 
 
+def _rbpf_obs_cache(params: DFSVParams):
+    inv_sigma2 = 1.0 / (params.sigma2 + WOODBURY_DIAG_JITTER)
+    lambda_scaled = params.lambda_r * inv_sigma2[:, None]
+    B = params.lambda_r.T @ lambda_scaled
+    logdet_D = jnp.sum(jnp.log(jnp.maximum(params.sigma2, LOG_DIAG_FLOOR)))
+    return inv_sigma2, B, logdet_D
+
+
 def _update_rbpf(
     params: DFSVParams, state: RBParticleState, observation: Float[Array, "N"]
 ) -> tuple[RBParticleState, Float[Array, "P"]]:
     """Update step for RBPF."""
-    # y_t = Lambda f_t + e_t
-    # e_t ~ N(0, Sigma)
-
-    # This is a Kalman Update step for each particle
-    # y_t | h_{1:t}, y_{1:t-1} ~ N(Lambda f_{t|t-1}, Lambda P_{t|t-1} Lambda' + R)
 
     N = params.lambda_r.shape[0]
     K = params.lambda_r.shape[1]
-    R = jnp.diag(params.sigma2)
+
+    inv_sigma2, B, logdet_D = _rbpf_obs_cache(params)
 
     def kalman_update(f_mean, f_cov):
-        # Predicted observation mean
-        y_pred = params.lambda_r @ f_mean
+        v = observation - (params.lambda_r @ f_mean)
 
-        # Innovation
-        v = observation - y_pred
+        chol_P = jnp.linalg.cholesky(f_cov + K_CHOL_JITTER * jnp.eye(K))
+        P_inv = jax.scipy.linalg.cho_solve((chol_P, True), jnp.eye(K))
 
-        # Innovation covariance
-        S = params.lambda_r @ f_cov @ params.lambda_r.T + R
+        M = 0.5 * (P_inv + B + (P_inv + B).T)
+        chol_M = jnp.linalg.cholesky(M + K_CHOL_JITTER * jnp.eye(K))
 
-        # Kalman Gain
-        # K = P H' S^-1
-        # Use Cholesky solve for stability
-        L_S = jnp.linalg.cholesky(S + 1e-6 * jnp.eye(N))
+        Dinv_v = v * inv_sigma2
+        u = params.lambda_r.T @ Dinv_v
 
-        # Calculate likelihood of v given S
-        # log N(v; 0, S)
-        log_det_S = 2 * jnp.sum(jnp.log(jnp.diag(L_S)))
-        v_scaled = jax.scipy.linalg.solve_triangular(L_S, v, lower=True)
-        mahalanobis = jnp.sum(v_scaled**2)
-        log_lik = -0.5 * (N * jnp.log(2 * jnp.pi) + log_det_S + mahalanobis)
+        Sigma = jax.scipy.linalg.cho_solve((chol_M, True), jnp.eye(K))
+        f_new_mean = f_mean + Sigma @ u
 
-        # State update
-        # K = P H' S^-1
-        S_inv_H = jax.scipy.linalg.cho_solve((L_S, True), params.lambda_r)  # (N, K)
-        K_gain = f_cov @ S_inv_H.T  # (K, N)
+        quad = jnp.dot(v, Dinv_v) - jnp.dot(
+            u, jax.scipy.linalg.cho_solve((chol_M, True), u)
+        )
 
-        f_new_mean = f_mean + K_gain @ v
+        logdet_P = 2.0 * jnp.sum(jnp.log(jnp.maximum(jnp.diag(chol_P), LOG_DIAG_FLOOR)))
+        logdet_M = 2.0 * jnp.sum(jnp.log(jnp.maximum(jnp.diag(chol_M), LOG_DIAG_FLOOR)))
+        logdet_S = logdet_D + logdet_P + logdet_M
 
-        # Joseph form update for covariance stability
-        # P = (I - KH) P (I - KH)' + KRK'
-        I_K = jnp.eye(K)
-        bracket = I_K - K_gain @ params.lambda_r
-        f_new_cov = bracket @ f_cov @ bracket.T + K_gain @ R @ K_gain.T
+        log_lik = -0.5 * (N * jnp.log(2.0 * jnp.pi) + logdet_S + quad)
 
-        return f_new_mean, f_new_cov, log_lik
+        return f_new_mean, Sigma, log_lik
 
-    # Vmap over particles
     f_means_new, f_covs_new, incremental_log_liks = jax.vmap(
         kalman_update, in_axes=(1, 2), out_axes=(1, 2, 0)
     )(state.f_means, state.f_covs)
 
-    # Update weights
     new_log_weights = state.log_weights + incremental_log_liks
 
     return RBParticleState(
@@ -246,7 +244,7 @@ def run_rbps(
     vec_Qh = params.Q_h.flatten()
     vec_Ph = jnp.linalg.solve(jnp.eye(K * K) - kron_prod, vec_Qh)
     P_h = vec_Ph.reshape(K, K)
-    L_h = jnp.linalg.cholesky(P_h + 1e-6 * jnp.eye(K))
+    L_h = jnp.linalg.cholesky(P_h + K_CHOL_JITTER * jnp.eye(K))
     h0 = params.mu[:, None] + L_h @ jax.random.normal(init_key, (K, num_particles))
 
     # Init f (unconditional)
@@ -306,7 +304,9 @@ def run_rbps(
 
         res = h_n - mean  # (K, P, M)
         q_diag = jnp.diag(params.Q_h)[:, None, None]
-        log_trans = -0.5 * jnp.sum((res**2) / (q_diag + 1e-8), axis=0)  # (P, M)
+        log_trans = -0.5 * jnp.sum(
+            (res**2) / (q_diag + WOODBURY_DIAG_JITTER), axis=0
+        )  # (P, M)
 
         log_wb = log_w_t[:, None] + log_trans
 
@@ -342,6 +342,8 @@ def _conditional_rts_smoother(params, observations, h_traj):
     T, N = observations.shape
     K = params.lambda_r.shape[1]
 
+    inv_sigma2, B, _ = _rbpf_obs_cache(params)
+
     # Forward Filter
     def filter_step(carry, inp):
         m, P = carry
@@ -351,20 +353,19 @@ def _conditional_rts_smoother(params, observations, h_traj):
         m_pred = params.Phi_f @ m
         P_pred = params.Phi_f @ P @ params.Phi_f.T + Q
 
-        v = y - params.lambda_r @ m_pred
-        S = params.lambda_r @ P_pred @ params.lambda_r.T + jnp.diag(params.sigma2)
+        v = y - (params.lambda_r @ m_pred)
 
-        L_S = jnp.linalg.cholesky(S + 1e-6 * jnp.eye(N))
-        K_gain = (
-            P_pred
-            @ params.lambda_r.T
-            @ jax.scipy.linalg.cho_solve((L_S, True), jnp.eye(N))
-        )
+        chol_P = jnp.linalg.cholesky(P_pred + K_CHOL_JITTER * jnp.eye(K))
+        P_inv = jax.scipy.linalg.cho_solve((chol_P, True), jnp.eye(K))
 
-        m_upd = m_pred + K_gain @ v
-        I_K = jnp.eye(K)
-        P_upd = (I_K - K_gain @ params.lambda_r) @ P_pred
-        P_upd = 0.5 * (P_upd + P_upd.T)
+        M = 0.5 * (P_inv + B + (P_inv + B).T)
+        chol_M = jnp.linalg.cholesky(M + K_CHOL_JITTER * jnp.eye(K))
+
+        Dinv_v = v * inv_sigma2
+        u = params.lambda_r.T @ Dinv_v
+
+        P_upd = jax.scipy.linalg.cho_solve((chol_M, True), jnp.eye(K))
+        m_upd = m_pred + P_upd @ u
 
         return (m_upd, P_upd), (m_pred, P_pred, m_upd, P_upd)
 
@@ -380,7 +381,7 @@ def _conditional_rts_smoother(params, observations, h_traj):
         m_p, P_p, m_f, P_f = inp
 
         # J = P_f Phi' P_p^-1
-        L_P = jnp.linalg.cholesky(P_p + 1e-6 * jnp.eye(K))
+        L_P = jnp.linalg.cholesky(P_p + K_CHOL_JITTER * jnp.eye(K))
         # solve P_p J' = Phi P_f
         J_T = jax.scipy.linalg.cho_solve((L_P, True), params.Phi_f @ P_f)
         J = J_T.T

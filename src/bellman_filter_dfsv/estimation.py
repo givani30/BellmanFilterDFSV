@@ -318,6 +318,7 @@ def fit_em(
         )
 
     for i in range(max_iters):
+        # TODO: Add early stopping if converged
         rbps_res = jit_rbps(current_params)
         stats = rbps_to_suffstats(rbps_res, observations, K)
 

@@ -7,6 +7,39 @@ from jaxtyping import Float
 
 from .types import BIFState, DFSVParams
 
+OBS_COV_JITTER = 1e-6
+WOODBURY_DIAG_JITTER = 1e-8
+K_CHOL_JITTER = 1e-10
+LOG_DIAG_FLOOR = 1e-10
+
+
+def _symmetrize(a: Float[Array, "D D"]) -> Float[Array, "D D"]:
+    return 0.5 * (a + a.T)
+
+
+def _woodbury_setup(
+    lambda_r: Float[Array, "N K"],
+    sigma2: Float[Array, "N"],
+    factor_cov: Float[Array, "K K"],
+) -> tuple[
+    Float[Array, "K K"], Float[Array, "K K"], Float[Array, "K"], Float[Array, "K K"]
+]:
+    K = lambda_r.shape[1]
+
+    inv_sigma2 = 1.0 / (sigma2 + WOODBURY_DIAG_JITTER)
+    lambda_scaled = lambda_r * inv_sigma2[:, None]
+    B = lambda_r.T @ lambda_scaled
+
+    chol_C = jax.scipy.linalg.cholesky(
+        _symmetrize(factor_cov) + K_CHOL_JITTER * jnp.eye(K), lower=True
+    )
+    C_inv = jax.scipy.linalg.cho_solve((chol_C, True), jnp.eye(K))
+
+    M = _symmetrize(C_inv + B)
+    chol_M = jax.scipy.linalg.cholesky(M + K_CHOL_JITTER * jnp.eye(K), lower=True)
+
+    return chol_C, chol_M, inv_sigma2, B
+
 
 def build_covariance(
     lambda_r: Float[Array, "N K"], exp_h: Float[Array, "K"], sigma2: Float[Array, "N"]
@@ -17,7 +50,7 @@ def build_covariance(
     Sigma_e = jnp.diag(sigma2)
     Sigma_f = jnp.diag(exp_h)
 
-    A = lambda_r @ Sigma_f @ lambda_r.T + Sigma_e + 1e-6 * jnp.eye(N)
+    A = lambda_r @ Sigma_f @ lambda_r.T + Sigma_e + OBS_COV_JITTER * jnp.eye(N)
     return 0.5 * (A + A.T)
 
 
@@ -36,16 +69,15 @@ def observed_fim(
 
     r = observation - lambda_r @ f
 
-    jitter = 1e-8
-    Dinv_diag = 1.0 / (sigma2 + jitter)
-    Cinv_diag = 1.0 / (exp_h + jitter)
+    Dinv_diag = 1.0 / (sigma2 + WOODBURY_DIAG_JITTER)
+    Cinv_diag = 1.0 / (exp_h + WOODBURY_DIAG_JITTER)
 
     Dinv_lambda_r = lambda_r * Dinv_diag[:, None]
     Dinv_r = r * Dinv_diag
 
     M = jnp.diag(Cinv_diag) + lambda_r.T @ Dinv_lambda_r
 
-    M_jittered = M + 1e-6 * jnp.eye(K)
+    M_jittered = M + K_CHOL_JITTER * jnp.eye(K)
     L_M = jax.scipy.linalg.cholesky(M_jittered, lower=True)
 
     V = M - jnp.diag(Cinv_diag)
@@ -85,20 +117,19 @@ def log_posterior(
     pred_obs = lambda_r @ f
     innovation = observation - pred_obs
 
-    jitter = 1e-8
-    Dinv_diag = 1.0 / (sigma2 + jitter)
-    Cinv_diag = 1.0 / (jnp.exp(h) + jitter)
+    Dinv_diag = 1.0 / (sigma2 + WOODBURY_DIAG_JITTER)
+    Cinv_diag = 1.0 / (jnp.exp(h) + WOODBURY_DIAG_JITTER)
 
     Dinv_lambda_r = lambda_r * Dinv_diag[:, None]
     Dinv_innovation = innovation * Dinv_diag
 
     M = jnp.diag(Cinv_diag) + lambda_r.T @ Dinv_lambda_r
-    M_jittered = M + 1e-6 * jnp.eye(K)
+    M_jittered = M + K_CHOL_JITTER * jnp.eye(K)
     L_M = jax.scipy.linalg.cholesky(M_jittered, lower=True)
 
-    logdet_M = 2.0 * jnp.sum(jnp.log(jnp.maximum(jnp.diag(L_M), 1e-10)))
+    logdet_M = 2.0 * jnp.sum(jnp.log(jnp.maximum(jnp.diag(L_M), LOG_DIAG_FLOOR)))
     logdet_C = jnp.sum(h)
-    logdet_D = jnp.sum(jnp.log(jnp.maximum(sigma2, 1e-10)))
+    logdet_D = jnp.sum(jnp.log(jnp.maximum(sigma2, LOG_DIAG_FLOOR)))
     logdet_Sigma_t = logdet_M + logdet_C + logdet_D
 
     term1 = jnp.dot(innovation, Dinv_innovation)
@@ -117,11 +148,10 @@ def bif_penalty(
     Omega_post: Float[Array, "2K 2K"],
 ) -> Float[Array, ""]:
     """Calculates BIF pseudo-likelihood penalty."""
-    jitter = 1e-8
     K2 = Omega_pred.shape[0]
 
-    _, log_det_pred = jnp.linalg.slogdet(Omega_pred + jitter * jnp.eye(K2))
-    _, log_det_post = jnp.linalg.slogdet(Omega_post + jitter * jnp.eye(K2))
+    _, log_det_pred = jnp.linalg.slogdet(Omega_pred + K_CHOL_JITTER * jnp.eye(K2))
+    _, log_det_post = jnp.linalg.slogdet(Omega_post + K_CHOL_JITTER * jnp.eye(K2))
 
     diff = a_updated - a_pred
     quad_term = diff.T @ Omega_pred @ diff
@@ -131,9 +161,8 @@ def bif_penalty(
 
 def invert_info_matrix(info_matrix: Float[Array, "D D"]) -> Float[Array, "D D"]:
     """Stable inversion of information matrix to covariance matrix via Cholesky."""
-    jitter = 1e-6
     D = info_matrix.shape[0]
-    info_jittered = info_matrix + jitter * jnp.eye(D)
+    info_jittered = info_matrix + OBS_COV_JITTER * jnp.eye(D)
 
     L_info = jax.scipy.linalg.cholesky(info_jittered, lower=True)
     cov = jax.scipy.linalg.cho_solve((L_info, True), jnp.eye(D))
@@ -143,7 +172,6 @@ def invert_info_matrix(info_matrix: Float[Array, "D D"]) -> Float[Array, "D D"]:
 def predict_info_step(params: DFSVParams, state_post: BIFState) -> BIFState:
     """Predicts next state and information matrix."""
     K = params.lambda_r.shape[1]
-    jitter = 1e-8
 
     alpha_post = state_post.mean
     Omega_post = state_post.info
@@ -161,7 +189,7 @@ def predict_info_step(params: DFSVParams, state_post: BIFState) -> BIFState:
 
     Q_f_inv = jnp.diag(jnp.exp(-h_pred))
 
-    Q_h_jittered = params.Q_h + jitter * jnp.eye(K)
+    Q_h_jittered = params.Q_h + K_CHOL_JITTER * jnp.eye(K)
     L_Qh = jax.scipy.linalg.cholesky(Q_h_jittered, lower=True)
     Q_h_inv = jax.scipy.linalg.cho_solve((L_Qh, True), jnp.eye(K))
 
@@ -217,18 +245,23 @@ def update_factors(
     I_fh: Float[Array, "K K"],
 ) -> Float[Array, "K"]:
     """Updates factor values f by solving linear system (closed form)."""
-    A = build_covariance(lambda_r, jnp.exp(log_volatility), sigma2)
-    L = jax.scipy.linalg.cho_factor(A, lower=True)
+    K = lambda_r.shape[1]
 
-    def A_inv(x):
-        return jax.scipy.linalg.cho_solve(L, x)
+    C = jnp.diag(jnp.exp(log_volatility))
+    _, chol_M, inv_sigma2, B = _woodbury_setup(lambda_r, sigma2, C)
 
-    lhs_mat = jnp.dot(lambda_r.T, A_inv(lambda_r)) + I_f + 1e-8 * jnp.eye(I_f.shape[0])
+    Minv_B = jax.scipy.linalg.cho_solve((chol_M, True), B)
+    lam_Ainv_lam = _symmetrize(B - B @ Minv_B)
+
+    Dinv_y = observation * inv_sigma2
+    u = lambda_r.T @ Dinv_y
+    Minv_u = jax.scipy.linalg.cho_solve((chol_M, True), u)
+    lam_Ainv_y = u - B @ Minv_u
+
+    lhs_mat = lam_Ainv_lam + I_f + K_CHOL_JITTER * jnp.eye(K)
 
     rhs_vec = (
-        jnp.dot(lambda_r.T, A_inv(observation))
-        + jnp.dot(I_f, factors_pred)
-        + jnp.dot(I_fh, (log_volatility - log_vols_pred))
+        lam_Ainv_y + (I_f @ factors_pred) + (I_fh @ (log_volatility - log_vols_pred))
     )
 
     return jnp.linalg.solve(lhs_mat, rhs_vec)
@@ -349,7 +382,7 @@ def update_info_step(
         observation=observation,
     )
 
-    Omega_post = Omega_pred + J_obs + 1e-6 * jnp.eye(2 * K)
+    Omega_post = Omega_pred + J_obs + OBS_COV_JITTER * jnp.eye(2 * K)
     Omega_post = 0.5 * (Omega_post + Omega_post.T)
 
     log_lik_fit = log_posterior(
